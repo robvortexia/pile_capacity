@@ -15,6 +15,10 @@ from functools import wraps
 import csv
 from io import StringIO
 from sqlalchemy.sql import func
+import logging
+
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 bp = Blueprint('main', __name__)
 
@@ -51,6 +55,7 @@ def calculator_step(type, step):
                 flash('No file selected')
                 return redirect(request.url)
             
+            # Get water table value first
             water_table = request.form.get('water_table')
             if not water_table:
                 flash('Water table depth is required')
@@ -69,36 +74,57 @@ def calculator_step(type, step):
             
             if file and allowed_file(file.filename):
                 try:
-                    content = file.read().decode('utf-8')
+                    logger.debug("Starting file processing")
+                    # Initialize data structures
+                    data_dict = []
+                    delimiter = None
                     
-                    first_line = content.split('\n')[0]
-                    if '\t' in first_line:
-                        delimiter = '\t'
-                    elif ',' in first_line:
-                        delimiter = ','
-                    else:
-                        delimiter = ' '
+                    # Process file line by line
+                    for line in file:
+                        try:
+                            decoded_line = line.decode('utf-8').strip()
+                            if not decoded_line:  # Skip empty lines
+                                continue
+                            
+                            # Try to determine the delimiter from first line
+                            if delimiter is None:
+                                if '\t' in decoded_line:
+                                    delimiter = '\t'
+                                elif ',' in decoded_line:
+                                    delimiter = ','
+                                else:
+                                    delimiter = ' '
+                            
+                            # Split and process each line directly
+                            values = decoded_line.split(delimiter)
+                            if len(values) >= 4:  # Ensure we have all required columns
+                                try:
+                                    data_dict.append({
+                                        'z': float(values[0]),
+                                        'qc': float(values[1]),
+                                        'fs': float(values[2]),
+                                        'gtot': float(values[3])
+                                    })
+                                except (ValueError, IndexError):
+                                    continue
+                        except UnicodeDecodeError:
+                            continue
                     
-                    from io import StringIO
-                    file_obj = StringIO(content)
-                    
-                    df = pd.read_csv(file_obj, delimiter=delimiter, header=None, 
-                                   names=['z', 'qc', 'fs', 'gtot'],
-                                   skipinitialspace=True)
-                    
-                    for col in ['z', 'qc', 'fs', 'gtot']:
-                        df[col] = pd.to_numeric(df[col], errors='coerce')
-                    
-                    if df.isnull().values.any():
-                        flash('File contains invalid numeric data')
+                    if not data_dict:
+                        flash('No valid data found in file')
                         return redirect(request.url)
                     
-                    data_dict = df.to_dict('records')
                     processed_data = process_cpt_data(data_dict)
+                    logger.debug("process_cpt_data completed")
                     
+                    # Save processed data
                     file_id = save_cpt_data(processed_data['cpt_data'], water_table)
                     session['cpt_data_id'] = file_id
                     session['water_table'] = water_table
+                    
+                    logger.debug(f"File name: {file.filename}")
+                    logger.debug(f"Content type: {file.content_type}")
+                    logger.debug(f"Detected delimiter: {delimiter}")
                     
                     return redirect(url_for('main.calculator_step', type=type, step=2))
                     
@@ -117,11 +143,13 @@ def calculator_step(type, step):
                 flash('No CPT data available. Please upload data first.')
                 return redirect(url_for('main.calculator_step', type=type, step=1))
             
+            # Verify the data exists and is valid
             data = load_cpt_data(session['cpt_data_id'])
             if not data:
                 flash('CPT data not found. Please upload data again.')
                 return redirect(url_for('main.calculator_step', type=type, step=1))
                 
+            # Process the data to ensure it's valid
             processed_data = pre_input_calc(data, data['water_table'])
             if not processed_data:
                 flash('Error processing CPT data. Please check your input data.')
@@ -131,29 +159,21 @@ def calculator_step(type, step):
         
         elif step == 3:  # Handle pile parameters
             try:
+                # Log the form data for debugging
                 print("Form data:", request.form)
                 
-                # Different parameter handling based on pile type
-                if type == 'bored':
-                    params = {
-                        'site_name': request.form.get('site_name', ''),
-                        'shaft_diameter': float(request.form['shaft_diameter']),
-                        'base_diameter': float(request.form['base_diameter']),
-                        'borehole_depth': float(request.form['borehole_depth']),
-                        'pile_tip_depths': [float(d.strip()) for d in request.form['pile_tip_depths'].split(',')]
-                    }
-                else:  # driven pile parameters
-                    params = {
-                        'pile_shape': request.form['pile_shape'],
-                        'pile_end_condition': request.form['pile_end_condition'],
-                        'pile_diameter': float(request.form['pile_diameter']),
-                        'borehole_depth': float(request.form['borehole_depth']),
-                        'pile_tip_depths': [float(d.strip()) for d in request.form['pile_tip_depths'].split(',')]
-                    }
-                    
-                    if request.form['pile_end_condition'] == 'open':
-                        params['wall_thickness'] = float(request.form['wall_thickness'])
+                params = {
+                    'pile_shape': request.form['pile_shape'],
+                    'pile_end_condition': request.form['pile_end_condition'],
+                    'pile_diameter': float(request.form['pile_diameter']),
+                    'borehole_depth': float(request.form['borehole_depth']),
+                    'pile_tip_depths': [float(d.strip()) for d in request.form['pile_tip_depths'].split(',')]
+                }
                 
+                if request.form['pile_end_condition'] == 'open':
+                    params['wall_thickness'] = float(request.form['wall_thickness'])
+                
+                # Log the processed parameters
                 print("Processed parameters:", params)
                 
                 if 'cpt_data_id' not in session:
@@ -165,25 +185,29 @@ def calculator_step(type, step):
                     flash('CPT data could not be loaded. Please upload data again.')
                     return redirect(url_for('main.calculator_step', type=type, step=1))
                 
+                # Log that we're about to calculate
                 print("Calculating pile capacity with data:", data)
                 
-                # Pass the pile type to calculate_pile_capacity
-                calc_result = calculate_pile_capacity(data, params, pile_type=type)
+                results = calculate_pile_capacity(data['cpt_data'], params)
                 
-                if not calc_result:
-                    flash('Error in calculation. Please check your inputs.')
-                    return redirect(request.url)
+                # Log the results
+                print("Calculation results:", results)
                 
-                session['results'] = calc_result
+                session['results'] = results
+                
                 return redirect(url_for('main.calculator_step', type=type, step=4))
                 
+            except KeyError as e:
+                flash(f'Missing required field: {str(e)}')
+                return redirect(request.url)
             except ValueError as e:
                 flash(f'Invalid value entered: {str(e)}')
                 return redirect(request.url)
             except Exception as e:
                 flash(f'Error calculating pile capacity: {str(e)}')
-                print(f"Error in step 3: {str(e)}")
+                print(f"Error in step 3: {str(e)}")  # Log the error
                 return redirect(request.url)
+
     
     # Handle GET requests
     if step == 2:

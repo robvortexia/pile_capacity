@@ -227,59 +227,60 @@ def get_qb_clay(pile_end_condition, qt_value, area_value):
 def pre_input_calc(data, rl_water_table=0):
     try:
         cpt_data = data['cpt_data'] if isinstance(data, dict) else data
-        depth = [row['z'] for row in cpt_data]
-        h = [0]*len(depth)
-        qc = [row['qc'] for row in cpt_data]
-        gtot = [row['gtot'] for row in cpt_data]
-        fs = [row['fs'] for row in cpt_data]
+        # Convert to numpy arrays for calculations but keep as lists for output
+        depth = np.array([row['z'] for row in cpt_data])
+        qc = np.array([row['qc'] for row in cpt_data])
+        gtot = np.array([row['gtot'] for row in cpt_data])
+        fs = np.array([row['fs'] for row in cpt_data])
+        
+        # Pre-allocate lists for better performance
+        n_points = len(depth)
+        qt = list(qc)  # Direct copy since qt = qc
+        u0_kpa = [0] * n_points
+        sig_v0 = [0] * n_points
+        sig_v0_prime = [0] * n_points
+        fr_percent = [0] * n_points
+        qtn = [0] * n_points
+        n = [0] * n_points
+        lc = [0] * n_points
+        bq = [0] * n_points
+        kc = [0] * n_points
+        iz1 = [0] * n_points
+        qtc = [0] * n_points
 
-        qt = []
-        u0_kpa = []
-        sig_v0 = []
-        sig_v0_prime = []
-        fr_percent = []
-        qtn = []
-        n = []
-        lc = []
-        bq = []
-        kc = []
-        iz1 = []
-        qtc = []
-
-        for i in range(len(depth)):
-            qt.append(qc[i])
-            if depth[i] <= rl_water_table:
-                u0_kpa.append(0)
-            else:
-                u0_kpa.append((depth[i]-rl_water_table)*9.81)
-            sig_v0.append(depth[i]*gtot[i])
-            sig_v0_prime.append(sig_v0[i]-u0_kpa[i])
-            fr_p = get_fr_percent(fs[i], qc[i], sig_v0[i])
-            fr_percent.append(fr_p)
-
-            iterative_values = get_iterative_values(qt[i], sig_v0[i], sig_v0_prime[i], fr_p)
-            qtn.append(iterative_values['qtn'])
-            lc.append(iterative_values['lc'])
-            n.append(iterative_values['n'])
-
-            bq.append(0) # Placeholder for now
-            kc_val = get_kc(lc[-1])
-            kc.append(kc_val)
-            qtc_val = get_qtc(kc_val, qt[i])
-            qtc.append(qtc_val)
-            iz1_val = get_iz1(qtn[-1], fr_p)
-            iz1.append(iz1_val)
+        # Use numpy for the simple calculations, then convert back to lists
+        for i in range(n_points):
+            # Water pressure calculation
+            u0_kpa[i] = 0 if depth[i] <= rl_water_table else (depth[i]-rl_water_table)*9.81
+            
+            # Stress calculations
+            sig_v0[i] = depth[i]*gtot[i]
+            sig_v0_prime[i] = sig_v0[i]-u0_kpa[i]
+            
+            # Friction ratio calculation
+            fr_percent[i] = get_fr_percent(fs[i], qc[i], sig_v0[i])
+            
+            # Get iterative values (keeping this as is since it's complex)
+            iterative_values = get_iterative_values(qt[i], sig_v0[i], sig_v0_prime[i], fr_percent[i])
+            qtn[i] = iterative_values['qtn']
+            lc[i] = iterative_values['lc']
+            n[i] = iterative_values['n']
+            
+            # Calculate remaining parameters
+            kc[i] = get_kc(lc[i])
+            qtc[i] = get_qtc(kc[i], qt[i])
+            iz1[i] = get_iz1(qtn[i], fr_percent[i])
 
         return {
-            'depth': depth,
-            'h': h,
-            'qc': qc,
+            'depth': depth.tolist(),
+            'h': [0]*n_points,
+            'qc': qc.tolist(),
             'qt': qt,
-            'gtot': gtot,
+            'gtot': gtot.tolist(),
             'u0_kpa': u0_kpa,
             'sig_v0': sig_v0,
             'sig_v0_prime': sig_v0_prime,
-            'fs': fs,
+            'fs': fs.tolist(),
             'fr_percent': fr_percent,
             'qtn': qtn,
             'n': n,
@@ -397,50 +398,33 @@ def calculate_pile_capacity(cpt_data, params, pile_type='driven'):
 
 def process_cpt_data(data):
     try:
+        # Data is already in the correct format, no need for additional processing
         if isinstance(data, list) and data and isinstance(data[0], dict):
             if all(key in data[0] for key in ['z', 'fs', 'qc', 'gtot']):
                 return {'cpt_data': data}
-
+        
+        # If we somehow get here with other data types, handle them
         cpt_data = []
         if isinstance(data, pd.DataFrame):
-            for i in range(len(data)):
-                cpt_data.append({
-                    'z': float(data.iloc[i, 0]),
-                    'qc': float(data.iloc[i, 1]),
-                    'fs': float(data.iloc[i, 2]),
-                    'gtot': float(data.iloc[i, 3])
-                })
+            cpt_data = [
+                {
+                    'z': float(row[0]),
+                    'qc': float(row[1]),
+                    'fs': float(row[2]),
+                    'gtot': float(row[3])
+                }
+                for _, row in data.iterrows()
+            ]
         elif isinstance(data, list):
-            if isinstance(data[0], (list, tuple)):
-                for row in data:
-                    if len(row) < 4:
-                        raise ValueError(f"Row has insufficient columns: {row}")
-                    cpt_data.append({
-                        'z': float(row[0]),
-                        'qc': float(row[1]),
-                        'fs': float(row[2]),
-                        'gtot': float(row[3])
-                    })
-            elif isinstance(data[0], str):
-                for row in data:
-                    values = row.strip().split(',')
-                    if len(values) < 4:
-                        raise ValueError(f"Row has insufficient columns: {row}")
-                    cpt_data.append({
-                        'z': float(values[0]),
-                        'qc': float(values[1]),
-                        'fs': float(values[2]),
-                        'gtot': float(values[3])
-                    })
-        else:
-            raise ValueError(f"Unsupported data type: {type(data)}")
-
+            cpt_data = data  # Data should already be in correct format from route handler
+            
         if not cpt_data:
             raise ValueError("No data processed")
-
+            
         return {'cpt_data': cpt_data}
+        
     except Exception as e:
-        print(f"Error processing CPT data: {str(e)}")
+        logger.error(f"Error processing CPT data: {str(e)}")
         return None
 
 def create_cpt_graphs(data):

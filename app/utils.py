@@ -184,7 +184,8 @@ def create_bored_pile_graphs(data):
             'xaxis': {'title': 'Qt (MPa)'},
             'yaxis': {'title': 'Depth (m)', 'autorange': 'reversed'},
             'plot_bgcolor': 'white',
-            'showgrid': True
+            'showgrid': True,
+            'height': 800
         }
     }
     
@@ -202,7 +203,8 @@ def create_bored_pile_graphs(data):
             'xaxis': {'title': 'Fr%'},
             'yaxis': {'title': 'Depth (m)', 'autorange': 'reversed'},
             'plot_bgcolor': 'white',
-            'showgrid': True
+            'showgrid': True,
+            'height': 800
         }
     }
     
@@ -220,7 +222,8 @@ def create_bored_pile_graphs(data):
             'xaxis': {'title': 'Ic'},
             'yaxis': {'title': 'Depth (m)', 'autorange': 'reversed'},
             'plot_bgcolor': 'white',
-            'showgrid': True
+            'showgrid': True,
+            'height': 800
         }
     }
     

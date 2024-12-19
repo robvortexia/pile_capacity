@@ -9,6 +9,11 @@
             <h2>Step 1: CPT Data</h2>
             {% if step == 1 %}
                 {% include 'components/upload_form.html' %}
+                <div class="button-group">
+                    <a href="{{ url_for('main.index') }}" class="btn btn-secondary">
+                        Back to Home
+                    </a>
+                </div>
             {% endif %}
         </div>
 
@@ -83,4 +88,27 @@
     Plotly.newPlot('ic_graph', icGraph.data, icGraph.layout);
 </script>
 {% endif %}
+
+<style>
+.graphs-grid {
+    display: flex;
+    flex-direction: row;
+    gap: 1rem;
+    margin: 2rem 0;
+    width: 100%;
+    height: calc(100vh - 300px);
+    overflow-x: auto;
+    padding-bottom: 1rem;
+}
+
+.graph-container {
+    flex: 0 0 500px;
+    min-width: 500px;
+    height: 100%;
+}
+
+.graph-container > div {
+    height: 100% !important;
+}
+</style>
 {% endblock %} 
