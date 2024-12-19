@@ -1,23 +1,15 @@
 {
   "version": 2,
   "builds": [
-      {
-          "src": "run.py",
-          "use": "@vercel/python",
-          "config": {
-              "runtime": "python3.9",
-              "maxLambdaSize": "15mb",
-              "installCommand": "pip install --no-cache-dir -r requirements.txt"
-          }
-      }
+    {
+      "src": "run.py",
+      "use": "@vercel/python"
+    }
   ],
   "routes": [
-      {
-          "src": "/(.*)",
-          "dest": "run.py"
-      }
-  ],
-  "env": {
-      "PYTHONPATH": "."
-  }
+    {
+      "src": "/(.*)",
+      "dest": "run.py"
+    }
+  ]
 }
