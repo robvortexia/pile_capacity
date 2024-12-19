@@ -1,0 +1,170 @@
+<div class="parameters-container">
+    <form method="POST" action="{{ url_for('main.calculator_step', type=type, step=3) }}">
+        <div class="form-section">
+            <div class="form-field">
+                <label>Site Name (optional)</label>
+                <input type="text" name="site_name" class="form-control" placeholder="Enter site name">
+            </div>
+
+            <div class="form-field">
+                <label>Pile End Condition</label>
+                <div class="modern-radio-group">
+                    <div class="modern-radio">
+                        <input type="radio" id="open" name="pile_end_condition" value="open" checked>
+                        <label for="open">Open</label>
+                    </div>
+                    <div class="modern-radio">
+                        <input type="radio" id="closed" name="pile_end_condition" value="closed">
+                        <label for="closed">Closed</label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-field">
+                <label>Pile Shape</label>
+                <div class="modern-radio-group">
+                    <div class="modern-radio">
+                        <input type="radio" id="circular" name="pile_shape" value="circular" checked>
+                        <label for="circular">Circular</label>
+                    </div>
+                    <div class="modern-radio">
+                        <input type="radio" id="square" name="pile_shape" value="square">
+                        <label for="square">Square</label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-field">
+                <label>Pile Diameter or side width (m)</label>
+                <input type="number" name="pile_diameter" value="1" step="0.1" class="form-control" required>
+            </div>
+
+            <div class="form-field" id="wall-thickness-field">
+                <label>Pile Wall Thickness (mm)</label>
+                <input type="number" name="wall_thickness" value="20" class="form-control" required>
+            </div>
+
+            <div class="form-field">
+                <label>Borehole Depth (m)</label>
+                <input type="number" name="borehole_depth" step="0.1" class="form-control" required>
+            </div>
+
+            <div class="form-field">
+                <label>Pile tip depths (m) for analysis</label>
+                <input type="text" name="pile_tip_depths" class="form-control" required placeholder="e.g., 10, 15, 20">
+                <span class="help-text">Separate depths by commas. Maximum depth must be less than CPT depth.</span>
+            </div>
+        </div>
+
+        <div class="button-group">
+            <button type="submit" class="btn btn-primary">Continue to Results</button>
+            <a href="{{ url_for('main.calculator_step', type=type, step=2) }}" class="btn btn-secondary">Back to CPT Data</a>
+        </div>
+    </form>
+</div>
+
+<style>
+.parameters-container {
+    max-width: 500px;
+    margin: 0 auto;
+    background: white;
+    border-radius: 8px;
+    padding: 1.25rem;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+}
+
+.form-section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.form-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+}
+
+.form-field label {
+    font-weight: 500;
+    color: #374151;
+    font-size: 0.85rem;
+    margin-bottom: -0.1rem;
+}
+
+.form-control {
+    width: 100%;
+    padding: 0.4rem 0.5rem;
+    border: 1px solid #e5e7eb;
+    border-radius: 4px;
+    font-size: 0.85rem;
+}
+
+.modern-radio-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    margin-top: -0.1rem;
+}
+
+.modern-radio {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.modern-radio input[type="radio"] {
+    margin: 0;
+    width: 14px;
+    height: 14px;
+    cursor: pointer;
+}
+
+.modern-radio label {
+    font-size: 0.85rem;
+    color: #374151;
+    cursor: pointer;
+}
+
+.help-text {
+    font-size: 0.75rem;
+    color: #6b7280;
+    margin-top: -0.1rem;
+}
+
+.button-group {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 1rem;
+}
+
+.btn {
+    padding: 0.4rem 1rem;
+    font-size: 0.85rem;
+}
+
+@media (max-width: 768px) {
+    .parameters-container {
+        padding: 1rem;
+    }
+}
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const pileEndCondition = document.getElementsByName('pile_end_condition');
+    const wallThicknessField = document.getElementById('wall-thickness-field');
+
+    function toggleWallThickness() {
+        wallThicknessField.style.display = 
+            document.querySelector('input[name="pile_end_condition"][value="open"]').checked ? 'block' : 'none';
+    }
+
+    pileEndCondition.forEach(radio => {
+        radio.addEventListener('change', toggleWallThickness);
+    });
+
+    // Initial state
+    toggleWallThickness();
+});
+</script> 

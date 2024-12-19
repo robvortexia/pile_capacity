@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container">
+    <h1>{{ type|title }} Pile Analysis - Step {{ step }}</h1>
+    
+    {% include 'components/step_indicator.html' %}
+    
+    <div class="stepper">
+        {% if step == 1 %}
+        <div class="step active">
+            <h2>Step 1: CPT Data</h2>
+            {% include 'components/upload_form.html' %}
+            <div class="button-group">
+                <a href="{{ url_for('main.index') }}" class="btn btn-secondary">
+                    Back to Home
+                </a>
+            </div>
+        </div>
+        {% endif %}
+
+        {% if step == 2 %}
+        <div class="step active">
+            <h2>Step 2: View CPT Data</h2>
+            {% if graphs %}
+            <div class="graphs-grid">
+                <div class="graph-container">
+                    <div id="qt_graph"></div>
+                </div>
+                <div class="graph-container">
+                    <div id="fr_graph"></div>
+                </div>
+                <div class="graph-container">
+                    <div id="ic_graph"></div>
+                </div>
+                <div class="graph-container">
+                    <div id="iz_graph"></div>
+                </div>
+            </div>
+            <div class="debug-section">
+                <div class="button-group mb-3">
+                    <a href="{{ url_for('main.download_debug_params') }}" class="btn btn-info">
+                        <i class="fas fa-download"></i> Download Debug Parameters
+                    </a>
+                </div>
+            </div>
+            <div class="button-group">
+                <form method="POST" action="{{ url_for('main.calculator_step', type=type, step=2) }}">
+                    <button type="submit" class="btn btn-primary">Continue to Step 3</button>
+                </form>
+                <a href="{{ url_for('main.calculator_step', type=type, step=1) }}" class="btn btn-secondary">
+                    Back to Step 1
+                </a>
+            </div>
+            {% else %}
+            <p>No CPT data available. Please go back to step 1 and upload your data.</p>
+            <div class="button-group">
+                <a href="{{ url_for('main.calculator_step', type=type, step=1) }}" class="btn btn-secondary">
+                    Back to Step 1
+                </a>
+            </div>
+            {% endif %}
+        </div>
+        {% endif %}
+
+        {% if step == 3 %}
+        <div class="step active">
+            <h2>Step 3: Pile Parameters</h2>
+            {% include 'components/pile_parameters.html' %}
+            <div class="button-group">
+                <a href="{{ url_for('main.calculator_step', type=type, step=2) }}" class="btn btn-secondary">
+                    Back to Step 2
+                </a>
+            </div>
+        </div>
+        {% endif %}
+
+        {% if step == 4 %}
+        <div class="step active">
+            <h2>Step 4: Results</h2>
+            <div class="debug-section">
+                <div class="button-group mb-3">
+                    <a href="{{ url_for('main.download_debug_params') }}" class="btn btn-info">
+                        <i class="fas fa-download"></i> Download Debug Parameters
+                    </a>
+                    <a href="{{ url_for('main.download_results') }}" class="btn btn-info ml-2">
+                        <i class="fas fa-download"></i> Download Results
+                    </a>
+                </div>
+            </div>
+            {% include 'components/results.html' %}
+            <div class="button-group">
+                <a href="{{ url_for('main.calculator_step', type=type, step=3) }}" class="btn btn-secondary">
+                    Back to Step 3
+                </a>
+                <a href="{{ url_for('main.index') }}" class="btn btn-primary">
+                    Return to Home
+                </a>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+{% if step == 2 or step == 4 %}
+<script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+{% endif %}
+
+{% if step == 2 and graphs %}
+<script>
+    var qtGraph = JSON.parse('{{ graphs.qt | safe }}');
+    var frGraph = JSON.parse('{{ graphs.fr | safe }}');
+    var icGraph = JSON.parse('{{ graphs.ic | safe }}');
+    var izGraph = JSON.parse('{{ graphs.iz | safe }}');
+    
+    Plotly.newPlot('qt_graph', qtGraph.data, qtGraph.layout);
+    Plotly.newPlot('fr_graph', frGraph.data, frGraph.layout);
+    Plotly.newPlot('ic_graph', icGraph.data, icGraph.layout);
+    Plotly.newPlot('iz_graph', izGraph.data, izGraph.layout);
+</script>
+{% endif %}
+
+<style>
+.debug-section {
+    margin: 20px 0;
+    padding: 15px;
+    background: #f8f9fa;
+    border-radius: var(--border-radius);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.button-group {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 1rem;
+}
+
+.btn-info {
+    background-color: #17a2b8;
+    color: white;
+    padding: 0.75rem 1.5rem;
+    border: none;
+    border-radius: 4px;
+    text-decoration: none;
+    display: inline-block;
+    font-weight: bold;
+    transition: background-color 0.2s;
+}
+
+.btn-info:hover {
+    background-color: #138496;
+    color: white;
+    text-decoration: none;
+    opacity: 0.9;
+}
+</style>
+{% endblock %} 

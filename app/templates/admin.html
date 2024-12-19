@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="admin-container">
+    <div class="admin-header">
+        <h1>Registration Analytics</h1>
+        <a href="{{ url_for('main.export_registrations') }}" class="btn btn-primary">
+            <i class="fas fa-download"></i> Export CSV
+        </a>
+    </div>
+
+    <div class="analytics-grid">
+        <div class="analytics-card">
+            <h3>Total Registered Users</h3>
+            <div class="analytics-number">{{ total_users }}</div>
+        </div>
+
+        <div class="analytics-card">
+            <h3>Daily Registrations (Last 30 Days)</h3>
+            <div class="analytics-table">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Registrations</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for stat in daily_stats %}
+                        <tr>
+                            <td>{{ stat.date }}</td>
+                            <td>{{ stat.count }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="analytics-card">
+            <h3>Top Affiliations</h3>
+            <div class="analytics-table">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Affiliation</th>
+                            <th>Count</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for aff in top_affiliations %}
+                        <tr>
+                            <td>{{ aff.affiliation }}</td>
+                            <td>{{ aff.count }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="analytics-card">
+            <h3>User Visits (Last 30 Days)</h3>
+            <div class="analytics-table">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Email</th>
+                            <th>Visit Count</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for stat in visit_stats %}
+                        <tr>
+                            <td>{{ stat.email }}</td>
+                            <td>{{ stat.visit_count }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="registrations-table">
+        <h3>Recent Registrations</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>Email</th>
+                    <th>Affiliation</th>
+                    <th>IP Address</th>
+                    <th>Timestamp</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for reg in registrations %}
+                <tr>
+                    <td>{{ reg.email }}</td>
+                    <td>{{ reg.affiliation }}</td>
+                    <td>{{ reg.ip_address }}</td>
+                    <td>{{ reg.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %} 

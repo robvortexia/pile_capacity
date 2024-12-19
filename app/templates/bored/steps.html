@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container">
+    <h1>Bored Pile Analysis</h1>
+    
+    <div class="stepper">
+        <div class="step {% if step >= 1 %}active{% endif %}">
+            <h2>Step 1: CPT Data</h2>
+            {% if step == 1 %}
+                {% include 'components/upload_form.html' %}
+            {% endif %}
+        </div>
+
+        <div class="step {% if step >= 2 %}active{% endif %}">
+            <h2>Step 2: View CPT Data</h2>
+            {% if step == 2 %}
+                <div class="step active">
+                    <h2>Step 2: View CPT Data</h2>
+                    {% if graphs %}
+                    <div class="graphs-grid">
+                        <div class="graph-container">
+                            <div id="qt_graph"></div>
+                        </div>
+                        <div class="graph-container">
+                            <div id="fr_graph"></div>
+                        </div>
+                        <div class="graph-container">
+                            <div id="ic_graph"></div>
+                        </div>
+                    </div>
+                    <div class="button-group">
+                        <form method="POST" action="{{ url_for('main.calculator_step', type=type, step=2) }}">
+                            <button type="submit" class="btn btn-primary">Continue to Step 3</button>
+                        </form>
+                        <a href="{{ url_for('main.calculator_step', type=type, step=1) }}" class="btn btn-secondary">
+                            Back to Step 1
+                        </a>
+                    </div>
+                    {% endif %}
+                </div>
+            {% endif %}
+        </div>
+
+        <div class="step {% if step >= 3 %}active{% endif %}">
+            <h2>Step 3: Pile Parameters</h2>
+            {% if step == 3 %}
+                {% include 'components/bored_pile_parameters.html' %}
+            {% endif %}
+        </div>
+
+        <div class="step {% if step >= 4 %}active{% endif %}">
+            <h2>Step 4: Results</h2>
+            {% if step == 4 %}
+                <div class="step active">
+                    <h2>Step 4: Results</h2>
+                    <div class="debug-section">
+                        <div class="button-group mb-3">
+                            <a href="{{ url_for('main.download_debug_params') }}" class="btn btn-info">
+                                <i class="fas fa-download"></i> Download Debug Parameters
+                            </a>
+                            <a href="{{ url_for('main.download_results') }}" class="btn btn-info ml-2">
+                                <i class="fas fa-download"></i> Download Results
+                            </a>
+                        </div>
+                    </div>
+                    {% include 'components/results.html' %}
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+{% if step == 2 and graphs %}
+<script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+<script>
+    var qtGraph = JSON.parse('{{ graphs.qt | safe }}');
+    var frGraph = JSON.parse('{{ graphs.fr | safe }}');
+    var icGraph = JSON.parse('{{ graphs.ic | safe }}');
+    
+    Plotly.newPlot('qt_graph', qtGraph.data, qtGraph.layout);
+    Plotly.newPlot('fr_graph', frGraph.data, frGraph.layout);
+    Plotly.newPlot('ic_graph', icGraph.data, icGraph.layout);
+</script>
+{% endif %}
+{% endblock %} 

@@ -1,0 +1,38 @@
+<div class="step-indicator">
+    <div class="step-progress">
+        <div class="progress-bar" style="width: {{ (step / 4) * 100 }}%"></div>
+    </div>
+    <div class="step-blocks">
+        <div class="step-block {% if step >= 1 %}active{% endif %} {% if step > 1 %}completed{% endif %}">
+            <div class="step-icon">
+                <i class="fas fa-file-upload"></i>
+            </div>
+            <div class="step-label">Input CPT Data</div>
+            <div class="step-number">1</div>
+        </div>
+        
+        <div class="step-block {% if step >= 2 %}active{% endif %} {% if step > 2 %}completed{% endif %}">
+            <div class="step-icon">
+                <i class="fas fa-chart-line"></i>
+            </div>
+            <div class="step-label">View CPT Data</div>
+            <div class="step-number">2</div>
+        </div>
+        
+        <div class="step-block {% if step >= 3 %}active{% endif %} {% if step > 3 %}completed{% endif %}">
+            <div class="step-icon">
+                <i class="fas fa-ruler-vertical"></i>
+            </div>
+            <div class="step-label">Enter Pile Info</div>
+            <div class="step-number">3</div>
+        </div>
+        
+        <div class="step-block {% if step >= 4 %}active{% endif %}">
+            <div class="step-icon">
+                <i class="fas fa-calculator"></i>
+            </div>
+            <div class="step-label">Calculate Results</div>
+            <div class="step-number">4</div>
+        </div>
+    </div>
+</div>

@@ -1,0 +1,148 @@
+<div class="results-container">
+    {% if results %}
+        <div class="results-section">
+            <div class="graph-section">
+                <div id="capacity_graph" style="height: 500px;"></div>
+            </div>
+
+            <div class="table-section">
+                <h3>Pile Capacity Results</h3>
+                <table class="results-table">
+                    <thead>
+                        <tr>
+                            <th>Depth (m)</th>
+                            <th>Tension (kN)</th>
+                            <th>Comp. (kN)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for result in results %}
+                        <tr>
+                            <td>{{ "%.1f"|format(result.tipdepth) }}</td>
+                            <td>{{ "%.0f"|format(result.tension_capacity) }}</td>
+                            <td>{{ "%.0f"|format(result.compression_capacity) }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <script>
+            document.addEventListener('DOMContentLoaded', function() {
+                // Create the capacity vs depth graph
+                var depths = {{ results|map(attribute='tipdepth')|list|tojson }};
+                var tension = {{ results|map(attribute='tension_capacity')|list|tojson }};
+                var compression = {{ results|map(attribute='compression_capacity')|list|tojson }};
+
+                var trace1 = {
+                    x: tension,
+                    y: depths,
+                    name: 'Tension Capacity',
+                    type: 'scatter',
+                    mode: 'lines+markers'
+                };
+
+                var trace2 = {
+                    x: compression,
+                    y: depths,
+                    name: 'Compression Capacity',
+                    type: 'scatter',
+                    mode: 'lines+markers'
+                };
+
+                var layout = {
+                    title: 'Pile Capacity vs Depth',
+                    xaxis: {
+                        title: 'Capacity (kN)',
+                        gridcolor: 'rgba(128, 128, 128, 0.2)',
+                    },
+                    yaxis: {
+                        title: 'Depth (m)',
+                        autorange: 'reversed',
+                        gridcolor: 'rgba(128, 128, 128, 0.2)',
+                    },
+                    plot_bgcolor: 'rgba(240, 240, 240, 0.8)',
+                    paper_bgcolor: 'white',
+                    showlegend: true,
+                    legend: {
+                        orientation: 'h',
+                        y: -0.2,
+                        x: 0.5,
+                        xanchor: 'center'
+                    },
+                    margin: { 
+                        t: 40,
+                        r: 30,
+                        l: 60,
+                        b: 80
+                    }
+                };
+
+                Plotly.newPlot('capacity_graph', [trace1, trace2], layout);
+            });
+        </script>
+    {% endif %}
+</div>
+
+<style>
+.results-container {
+    width: 100%;
+}
+
+.results-section {
+    display: flex;
+    gap: 1rem;
+    align-items: flex-start;
+}
+
+.graph-section {
+    width: 50%;
+    min-width: 0;
+    background: white;
+    padding: 15px;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.table-section {
+    width: 50%;
+    background: white;
+    padding: 15px;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+#capacity_graph {
+    height: 500px;
+    width: 100%;
+}
+
+.results-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.results-table th,
+.results-table td {
+    padding: 0.5rem;
+    border: 1px solid #ddd;
+    text-align: center;
+    font-size: 0.875rem;
+}
+
+.results-table th {
+    background-color: #f5f5f5;
+}
+
+@media (max-width: 768px) {
+    .results-section {
+        flex-direction: column;
+    }
+    
+    .graph-section,
+    .table-section {
+        width: 100%;
+    }
+}
+</style> 
