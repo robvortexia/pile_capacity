@@ -157,57 +157,74 @@ def calculator_step(type, step):
                 
             return redirect(url_for('main.calculator_step', type=type, step=3))
         
-        elif step == 3:  # Handle pile parameters
+        elif step == 3:  # Handle pile parameters submission
             try:
-                # Log the form data for debugging
-                print("Form data:", request.form)
+                # Debug logging
+                print("Form data received:", request.form)
                 
-                params = {
-                    'pile_shape': request.form['pile_shape'],
-                    'pile_end_condition': request.form['pile_end_condition'],
-                    'pile_diameter': float(request.form['pile_diameter']),
-                    'borehole_depth': float(request.form['borehole_depth']),
-                    'pile_tip_depths': [float(d.strip()) for d in request.form['pile_tip_depths'].split(',')]
-                }
+                # Store the pile parameters in session based on pile type
+                if type == 'bored':
+                    session['pile_params'] = {
+                        'file_name': request.form.get('file_name', ''),
+                        'shaft_diameter': float(request.form.get('shaft_diameter')),
+                        'base_diameter': float(request.form.get('base_diameter')),
+                        'cased_depth': float(request.form.get('cased_depth')),
+                        'tip_depths': [float(d.strip()) for d in request.form.get('tip_depths', '').split(',')],
+                        'borehole_depth': float(request.form.get('cased_depth')),
+                        'pile_shape': 0,  # Always circular for bored piles
+                        'pile_end_condition': 0,  # Always open-ended for bored piles
+                        'pile_tip_depths': [float(d.strip()) for d in request.form.get('tip_depths', '').split(',')]
+                    }
+                else:  # driven pile
+                    session['pile_params'] = {
+                        'site_name': request.form.get('site_name', ''),
+                        'pile_end_condition': request.form.get('pile_end_condition'),
+                        'pile_shape': request.form.get('pile_shape'),
+                        'pile_diameter': float(request.form.get('pile_diameter')),
+                        'wall_thickness': float(request.form.get('wall_thickness', 0)),
+                        'borehole_depth': float(request.form.get('borehole_depth')),
+                        'pile_tip_depths': [float(d.strip()) for d in request.form.get('pile_tip_depths', '').split(',')]
+                    }
                 
-                if request.form['pile_end_condition'] == 'open':
-                    params['wall_thickness'] = float(request.form['wall_thickness'])
+                print("Pile params stored in session:", session['pile_params'])
                 
-                # Log the processed parameters
-                print("Processed parameters:", params)
-                
+                # Calculate results using the parameters and CPT data
                 if 'cpt_data_id' not in session:
-                    flash('CPT data not found in session. Please upload data again.')
+                    flash('No CPT data found. Please go back to step 1.')
                     return redirect(url_for('main.calculator_step', type=type, step=1))
                 
-                data = load_cpt_data(session['cpt_data_id'])
-                if not data:
-                    flash('CPT data could not be loaded. Please upload data again.')
+                cpt_data = load_cpt_data(session['cpt_data_id'])
+                if not cpt_data:
+                    flash('CPT data not found. Please go back to step 1.')
                     return redirect(url_for('main.calculator_step', type=type, step=1))
                 
-                # Log that we're about to calculate
-                print("Calculating pile capacity with data:", data)
-                
-                results = calculate_pile_capacity(data['cpt_data'], params)
-                
-                # Log the results
-                print("Calculation results:", results)
-                
+                print("About to calculate pile capacity")
+                results = calculate_pile_capacity(cpt_data, session['pile_params'], pile_type=type)
                 session['results'] = results
+                print("Results calculated and stored:", results)
                 
+                # Redirect to step 4
                 return redirect(url_for('main.calculator_step', type=type, step=4))
                 
-            except KeyError as e:
-                flash(f'Missing required field: {str(e)}')
-                return redirect(request.url)
-            except ValueError as e:
-                flash(f'Invalid value entered: {str(e)}')
-                return redirect(request.url)
             except Exception as e:
-                flash(f'Error calculating pile capacity: {str(e)}')
-                print(f"Error in step 3: {str(e)}")  # Log the error
-                return redirect(request.url)
-
+                print("Error occurred:", str(e))
+                flash(f'Error calculating results: {str(e)}')
+                return redirect(url_for('main.calculator_step', type=type, step=3))
+        
+        elif step == 4:
+            if 'results' not in session:
+                flash('No results available. Please complete the analysis first.')
+                return redirect(url_for('main.calculator_step', type=type, step=3))
+            
+            debug_id = session.get('debug_id')
+            if debug_id:
+                debug_details = load_debug_details(debug_id)
+            else:
+                debug_details = {}
+            
+            return render_template(f'{type}/steps.html', step=step, type=type, results=session['results'], debug_details=debug_details)
+        
+        return render_template(f'{type}/steps.html', step=step, type=type)
     
     # Handle GET requests
     if step == 2:
