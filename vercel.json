@@ -5,7 +5,9 @@
       "src": "run.py",
       "use": "@vercel/python",
       "config": { 
-        "runtime": "python3.9"
+        "runtime": "python3.9",
+        "maxLambdaSize": "3008",
+        "memory": 3008
       }
     }
   ],
