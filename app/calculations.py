@@ -511,10 +511,14 @@ def get_qs_bored(tf_adop, pile_perimeter, depth_i, depth_prev):
 def calculate_bored_pile_results(processed_cpt, params):
     water_table = float(params['water_table'])
     print(f"Water table value from params: {water_table}")
-    nominal_size_don = float(params['shaft_diameter'])
+    shaft_diameter = float(params['shaft_diameter'])
+    base_diameter = float(params['base_diameter'])
     pile_shape = 0  # circular
-    pile_perimeter = get_pile_perimeter(pile_shape, nominal_size_don)
+    pile_perimeter = get_pile_perimeter(pile_shape, shaft_diameter)
     borehole_depth = float(params['cased_depth'])
+    
+    # Calculate base area
+    Ab = math.pi * base_diameter * base_diameter * 0.25
     
     depths = processed_cpt['depth']
     detailed_results = []
@@ -527,6 +531,11 @@ def calculate_bored_pile_results(processed_cpt, params):
         depth_calculations = []
         qs_tension_cumulative = 0
         qs_compression_cumulative = 0
+        
+        # Find the zone for qb0.1 calculation (tip to tip + base_diameter)
+        zone_end = chosen_tip + base_diameter
+        zone_end_index = min(range(len(depths)), key=lambda i: abs(depths[i]-zone_end))
+        qb01_values = []
         
         for i in range(len(depths)):
             if depths[i] > chosen_tip:
@@ -541,6 +550,10 @@ def calculate_bored_pile_results(processed_cpt, params):
             
             # Calculate qb01_adop
             qb01_adop = get_qb01_adop(lc_val, qt_val)
+            
+            # Store qb01_adop if in the relevant zone for base resistance
+            if tip_index <= i <= zone_end_index:
+                qb01_values.append(qb01_adop)
             
             # Calculate compression first since tension depends on it
             tf_compression = get_tf_compression_bored(coe_casing, lc_val, qt_val)
@@ -573,6 +586,10 @@ def calculate_bored_pile_results(processed_cpt, params):
                 'qs_compression_cumulative': qs_compression_cumulative
             })
         
+        # Calculate base resistance using minimum qb01_adop in the zone
+        min_qb01 = min(qb01_values) if qb01_values else 0
+        base_resistance = min_qb01 * Ab * 1000  # Convert to kN
+        
         detailed_results.append({
             'tip_depth': chosen_tip,
             'calculations': depth_calculations
@@ -581,7 +598,7 @@ def calculate_bored_pile_results(processed_cpt, params):
         summary_results.append({
             'tipdepth': chosen_tip,
             'tension_capacity': qs_tension_cumulative,
-            'compression_capacity': qs_compression_cumulative
+            'compression_capacity': qs_compression_cumulative + base_resistance  # Add base resistance
         })
     
     return {
