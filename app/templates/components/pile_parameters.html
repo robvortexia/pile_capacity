@@ -1,5 +1,8 @@
 <div class="parameters-container">
     <form method="POST" action="{{ url_for('main.calculator_step', type=type, step=3) }}">
+        <input type="hidden" 
+               name="water_table" 
+               value="{{ session['water_table'] }}">
         <div class="form-section">
             <div class="form-field">
                 <label>Site Name (optional)</label>

@@ -75,16 +75,18 @@ def load_graphs_data(file_id):
     except FileNotFoundError:
         return None
 
-def create_cpt_graphs(data):
-    processed = pre_input_calc({'cpt_data': data['cpt_data']})
-    if not processed:
+def create_cpt_graphs(data, water_table=None):
+    if water_table is None:
+        water_table = data.get('water_table', 0)
+    processed_data = pre_input_calc(data, water_table)
+    if not processed_data:
         return None
     
     qt_graph = {
         'data': [
             go.Scatter(
-                x=processed['qt'],
-                y=processed['depth'],
+                x=processed_data['qt'],
+                y=processed_data['depth'],
                 mode='lines',
                 name='qt'
             )
@@ -100,8 +102,8 @@ def create_cpt_graphs(data):
     fr_graph = {
         'data': [
             go.Scatter(
-                x=processed['fr_percent'],
-                y=processed['depth'],
+                x=processed_data['fr_percent'],
+                y=processed_data['depth'],
                 mode='lines',
                 name='Fr%'
             )
@@ -117,8 +119,8 @@ def create_cpt_graphs(data):
     ic_graph = {
         'data': [
             go.Scatter(
-                x=processed['lc'],
-                y=processed['depth'],
+                x=processed_data['lc'],
+                y=processed_data['depth'],
                 mode='lines',
                 name='Ic'
             )
@@ -134,8 +136,8 @@ def create_cpt_graphs(data):
     iz_graph = {
         'data': [
             go.Scatter(
-                x=processed['iz1'],
-                y=processed['depth'],
+                x=processed_data['iz1'],
+                y=processed_data['depth'],
                 mode='lines',
                 name='Iz'
             )

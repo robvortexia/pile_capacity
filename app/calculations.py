@@ -466,8 +466,8 @@ def process_cpt_data(data):
         logger.error(f"Error processing CPT data: {str(e)}")
         return None
 
-def create_cpt_graphs(data):
-    processed_data = pre_input_calc({'cpt_data': data})
+def create_cpt_graphs(data, water_table=0):
+    processed_data = pre_input_calc({'cpt_data': data}, water_table)
 
     ic_fig = go.Figure()
     ic_fig.add_trace(go.Scatter(

@@ -184,7 +184,8 @@ def calculator_step(type, step):
                         'pile_diameter': float(request.form.get('pile_diameter')),
                         'wall_thickness': float(request.form.get('wall_thickness', 0)),
                         'borehole_depth': float(request.form.get('borehole_depth')),
-                        'pile_tip_depths': [float(d.strip()) for d in request.form.get('pile_tip_depths', '').split(',')]
+                        'pile_tip_depths': [float(d.strip()) for d in request.form.get('pile_tip_depths', '').split(',')],
+                        'water_table': float(session.get('water_table', 0))
                     }
                 
                 print("Pile params stored in session:", session['pile_params'])
@@ -255,7 +256,8 @@ def calculator_step(type, step):
         if type == 'bored':
             graphs = create_bored_pile_graphs(data)
         else:
-            graphs = create_cpt_graphs(data)
+            water_table = float(session.get('water_table', 0))
+            graphs = create_cpt_graphs(data, water_table)
         return render_template(f'{type}/steps.html', step=step, graphs=graphs, type=type)
     
     elif step == 3:
