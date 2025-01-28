@@ -16,50 +16,26 @@
     
     <div class="calculator-options">
         <div class="option-card">
-            <div class="card-icon">
-                <i class="fas fa-hammer"></i>
-            </div>
             <h2>Driven Piles</h2>
-            <p>Calculate capacity for driven piles using CPT data with our advanced analysis tools</p>
-            <ul class="features-list">
-                <li><i class="fas fa-check"></i> Accurate capacity calculations</li>
-                <li><i class="fas fa-check"></i> CPT data integration</li>
-                <li><i class="fas fa-check"></i> Detailed analysis reports</li>
-            </ul>
+            <p>Calculate capacity for driven piles using CPT data</p>
             <a href="{{ url_for('main.pile_description', type='driven') }}" class="btn btn-primary">
                 Start Driven Analysis
             </a>
         </div>
         
         <div class="option-card">
-            <div class="card-icon">
-                <i class="fas fa-drafting-compass"></i>
-            </div>
             <h2>Bored Piles</h2>
-            <p>Calculate capacity for bored piles using CPT data with precision and reliability</p>
-            <ul class="features-list">
-                <li><i class="fas fa-check"></i> Comprehensive calculations</li>
-                <li><i class="fas fa-check"></i> Data visualization</li>
-                <li><i class="fas fa-check"></i> Exportable results</li>
-            </ul>
+            <p>Calculate capacity for bored piles using CPT data</p>
             <a href="{{ url_for('main.pile_description', type='bored') }}" class="btn btn-primary">
                 Start Bored Analysis
             </a>
         </div>
         
         <div class="option-card">
-            <div class="card-icon">
-                <i class="fas fa-cog"></i>
-            </div>
-            <h2>Screw Piles</h2>
-            <p>Calculate capacity for screw piles using CPT data with advanced helical analysis</p>
-            <ul class="features-list">
-                <li><i class="fas fa-check"></i> Helical plate analysis</li>
-                <li><i class="fas fa-check"></i> Multi-helix support</li>
-                <li><i class="fas fa-check"></i> Installation torque correlation</li>
-            </ul>
-            <a href="{{ url_for('main.calculator_step', type='screw', step=1) }}" class="btn btn-primary">
-                Start Screw Analysis
+            <h2>Helical Piles</h2>
+            <p>Calculate capacity for helical piles using CPT data</p>
+            <a href="{{ url_for('main.calculator_step', type='helical', step=1) }}" class="btn btn-primary">
+                Start Helical Analysis
             </a>
         </div>
     </div>
@@ -69,7 +45,7 @@
     .landing-container {
         max-width: 1200px;
         margin: 0 auto;
-        padding: 1rem;
+        padding: 1rem 1rem 0 1rem;
     }
 
     .hero-section {
@@ -155,7 +131,7 @@
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
     gap: 2rem;
-    margin-bottom: 3rem;
+    margin-bottom: 1rem;
 }
 
     .option-card {
@@ -171,15 +147,10 @@
         transform: translateY(-5px);
     }
 
-    .card-icon {
-        font-size: 2.5rem;
-        color: var(--primary-color);
-        margin-bottom: 1.5rem;
-    }
-
     .option-card h2 {
         color: var(--primary-color);
         margin-bottom: 1rem;
+        margin-top: 0;
     }
 
     .option-card p {
@@ -187,23 +158,6 @@
         margin-bottom: 1.5rem;
         line-height: 1.6;
     }
-
-    .features-list {
-        list-style: none;
-        padding: 0;
-        margin-bottom: 2rem;
-        text-align: left;
-    }
-
-.features-list li {
-    margin-bottom: 0.5rem;
-    color: #555;
-}
-
-.features-list i {
-    color: #4CAF50;
-    margin-right: 0.5rem;
-}
 
 .btn-primary {
     display: inline-block;

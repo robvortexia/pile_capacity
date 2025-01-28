@@ -2,20 +2,22 @@
 
 {% block content %}
 <div class="container">
-    <h1>Bored Pile Analysis</h1>
+    <h1>Bored Pile Analysis - Step {{ step }}</h1>
+    
+    {% include 'components/step_indicator.html' %}
     
     <div class="stepper">
-        <div class="step {% if step >= 1 %}active{% endif %}">
+        {% if step == 1 %}
+        <div class="step active">
             <h2>Step 1: CPT Data</h2>
-            {% if step == 1 %}
-                {% include 'components/upload_form.html' %}
-                <div class="button-group">
-                    <a href="{{ url_for('main.index') }}" class="btn btn-secondary">
-                        Back to Home
-                    </a>
-                </div>
-            {% endif %}
+            {% include 'components/upload_form.html' %}
+            <div class="button-group">
+                <a href="{{ url_for('main.index') }}" class="btn btn-secondary">
+                    Back to Home
+                </a>
+            </div>
         </div>
+        {% endif %}
 
         <div class="step {% if step >= 2 %}active{% endif %}">
             <h2>Step 2: View CPT Data</h2>

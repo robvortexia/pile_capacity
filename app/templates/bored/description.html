@@ -3,33 +3,21 @@
 {% block content %}
 <div class="description-container">
     <div class="description-header">
-        <h1>Description of the Unified CPT method for bored piles</h1>
+        <h1>Description of Bored and CFA piles axial capacity calculator</h1>
     </div>
 
     <div class="description-content">
         <div class="description-text">
-            <p>The formulations employed by the program are described in the following links:</p>
+            <p>This program uses CPT data to calculate the axial capacity of bored piles using 
+            the method described in Doan & Lehane (2021)</p>
             
-            <h3>Clay and silt method</h3>
-            <p>Lehane B.M., Liu Z., Bittar E., Nadim F., Lacasse S., Bozorgzadeh N., Jardine R.J., Ballard J-C, 
-            Carotenuto P., Gavin K., Gilbert R.B., Bergan-Haavik J., Jeanjean P. and Morgan N. (2022). CPT-
-            based axial pile capacity design method for bored piles in clay. J. Geotech. & Geoenv. Engrg., 
-            ASCE, 148(9):04022069; https://doi.org/10.1061/(ASCE)GT.1943-5606.0002847</p>
-
-            <div class="acknowledgment">
-                <p>Special thanks to Eduardo Bittar for significant contributions to coding and checking of this program.</p>
-            </div>
+            <a href="{{ url_for('static', filename='pdf/bored.pdf') }}" class="link-to-publication">
+                Link to publication
+            </a>
         </div>
-
         <div class="description-image">
             <img src="{{ url_for('static', filename='img/bored_pile.jpg') }}" alt="Bored Pile Illustration">
         </div>
-    </div>
-
-    <div class="description-footer">
-        <p>The Unified CPT method was developed as part of a joint Industry project (JIP) managed by the 
-        <strong>Norwegian Geotechnical Institute</strong> in collaboration with <strong>The University of Western Australia</strong>. 
-        The JIP was supported by Equinor, Lundin Oil, Ørsted, ONGC, BP, TOTAL, ExxonMobil, EnBW, EDF, Aramco, SSER and HDEC.</p>
     </div>
 
     <div class="button-group">
@@ -51,60 +39,50 @@
 
 .description-header {
     margin-bottom: 2rem;
-    text-align: center;
+}
+
+.description-header h1 {
+    font-size: 1.8rem;
+    color: #333;
 }
 
 .description-content {
     display: grid;
-    grid-template-columns: 3fr 2fr;
+    grid-template-columns: 1fr auto;
     gap: 2rem;
-    margin-bottom: 2rem;
-}
-
-.description-text {
     background: white;
     padding: 2rem;
     border-radius: 8px;
     box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    margin-bottom: 2rem;
+}
+
+.description-text {
+    font-size: 1.1rem;
+    line-height: 1.6;
 }
 
 .description-image img {
-    width: 100%;
-    height: auto;
-    border-radius: 8px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    max-height: 300px;
+    object-fit: contain;
 }
 
-.description-footer {
-    background: #f8f9fa;
-    padding: 1.5rem;
-    border-radius: 8px;
-    margin-bottom: 2rem;
-    text-align: center;
+.link-to-publication {
+    display: inline-block;
+    color: #0066cc;
+    text-decoration: none;
+    margin-top: 1rem;
+}
+
+.link-to-publication:hover {
+    text-decoration: underline;
 }
 
 .button-group {
     display: flex;
     justify-content: center;
     gap: 1rem;
-}
-
-h3 {
-    color: var(--primary-color);
-    margin-top: 1.5rem;
-}
-
-.acknowledgment {
     margin-top: 2rem;
-    padding-top: 1rem;
-    border-top: 1px solid #eee;
-    font-style: italic;
-}
-
-@media (max-width: 768px) {
-    .description-content {
-        grid-template-columns: 1fr;
-    }
 }
 </style>
 {% endblock %} 
