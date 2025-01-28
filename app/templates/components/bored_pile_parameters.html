@@ -23,6 +23,17 @@
             </div>
 
             <div class="form-field">
+                <label>Water Table Depth (m)</label>
+                <input type="number" 
+                       name="water_table" 
+                       value="{{ session['water_table'] }}"
+                       step="0.1" 
+                       class="form-control" 
+                       required>
+                <span class="help-text">Depth to water table from ground surface</span>
+            </div>
+
+            <div class="form-field">
                 <label>Pile tip depths (m) for analysis</label>
                 <input type="text" name="tip_depths" value="5,10" class="form-control" required placeholder="e.g., 5,10">
                 <span class="help-text">Separate depths by commas. Maximum depth must be less than CPT depth.</span>

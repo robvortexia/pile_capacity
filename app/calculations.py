@@ -39,10 +39,11 @@ def get_dstar(pile_end_condition, nominal_size_don, diameter):
             val = 0
         return math.sqrt(val)
 
-def get_coe_casing(depth, tip, borehole):
-    if depth < borehole:
+def get_coe_casing(depth, borehole_depth, tip_depth):
+    """Calculate coefficient of casing based on depth position"""
+    if depth < borehole_depth:
         return 0
-    elif borehole <= depth <= tip:
+    elif borehole_depth <= depth <= tip_depth:
         return 1
     else:
         return 0
@@ -224,7 +225,8 @@ def get_qb_clay(pile_end_condition, qt_value, area_value):
     else:
         return 0.4*qt_value*1000*area_value
 
-def pre_input_calc(data, rl_water_table=0):
+def pre_input_calc(data, water_table):
+    print(f"Water table value in pre_input_calc: {water_table}")
     try:
         cpt_data = data['cpt_data'] if isinstance(data, dict) else data
         # Convert to numpy arrays for calculations but keep as lists for output
@@ -251,7 +253,7 @@ def pre_input_calc(data, rl_water_table=0):
         # Use numpy for the simple calculations, then convert back to lists
         for i in range(n_points):
             # Water pressure calculation
-            u0_kpa[i] = 0 if depth[i] <= rl_water_table else (depth[i]-rl_water_table)*9.81
+            u0_kpa[i] = 0 if depth[i] <= water_table else (depth[i]-water_table)*9.81
             
             # Stress calculations
             sig_v0[i] = depth[i]*gtot[i]
@@ -295,16 +297,53 @@ def pre_input_calc(data, rl_water_table=0):
         return None
 
 def calculate_pile_capacity(cpt_data, params, pile_type='driven'):
-    processed_cpt = pre_input_calc(cpt_data)
+    print(f"Params received in calculate_pile_capacity: {params}")
+    print(f"Water table from params: {params['water_table']}")
+    processed_cpt = pre_input_calc(cpt_data, float(params['water_table']))
     
-    # Match JS logic for bored/CFA:
-    # Bored/CFA piles are considered open-ended (pileEndCondition=0) in the JS code.
     if pile_type == 'bored':
+        # Bored pile specific calculations
         nominal_size_don = float(params['shaft_diameter'])
-        base_diameter = float(params['base_diameter'])
-        pile_shape = 0  # assuming circular (matches JS)
-        pile_end_condition = 0  # open-ended for bored/CFA, as per JS logic
-        nominal_size_t = 0  # no wall thickness for bored piles
+        pile_shape = 0  # circular
+        pile_perimeter = get_pile_perimeter(pile_shape, nominal_size_don)
+        
+        depths = processed_cpt['depth']
+        results = []
+        
+        for tip in params['pile_tip_depths']:
+            tip_index = min(range(len(depths)), key=lambda i: abs(depths[i]-tip))
+            chosen_tip = depths[tip_index]
+            
+            qs_tension = []
+            qs_compression = []
+            
+            for i in range(len(depths)):
+                if depths[i] > chosen_tip:
+                    continue
+                    
+                qt_val = processed_cpt['qt'][i]
+                lc_val = processed_cpt['lc'][i]
+                
+                # Calculate qb01_adop for tension
+                qb01_adop = get_qb01_adop(lc_val, qt_val)
+                tf_tension = get_tf_adop_tension_bored(qb01_adop, lc_val)
+                tf_compression = get_tf_adop_compression_bored(qt_val, lc_val)
+                
+                # Calculate shaft resistance
+                prev_depth = depths[i-1] if i > 0 else 0
+                qs_tension_val = get_qs_bored(tf_tension, pile_perimeter, depths[i], prev_depth)
+                qs_compression_val = get_qs_bored(tf_compression, pile_perimeter, depths[i], prev_depth)
+                
+                qs_tension.append(qs_tension_val if i == 0 else qs_tension[-1] + qs_tension_val)
+                qs_compression.append(qs_compression_val if i == 0 else qs_compression[-1] + qs_compression_val)
+            
+            results.append({
+                'tipdepth': chosen_tip,
+                'tension_capacity': qs_tension[-1] if qs_tension else 0,
+                'compression_capacity': qs_compression[-1] if qs_compression else 0
+            })
+        
+        return results
     else:
         # Driven pile logic
         pile_shape = 0 if params['pile_shape'] == 'circular' else 1
@@ -355,7 +394,7 @@ def calculate_pile_capacity(cpt_data, params, pile_type='driven'):
             qt_val = processed_cpt['qt'][i]
             qtc_val = processed_cpt['qtc'][i]
             lc_val = processed_cpt['lc'][i]
-            coe_casing = get_coe_casing(depth, chosen_tip, borehole)
+            coe_casing = get_coe_casing(depth, borehole, chosen_tip)
 
             qp_value = get_qp_mix_array(qp_sand[i], qp_clay[i], lc_val)
             qb1_sand_val = get_qb1_sand(are_value, qp_sand[i])
@@ -449,3 +488,117 @@ def create_cpt_graphs(data):
     graphs = {}
     graphs['ic'] = json.dumps(ic_fig, cls=plotly.utils.PlotlyJSONEncoder)
     return graphs
+
+def get_qb01_adop(lc, qt):
+    return 0.11 * lc * qt
+
+def get_tf_adop_tension_bored(qb01_adop, lc):
+    if qb01_adop == 0:
+        return 0
+    if lc < 2.05:
+        return 0.8 * qb01_adop
+    return qb01_adop
+
+def get_tf_adop_compression_bored(qt, lc):
+    if qt == 0:
+        return 0
+    return 0.008 * 101 * (lc ** 1.6) * ((1000 * qt) / 101) ** 0.8
+
+def get_qs_bored(tf_adop, pile_perimeter, depth_i, depth_prev):
+    delta_z = depth_i - depth_prev
+    return tf_adop * pile_perimeter * delta_z
+
+def calculate_bored_pile_results(processed_cpt, params):
+    water_table = float(params['water_table'])
+    print(f"Water table value from params: {water_table}")
+    nominal_size_don = float(params['shaft_diameter'])
+    pile_shape = 0  # circular
+    pile_perimeter = get_pile_perimeter(pile_shape, nominal_size_don)
+    borehole_depth = float(params['cased_depth'])
+    
+    depths = processed_cpt['depth']
+    detailed_results = []
+    summary_results = []
+    
+    for tip in params['pile_tip_depths']:
+        tip_index = min(range(len(depths)), key=lambda i: abs(depths[i]-tip))
+        chosen_tip = depths[tip_index]
+        
+        depth_calculations = []
+        qs_tension_cumulative = 0
+        qs_compression_cumulative = 0
+        
+        for i in range(len(depths)):
+            if depths[i] > chosen_tip:
+                continue
+                
+            qt_val = processed_cpt['qt'][i]
+            lc_val = processed_cpt['lc'][i]
+            fr_val = processed_cpt['fr_percent'][i]
+            
+            # Calculate casing coefficient
+            coe_casing = get_coe_casing(depths[i], borehole_depth, chosen_tip)
+            
+            # Calculate qb01_adop
+            qb01_adop = get_qb01_adop(lc_val, qt_val)
+            
+            # Calculate compression first since tension depends on it
+            tf_compression = get_tf_compression_bored(coe_casing, lc_val, qt_val)
+            tf_tension = get_tf_tension_bored(coe_casing, lc_val, tf_compression)
+            
+            # Calculate shaft resistance for this segment
+            prev_depth = depths[i-1] if i > 0 else 0
+            delta_z = depths[i] - prev_depth
+            qs_tension_segment = tf_tension * pile_perimeter * delta_z
+            qs_compression_segment = tf_compression * pile_perimeter * delta_z
+            
+            # Update cumulative values
+            qs_tension_cumulative += qs_tension_segment
+            qs_compression_cumulative += qs_compression_segment
+            
+            # Store all calculations for this depth
+            depth_calculations.append({
+                'depth': depths[i],
+                'qt': qt_val,
+                'lc': lc_val,
+                'fr': fr_val,
+                'coe_casing': coe_casing,
+                'qb01_adop': qb01_adop,
+                'tf_tension': tf_tension,
+                'tf_compression': tf_compression,
+                'delta_z': delta_z,
+                'qs_tension_segment': qs_tension_segment,
+                'qs_compression_segment': qs_compression_segment,
+                'qs_tension_cumulative': qs_tension_cumulative,
+                'qs_compression_cumulative': qs_compression_cumulative
+            })
+        
+        detailed_results.append({
+            'tip_depth': chosen_tip,
+            'calculations': depth_calculations
+        })
+        
+        summary_results.append({
+            'tipdepth': chosen_tip,
+            'tension_capacity': qs_tension_cumulative,
+            'compression_capacity': qs_compression_cumulative
+        })
+    
+    return {
+        'summary': summary_results,
+        'detailed': detailed_results
+    }
+
+def get_tf_tension_bored(coe_casing, lc, tf_compression):
+    """Calculate tension transfer function for bored piles"""
+    if coe_casing == 0:
+        return 0
+    if lc < 2.05:
+        return 0.8 * tf_compression
+    return tf_compression
+
+def get_tf_compression_bored(coe_casing, lc, qt):
+    """Calculate compression transfer function for bored piles"""
+    if coe_casing == 0:
+        return 0
+    return 0.008 * 101 * (lc ** 1.6) * ((1000 * qt / 101) ** 0.8)

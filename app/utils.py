@@ -9,6 +9,7 @@ import tempfile
 import os
 import math
 from .calculations import pre_input_calc
+from flask import session
 
 def generate_csv_download(data, filename="results.csv"):
     df = pd.DataFrame(data)
@@ -166,25 +167,26 @@ def create_cpt_graphs(data):
     }
 
 def create_bored_pile_graphs(data):
-    processed = pre_input_calc(data)
-    if not processed:
-        return None
+    # Get water table from session
+    water_table = float(session['water_table'])
+    processed_data = pre_input_calc(data, water_table)
     
+    if not processed_data:
+        return None
+
     qt_graph = {
         'data': [
             go.Scatter(
-                x=processed['qt'],
-                y=processed['depth'],
+                x=processed_data['qt'],
+                y=processed_data['depth'],
                 mode='lines',
                 name='qt'
             )
         ],
         'layout': {
             'title': 'Qt vs Depth',
-            'xaxis': {'title': 'Qt (MPa)'},
+            'xaxis': {'title': 'Qt'},
             'yaxis': {'title': 'Depth (m)', 'autorange': 'reversed'},
-            'plot_bgcolor': 'white',
-            'showgrid': True,
             'height': 800
         }
     }
@@ -192,8 +194,8 @@ def create_bored_pile_graphs(data):
     fr_graph = {
         'data': [
             go.Scatter(
-                x=processed['fr_percent'],
-                y=processed['depth'],
+                x=processed_data['fr_percent'],
+                y=processed_data['depth'],
                 mode='lines',
                 name='Fr%'
             )
@@ -202,8 +204,6 @@ def create_bored_pile_graphs(data):
             'title': 'Fr% vs Depth',
             'xaxis': {'title': 'Fr%'},
             'yaxis': {'title': 'Depth (m)', 'autorange': 'reversed'},
-            'plot_bgcolor': 'white',
-            'showgrid': True,
             'height': 800
         }
     }
@@ -211,8 +211,8 @@ def create_bored_pile_graphs(data):
     ic_graph = {
         'data': [
             go.Scatter(
-                x=processed['lc'],
-                y=processed['depth'],
+                x=processed_data['lc'],
+                y=processed_data['depth'],
                 mode='lines',
                 name='Ic'
             )
@@ -221,12 +221,10 @@ def create_bored_pile_graphs(data):
             'title': 'Ic vs Depth',
             'xaxis': {'title': 'Ic'},
             'yaxis': {'title': 'Depth (m)', 'autorange': 'reversed'},
-            'plot_bgcolor': 'white',
-            'showgrid': True,
             'height': 800
         }
     }
-    
+
     return {
         'qt': json.dumps(qt_graph, cls=plotly.utils.PlotlyJSONEncoder),
         'fr': json.dumps(fr_graph, cls=plotly.utils.PlotlyJSONEncoder),

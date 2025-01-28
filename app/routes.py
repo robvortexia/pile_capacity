@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, request, jsonify, flash, redirect, url_for, session, Response
+from flask import Blueprint, render_template, request, jsonify, flash, redirect, url_for, session, Response, send_file
 from werkzeug.utils import secure_filename
 import pandas as pd
 import os
@@ -8,7 +8,7 @@ import plotly.graph_objects as go
 import plotly.utils
 import numpy as np
 from .utils import save_cpt_data, load_cpt_data, create_cpt_graphs, save_graphs_data, load_graphs_data, generate_csv_download, save_debug_details, load_debug_details, create_bored_pile_graphs
-from .calculations import calculate_pile_capacity, process_cpt_data, pre_input_calc, get_iterative_values
+from .calculations import calculate_pile_capacity, process_cpt_data, pre_input_calc, get_iterative_values, calculate_bored_pile_results
 from datetime import datetime, timedelta
 from .models import db, Registration, Visit
 from functools import wraps
@@ -157,7 +157,7 @@ def calculator_step(type, step):
                 
             return redirect(url_for('main.calculator_step', type=type, step=3))
         
-        elif step == 3:  # Handle pile parameters submission
+        elif step == 3:
             try:
                 # Debug logging
                 print("Form data received:", request.form)
@@ -169,6 +169,7 @@ def calculator_step(type, step):
                         'shaft_diameter': float(request.form.get('shaft_diameter')),
                         'base_diameter': float(request.form.get('base_diameter')),
                         'cased_depth': float(request.form.get('cased_depth')),
+                        'water_table': float(request.form.get('water_table', 0)),
                         'tip_depths': [float(d.strip()) for d in request.form.get('tip_depths', '').split(',')],
                         'borehole_depth': float(request.form.get('cased_depth')),
                         'pile_shape': 0,  # Always circular for bored piles
@@ -199,11 +200,21 @@ def calculator_step(type, step):
                     return redirect(url_for('main.calculator_step', type=type, step=1))
                 
                 print("About to calculate pile capacity")
-                results = calculate_pile_capacity(cpt_data, session['pile_params'], pile_type=type)
-                session['results'] = results
-                print("Results calculated and stored:", results)
+                if type == 'bored':
+                    water_table = float(session['pile_params']['water_table'])
+                    processed_cpt = pre_input_calc(cpt_data, water_table)
+                    results = calculate_bored_pile_results(processed_cpt, session['pile_params'])
+                    
+                    # Store only summary in session, save detailed results to storage
+                    session['results'] = results['summary']
+                    debug_id = save_debug_details(results['detailed'])
+                    session['debug_id'] = debug_id
+                    results_id = save_graphs_data(results['detailed'])
+                    session['detailed_results_id'] = results_id
+                else:
+                    results = calculate_pile_capacity(cpt_data, session['pile_params'], pile_type=type)
+                    session['results'] = results
                 
-                # Redirect to step 4
                 return redirect(url_for('main.calculator_step', type=type, step=4))
                 
             except Exception as e:
@@ -216,13 +227,17 @@ def calculator_step(type, step):
                 flash('No results available. Please complete the analysis first.')
                 return redirect(url_for('main.calculator_step', type=type, step=3))
             
-            debug_id = session.get('debug_id')
-            if debug_id:
-                debug_details = load_debug_details(debug_id)
-            else:
-                debug_details = {}
+            detailed_results = None
+            if type == 'bored' and 'detailed_results_id' in session:
+                detailed_results = load_graphs_data(session['detailed_results_id'])
             
-            return render_template(f'{type}/steps.html', step=step, type=type, results=session['results'], debug_details=debug_details)
+            return render_template(
+                f'{type}/steps.html', 
+                step=step, 
+                type=type, 
+                results=session['results'],
+                detailed_results=detailed_results
+            )
         
         return render_template(f'{type}/steps.html', step=step, type=type)
     
@@ -254,13 +269,17 @@ def calculator_step(type, step):
             flash('No results available. Please complete the analysis first.')
             return redirect(url_for('main.calculator_step', type=type, step=3))
         
-        debug_id = session.get('debug_id')
-        if debug_id:
-            debug_details = load_debug_details(debug_id)
-        else:
-            debug_details = {}
+        detailed_results = None
+        if type == 'bored' and 'detailed_results_id' in session:
+            detailed_results = load_graphs_data(session['detailed_results_id'])
         
-        return render_template(f'{type}/steps.html', step=step, type=type, results=session['results'], debug_details=debug_details)
+        return render_template(
+            f'{type}/steps.html', 
+            step=step, 
+            type=type, 
+            results=session['results'],
+            detailed_results=detailed_results
+        )
     
     return render_template(f'{type}/steps.html', step=step, type=type)
 
@@ -277,7 +296,8 @@ def download_debug_params():
             flash('CPT data not found')
             return redirect(url_for('main.index'))
         
-        processed = pre_input_calc(data)
+        water_table = float(session['pile_params']['water_table'])
+        processed = pre_input_calc(data, water_table)
         if not processed:
             flash('No processed data available')
             return redirect(url_for('main.index'))
@@ -285,16 +305,13 @@ def download_debug_params():
         debug_id = session.get('debug_id')
         if debug_id:
             debug_details = load_debug_details(debug_id)
+            print("Debug details loaded:", bool(debug_details))
+            if debug_details and len(debug_details) > 0:
+                print("First calculation keys:", debug_details[0]['calculations'][0].keys())
         else:
             debug_details = {}
 
-        # If we have debug details, pick one scenario (e.g., the first tip) to include
-        if debug_details:
-            first_tip = list(debug_details.keys())[0]
-            dbg = debug_details[first_tip]
-        else:
-            dbg = {}
-
+        # Initialize all columns with NaN values
         df = pd.DataFrame({
             'depth': processed['depth'],
             'h': processed['h'],
@@ -312,13 +329,38 @@ def download_debug_params():
             'bq': processed['bq'],
             'kc': processed['kc'],
             'iz1': processed['iz1'],
-            'qtc': processed['qtc']
+            'qtc': processed['qtc'],
+            'coe_casing': float('nan'),
+            'qb01_adop': float('nan'),
+            'tf_tension': float('nan'),
+            'tf_compression': float('nan'),
+            'qs_tension_segment': float('nan'),
+            'qs_compression_segment': float('nan'),
+            'qs_tension_cumulative': float('nan'),
+            'qs_compression_cumulative': float('nan')
         })
 
-        for key in ['tf_sand', 'tf_clay', 'tf_adop_tension', 'tf_adop_compression', 
-                    'qs_tension', 'qs_compression', 'qb_sand', 'qb_clay', 'qb_final']:
-            if key in dbg and len(dbg[key]) == len(df):
-                df[key] = dbg[key]
+        # Add bored pile specific columns if they exist in debug details
+        if debug_details and len(debug_details) > 0:
+            # Get the calculations from the first tip depth
+            calcs = debug_details[0]['calculations']
+            
+            # Create a mapping of depths to calculation values
+            calc_dict = {calc['depth']: calc for calc in calcs}
+            
+            # Fill in the values where we have calculations
+            for idx, row in df.iterrows():
+                depth = row['depth']
+                if depth in calc_dict:
+                    calc = calc_dict[depth]
+                    df.at[idx, 'coe_casing'] = calc['coe_casing']
+                    df.at[idx, 'qb01_adop'] = calc['qb01_adop']
+                    df.at[idx, 'tf_tension'] = calc['tf_tension']
+                    df.at[idx, 'tf_compression'] = calc['tf_compression']
+                    df.at[idx, 'qs_tension_segment'] = calc['qs_tension_segment']
+                    df.at[idx, 'qs_compression_segment'] = calc['qs_compression_segment']
+                    df.at[idx, 'qs_tension_cumulative'] = calc['qs_tension_cumulative']
+                    df.at[idx, 'qs_compression_cumulative'] = calc['qs_compression_cumulative']
         
         return generate_csv_download(
             df,
@@ -326,8 +368,9 @@ def download_debug_params():
         )
         
     except Exception as e:
+        print(f"Debug download error: {str(e)}")
         flash(f'Error generating debug data: {str(e)}')
-        return redirect(url_for('main.calculator_step', type='driven', step=4))
+        return redirect(url_for('main.calculator_step', type='bored', step=4))
 
 @bp.route('/download_results')
 def download_results():
