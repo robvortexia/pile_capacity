@@ -38,7 +38,7 @@
                 </div>
             </div>
             <div class="debug-section">
-                <div class="button-group mb-3">
+                <div class="button-group">
                     <a href="{{ url_for('main.download_debug_params') }}" class="btn btn-info">
                         <i class="fas fa-download"></i> Download Debug Parameters
                     </a>
@@ -108,50 +108,119 @@
 
 {% if step == 2 and graphs %}
 <script>
+    var config = {
+        responsive: true,
+        displayModeBar: false
+    };
+    
     var qtGraph = JSON.parse('{{ graphs.qt | safe }}');
     var frGraph = JSON.parse('{{ graphs.fr | safe }}');
     var icGraph = JSON.parse('{{ graphs.ic | safe }}');
     var izGraph = JSON.parse('{{ graphs.iz | safe }}');
     
-    Plotly.newPlot('qt_graph', qtGraph.data, qtGraph.layout);
-    Plotly.newPlot('fr_graph', frGraph.data, frGraph.layout);
-    Plotly.newPlot('ic_graph', icGraph.data, icGraph.layout);
-    Plotly.newPlot('iz_graph', izGraph.data, izGraph.layout);
+    Plotly.newPlot('qt_graph', qtGraph.data, qtGraph.layout, config);
+    Plotly.newPlot('fr_graph', frGraph.data, frGraph.layout, config);
+    Plotly.newPlot('ic_graph', icGraph.data, icGraph.layout, config);
+    Plotly.newPlot('iz_graph', izGraph.data, izGraph.layout, config);
 </script>
 {% endif %}
 
 <style>
-.debug-section {
-    margin: 20px 0;
-    padding: 15px;
-    background: #f8f9fa;
-    border-radius: var(--border-radius);
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+.container {
+    max-width: 100%;
+    padding: 0.5rem;
+    margin: 0 auto;
+    box-sizing: border-box;
+    overflow-x: hidden;
+}
+
+.step {
+    background: white;
+    padding: 0.5rem;
+    border-radius: 8px;
+    width: 100%;
+}
+
+.graphs-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0.25rem;
+    width: 100%;
+    margin: 0.5rem 0;
+    height: calc(100vh - 250px);
+}
+
+.graph-container {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    height: 100%;
+    aspect-ratio: 1;
+    background: white;
+    border: none;
+    padding: 0.15rem;
+    overflow: hidden;
+}
+
+.graph-container > div {
+    height: 100% !important;
+    width: 100% !important;
+    max-width: 100% !important;
 }
 
 .button-group {
+    margin-top: 0.5rem;
     display: flex;
-    gap: 10px;
-    margin-bottom: 1rem;
+    gap: 0.25rem;
+}
+
+h2 {
+    margin: 0 0 0.25rem 0;
+    font-size: 1.15rem;
+    color: #333;
+}
+
+.debug-section {
+    margin: 0.25rem 0;
+}
+
+/* Form styling */
+.form-group {
+    margin-bottom: 1.5rem;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 500;
+}
+
+.form-group input {
+    width: 100%;
+    padding: 0.75rem;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+.form-text {
+    margin-top: 0.5rem;
+    color: #666;
+    font-size: 0.875rem;
 }
 
 .btn-info {
     background-color: #17a2b8;
     color: white;
-    padding: 0.75rem 1.5rem;
-    border: none;
+    padding: 0.5rem 1rem;
     border-radius: 4px;
     text-decoration: none;
-    display: inline-block;
-    font-weight: bold;
+    border: none;
     transition: background-color 0.2s;
 }
 
 .btn-info:hover {
     background-color: #138496;
     color: white;
-    text-decoration: none;
-    opacity: 0.9;
 }
 </style>
 {% endblock %} 

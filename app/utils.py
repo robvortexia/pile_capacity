@@ -82,20 +82,45 @@ def create_cpt_graphs(data, water_table=None):
     if not processed_data:
         return None
     
+    # Common layout settings
+    base_layout = {
+        'showline': True,
+        'linewidth': 1,
+        'linecolor': 'lightgrey',
+        'mirror': True,
+        'showgrid': True,
+        'gridcolor': 'lightgrey',
+        'gridwidth': 1,
+        'side': 'top'
+    }
+    
     qt_graph = {
         'data': [
             go.Scatter(
                 x=processed_data['qt'],
                 y=processed_data['depth'],
                 mode='lines',
-                name='qt'
+                name='qt',
+                line={'color': 'blue', 'width': 1.5}
             )
         ],
         'layout': {
-            'title': 'Qt vs Depth',
-            'xaxis': {'title': 'Qt'},
-            'yaxis': {'title': 'Depth (m)', 'autorange': 'reversed'},
-            'height': 800
+            'title': {'text': 'qt', 'x': 0.5, 'xanchor': 'center', 'font': {'size': 14}},
+            'xaxis': {
+                'title': None,  # Removed x-axis title
+                'dtick': 7,
+                **base_layout
+            },
+            'yaxis': {
+                'title': 'Depth (m)',
+                'autorange': 'reversed',
+                'range': [0, 100],
+                'dtick': 25,
+                **base_layout
+            },
+            'plot_bgcolor': 'white',
+            'margin': {'l': 80, 'r': 30, 't': 40, 'b': 50},
+            'font': {'size': 12}
         }
     }
     
@@ -105,14 +130,27 @@ def create_cpt_graphs(data, water_table=None):
                 x=processed_data['fr_percent'],
                 y=processed_data['depth'],
                 mode='lines',
-                name='Fr%'
+                name='Fr%',
+                line={'color': 'green', 'width': 1.5}
             )
         ],
         'layout': {
-            'title': 'Fr% vs Depth',
-            'xaxis': {'title': 'Fr%'},
-            'yaxis': {'title': 'Depth (m)', 'autorange': 'reversed'},
-            'height': 800
+            'title': {'text': 'Fr (%)', 'x': 0.5, 'xanchor': 'center', 'font': {'size': 14}},
+            'xaxis': {
+                'title': None,  # Removed x-axis title
+                'dtick': 3,
+                **base_layout
+            },
+            'yaxis': {
+                'title': 'Depth (m)',
+                'autorange': 'reversed',
+                'range': [0, 100],
+                'dtick': 25,
+                **base_layout
+            },
+            'plot_bgcolor': 'white',
+            'margin': {'l': 80, 'r': 30, 't': 40, 'b': 50},
+            'font': {'size': 12}
         }
     }
     
@@ -122,14 +160,27 @@ def create_cpt_graphs(data, water_table=None):
                 x=processed_data['lc'],
                 y=processed_data['depth'],
                 mode='lines',
-                name='Ic'
+                name='Ic',
+                line={'color': 'purple', 'width': 1.5}
             )
         ],
         'layout': {
-            'title': 'Ic vs Depth',
-            'xaxis': {'title': 'Ic'},
-            'yaxis': {'title': 'Depth (m)', 'autorange': 'reversed'},
-            'height': 800
+            'title': {'text': 'Ic', 'x': 0.5, 'xanchor': 'center', 'font': {'size': 14}},
+            'xaxis': {
+                'title': None,  # Removed x-axis title
+                'dtick': 1,
+                **base_layout
+            },
+            'yaxis': {
+                'title': 'Depth (m)',
+                'autorange': 'reversed',
+                'range': [0, 100],
+                'dtick': 25,
+                **base_layout
+            },
+            'plot_bgcolor': 'white',
+            'margin': {'l': 80, 'r': 30, 't': 40, 'b': 50},
+            'font': {'size': 12}
         }
     }
     
@@ -139,28 +190,32 @@ def create_cpt_graphs(data, water_table=None):
                 x=processed_data['iz1'],
                 y=processed_data['depth'],
                 mode='lines',
-                name='Iz'
+                name='Iz',
+                line={'color': 'red', 'width': 1.5}
             )
         ],
         'layout': {
-            'title': 'Iz (when Iz < 10)',
+            'title': {'text': 'Iz', 'x': 0.5, 'xanchor': 'center', 'font': {'size': 14}},
             'xaxis': {
-                'title': 'Iz',
-                'range': [-5, 10],
-                'dtick': 3,
-                'gridcolor': 'lightgrey'
+                'title': None,  # Removed x-axis title
+                'range': [0, 8],
+                'dtick': 2,
+                **base_layout
             },
             'yaxis': {
                 'title': 'Depth (m)',
                 'autorange': 'reversed',
-                'gridcolor': 'lightgrey'
+                'range': [0, 100],
+                'dtick': 25,
+                **base_layout
             },
             'plot_bgcolor': 'white',
-            'showgrid': True,
-            'height': 800
+            'height': 800,
+            'margin': {'l': 80, 'r': 30, 't': 40, 'b': 50},
+            'font': {'size': 12}
         }
     }
-    
+
     return {
         'qt': json.dumps(qt_graph, cls=plotly.utils.PlotlyJSONEncoder),
         'fr': json.dumps(fr_graph, cls=plotly.utils.PlotlyJSONEncoder),
@@ -176,20 +231,45 @@ def create_bored_pile_graphs(data):
     if not processed_data:
         return None
 
+    # Common layout settings
+    base_layout = {
+        'showline': True,
+        'linewidth': 1,
+        'linecolor': 'lightgrey',
+        'mirror': True,
+        'showgrid': True,
+        'gridcolor': 'lightgrey',
+        'gridwidth': 1,
+        'side': 'top'
+    }
+
     qt_graph = {
         'data': [
             go.Scatter(
                 x=processed_data['qt'],
                 y=processed_data['depth'],
                 mode='lines',
-                name='qt'
+                name='qt',
+                line={'color': 'blue', 'width': 1.5}
             )
         ],
         'layout': {
-            'title': 'Qt vs Depth',
-            'xaxis': {'title': 'Qt'},
-            'yaxis': {'title': 'Depth (m)', 'autorange': 'reversed'},
-            'height': 800
+            'title': {'text': 'qt', 'x': 0.5, 'xanchor': 'center', 'font': {'size': 14}},
+            'xaxis': {
+                'title': None,  # Removed x-axis title
+                'dtick': 7,
+                **base_layout
+            },
+            'yaxis': {
+                'title': 'Depth (m)',
+                'autorange': 'reversed',
+                'range': [0, 100],
+                'dtick': 25,
+                **base_layout
+            },
+            'plot_bgcolor': 'white',
+            'margin': {'l': 80, 'r': 30, 't': 40, 'b': 50},
+            'font': {'size': 12}
         }
     }
     
@@ -199,14 +279,27 @@ def create_bored_pile_graphs(data):
                 x=processed_data['fr_percent'],
                 y=processed_data['depth'],
                 mode='lines',
-                name='Fr%'
+                name='Fr%',
+                line={'color': 'green', 'width': 1.5}
             )
         ],
         'layout': {
-            'title': 'Fr% vs Depth',
-            'xaxis': {'title': 'Fr%'},
-            'yaxis': {'title': 'Depth (m)', 'autorange': 'reversed'},
-            'height': 800
+            'title': {'text': 'Fr (%)', 'x': 0.5, 'xanchor': 'center', 'font': {'size': 14}},
+            'xaxis': {
+                'title': None,  # Removed x-axis title
+                'dtick': 3,
+                **base_layout
+            },
+            'yaxis': {
+                'title': 'Depth (m)',
+                'autorange': 'reversed',
+                'range': [0, 100],
+                'dtick': 25,
+                **base_layout
+            },
+            'plot_bgcolor': 'white',
+            'margin': {'l': 80, 'r': 30, 't': 40, 'b': 50},
+            'font': {'size': 12}
         }
     }
     
@@ -216,14 +309,27 @@ def create_bored_pile_graphs(data):
                 x=processed_data['lc'],
                 y=processed_data['depth'],
                 mode='lines',
-                name='Ic'
+                name='Ic',
+                line={'color': 'purple', 'width': 1.5}
             )
         ],
         'layout': {
-            'title': 'Ic vs Depth',
-            'xaxis': {'title': 'Ic'},
-            'yaxis': {'title': 'Depth (m)', 'autorange': 'reversed'},
-            'height': 800
+            'title': {'text': 'Ic', 'x': 0.5, 'xanchor': 'center', 'font': {'size': 14}},
+            'xaxis': {
+                'title': None,  # Removed x-axis title
+                'dtick': 1,
+                **base_layout
+            },
+            'yaxis': {
+                'title': 'Depth (m)',
+                'autorange': 'reversed',
+                'range': [0, 100],
+                'dtick': 25,
+                **base_layout
+            },
+            'plot_bgcolor': 'white',
+            'margin': {'l': 80, 'r': 30, 't': 40, 'b': 50},
+            'font': {'size': 12}
         }
     }
 

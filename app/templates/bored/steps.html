@@ -24,7 +24,6 @@
             {% if step == 2 %}
                 <div class="step active">
                     <h2>Step 2: View CPT Data</h2>
-                    {% if graphs %}
                     <div class="graphs-grid">
                         <div class="graph-container">
                             <div id="qt_graph"></div>
@@ -44,7 +43,6 @@
                             Back to Step 1
                         </a>
                     </div>
-                    {% endif %}
                 </div>
             {% endif %}
         </div>
@@ -81,36 +79,96 @@
 {% if step == 2 and graphs %}
 <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
 <script>
+    var config = {
+        responsive: true,
+        displayModeBar: false
+    };
+    
     var qtGraph = JSON.parse('{{ graphs.qt | safe }}');
     var frGraph = JSON.parse('{{ graphs.fr | safe }}');
     var icGraph = JSON.parse('{{ graphs.ic | safe }}');
     
-    Plotly.newPlot('qt_graph', qtGraph.data, qtGraph.layout);
-    Plotly.newPlot('fr_graph', frGraph.data, frGraph.layout);
-    Plotly.newPlot('ic_graph', icGraph.data, icGraph.layout);
+    Plotly.newPlot('qt_graph', qtGraph.data, qtGraph.layout, config);
+    Plotly.newPlot('fr_graph', frGraph.data, frGraph.layout, config);
+    Plotly.newPlot('ic_graph', icGraph.data, icGraph.layout, config);
 </script>
 {% endif %}
 
 <style>
+.container {
+    max-width: 100%;
+    padding: 0.5rem;
+    margin: 0 auto;
+    box-sizing: border-box;
+}
+
+.step {
+    background: white;
+    padding: 0.5rem;
+    border-radius: 8px;
+}
+
 .graphs-grid {
-    display: flex;
-    flex-direction: row;
-    gap: 1rem;
-    margin: 2rem 0;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.25rem;
     width: 100%;
+    margin: 0.5rem 0;
     height: calc(100vh - 300px);
-    overflow-x: auto;
-    padding-bottom: 1rem;
 }
 
 .graph-container {
-    flex: 0 0 500px;
-    min-width: 500px;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
     height: 100%;
+    aspect-ratio: 1;
+    background: white;
+    border: none;
+    padding: 0.15rem;
+    overflow: hidden;
 }
 
 .graph-container > div {
     height: 100% !important;
+    width: 100% !important;
+    max-width: 100% !important;
+}
+
+.button-group {
+    margin-top: 0.5rem;
+    display: flex;
+    gap: 0.25rem;
+}
+
+h2 {
+    margin: 0 0 0.25rem 0;
+    font-size: 1.15rem;
+    color: #333;
+}
+
+/* Form styling */
+.form-group {
+    margin-bottom: 1.5rem;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 500;
+}
+
+.form-group input {
+    width: 100%;
+    padding: 0.75rem;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+.form-text {
+    margin-top: 0.5rem;
+    color: #666;
+    font-size: 0.875rem;
 }
 </style>
 {% endblock %} 
