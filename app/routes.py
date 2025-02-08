@@ -16,6 +16,7 @@ import csv
 from io import StringIO
 from sqlalchemy.sql import func
 import logging
+import io
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -298,81 +299,123 @@ def download_debug_params():
             flash('CPT data not found')
             return redirect(url_for('main.index'))
         
+        # Get pile parameters from session
+        pile_params = session.get('pile_params', {})
+        
+        # Process the CPT data
         water_table = float(session['pile_params']['water_table'])
         processed = pre_input_calc(data, water_table)
-        if not processed:
-            flash('No processed data available')
-            return redirect(url_for('main.index'))
+        
+        # Create a string buffer
+        buffer = io.StringIO()
         
         debug_id = session.get('debug_id')
         if debug_id:
             debug_details = load_debug_details(debug_id)
-            print("Debug details loaded:", bool(debug_details))
             if debug_details and len(debug_details) > 0:
-                print("First calculation keys:", debug_details[0]['calculations'][0].keys())
-        else:
-            debug_details = {}
-
-        # Initialize all columns with NaN values
-        df = pd.DataFrame({
-            'depth': processed['depth'],
-            'h': processed['h'],
-            'qc': processed['qc'],
-            'qt': processed['qt'],
-            'gtot': processed['gtot'],
-            'u0_kpa': processed['u0_kpa'],
-            'sig_v0': processed['sig_v0'],
-            'sig_v0_prime': processed['sig_v0_prime'],
-            'fs': processed['fs'],
-            'fr_percent': processed['fr_percent'],
-            'qtn': processed['qtn'],
-            'n': processed['n'],
-            'lc': processed['lc'],
-            'bq': processed['bq'],
-            'kc': processed['kc'],
-            'iz1': processed['iz1'],
-            'qtc': processed['qtc'],
-            'coe_casing': float('nan'),
-            'qb01_adop': float('nan'),
-            'tf_tension': float('nan'),
-            'tf_compression': float('nan'),
-            'qs_tension_segment': float('nan'),
-            'qs_compression_segment': float('nan'),
-            'qs_tension_cumulative': float('nan'),
-            'qs_compression_cumulative': float('nan')
-        })
-
-        # Add bored pile specific columns if they exist in debug details
-        if debug_details and len(debug_details) > 0:
-            # Get the calculations from the first tip depth
-            calcs = debug_details[0]['calculations']
-            
-            # Create a mapping of depths to calculation values
-            calc_dict = {calc['depth']: calc for calc in calcs}
-            
-            # Fill in the values where we have calculations
-            for idx, row in df.iterrows():
-                depth = row['depth']
-                if depth in calc_dict:
-                    calc = calc_dict[depth]
-                    df.at[idx, 'coe_casing'] = calc['coe_casing']
-                    df.at[idx, 'qb01_adop'] = calc['qb01_adop']
-                    df.at[idx, 'tf_tension'] = calc['tf_tension']
-                    df.at[idx, 'tf_compression'] = calc['tf_compression']
-                    df.at[idx, 'qs_tension_segment'] = calc['qs_tension_segment']
-                    df.at[idx, 'qs_compression_segment'] = calc['qs_compression_segment']
-                    df.at[idx, 'qs_tension_cumulative'] = calc['qs_tension_cumulative']
-                    df.at[idx, 'qs_compression_cumulative'] = calc['qs_compression_cumulative']
+                
+                for tip_index, tip_detail in enumerate(debug_details):
+                    if tip_index > 0:
+                        # Add separator between different tip depth data
+                        buffer.write('\n\n' + '='*50 + '\n\n')
+                    
+                    # Create constants list with tip depth included
+                    constants = [
+                        ['Tip Depth (m)', tip_detail['tip_depth']],
+                        ['Water table depth (m)', float(session['pile_params']['water_table'])]
+                    ]
+                    
+                    # Add pile type specific parameters
+                    if session.get('type') == 'driven':
+                        constants.extend([
+                            ['Pile type', 'Driven'],
+                            ['Pile end condition', pile_params.get('pile_end_condition', 'N/A')],
+                            ['Pile shape', pile_params.get('pile_shape', 'N/A')],
+                            ['Pile diameter/width (m)', pile_params.get('pile_diameter', 'N/A')],
+                            ['Wall thickness (mm)', pile_params.get('wall_thickness', 'N/A')],
+                            ['Borehole depth (m)', pile_params.get('borehole_depth', 'N/A')]
+                        ])
+                    else:
+                        constants.extend([
+                            ['Pile type', 'Bored'],
+                            ['Shaft diameter (m)', pile_params.get('shaft_diameter', 'N/A')],
+                            ['Base diameter (m)', pile_params.get('base_diameter', 'N/A')],
+                            ['Cased depth (m)', pile_params.get('cased_depth', 'N/A')]
+                        ])
+                    
+                    # Write constants
+                    df_constants = pd.DataFrame(constants, columns=['Parameter', 'Value'])
+                    buffer.write(f'INPUT PARAMETERS FOR TIP DEPTH {tip_detail["tip_depth"]}m\n')
+                    df_constants.to_csv(buffer, index=False)
+                    
+                    # Process calculations for this tip depth
+                    calcs = tip_detail['calculations']
+                    calc_dict = {calc['depth']: calc for calc in calcs}
+                    
+                    # Create and populate DataFrame
+                    df_data = create_data_dataframe(processed, calc_dict)
+                    
+                    # Add a blank line between constants and data
+                    buffer.write('\nCPT DATA AND CALCULATIONS\n')
+                    df_data.to_csv(buffer, index=False)
         
-        return generate_csv_download(
-            df,
-            f"debug_params_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+        # Prepare the file for download
+        buffer.seek(0)
+        return send_file(
+            io.BytesIO(buffer.getvalue().encode()),
+            mimetype='text/csv',
+            as_attachment=True,
+            download_name=f"debug_params_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
         )
         
     except Exception as e:
         print(f"Debug download error: {str(e)}")
         flash(f'Error generating debug data: {str(e)}')
         return redirect(url_for('main.calculator_step', type='bored', step=4))
+
+def create_data_dataframe(processed, calc_dict):
+    """Helper function to create the data DataFrame with calculations"""
+    df_data = pd.DataFrame({
+        'depth': processed['depth'],
+        'h': processed['h'],
+        'qc': processed['qc'],
+        'qt': processed['qt'],
+        'gtot': processed['gtot'],
+        'u0_kpa': processed['u0_kpa'],
+        'sig_v0': processed['sig_v0'],
+        'sig_v0_prime': processed['sig_v0_prime'],
+        'fs': processed['fs'],
+        'fr_percent': processed['fr_percent'],
+        'qtn': processed['qtn'],
+        'n': processed['n'],
+        'lc': processed['lc'],
+        'bq': processed['bq'],
+        'kc': processed['kc'],
+        'iz1': processed['iz1'],
+        'qtc': processed['qtc']
+    })
+    
+    # Add calculation columns
+    df_data['coe_casing'] = float('nan')
+    df_data['qb01_adop'] = float('nan')
+    df_data['tf_tension'] = float('nan')
+    df_data['tf_compression'] = float('nan')
+    df_data['qs_tension_segment'] = float('nan')
+    df_data['qs_compression_segment'] = float('nan')
+    df_data['qs_tension_cumulative'] = float('nan')
+    df_data['qs_compression_cumulative'] = float('nan')
+    
+    # Fill in calculations where they exist
+    for idx, row in df_data.iterrows():
+        depth = row['depth']
+        if depth in calc_dict:
+            calc = calc_dict[depth]
+            for col in ['coe_casing', 'qb01_adop', 'tf_tension', 'tf_compression', 
+                       'qs_tension_segment', 'qs_compression_segment', 
+                       'qs_tension_cumulative', 'qs_compression_cumulative']:
+                df_data.at[idx, col] = calc[col]
+    
+    return df_data
 
 @bp.route('/download_results')
 def download_results():
