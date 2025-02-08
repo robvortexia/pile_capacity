@@ -76,6 +76,10 @@ def calculator_step(type, step):
             if file and allowed_file(file.filename):
                 try:
                     logger.debug("Starting file processing")
+                    # Store original filename in session (without extension)
+                    original_filename = os.path.splitext(secure_filename(file.filename))[0]
+                    session['original_filename'] = original_filename
+                    
                     # Initialize data structures
                     data_dict = []
                     delimiter = None
@@ -165,6 +169,7 @@ def calculator_step(type, step):
                 
                 # Store the pile parameters in session based on pile type
                 if type == 'bored':
+                    session['type'] = 'bored'
                     session['pile_params'] = {
                         'file_name': request.form.get('file_name', ''),
                         'shaft_diameter': float(request.form.get('shaft_diameter')),
@@ -178,6 +183,7 @@ def calculator_step(type, step):
                         'pile_tip_depths': [float(d.strip()) for d in request.form.get('tip_depths', '').split(',')]
                     }
                 else:  # driven pile
+                    session['type'] = 'driven'
                     session['pile_params'] = {
                         'site_name': request.form.get('site_name', ''),
                         'pile_end_condition': request.form.get('pile_end_condition'),
@@ -294,6 +300,11 @@ def download_debug_params():
         return redirect(url_for('main.index'))
     
     try:
+        # Add debug logging
+        print("Session contents:", dict(session))
+        print("Pile type:", session.get('type'))
+        print("Pile params:", session.get('pile_params'))
+        
         data = load_cpt_data(session['cpt_data_id'])
         if not data:
             flash('CPT data not found')
@@ -301,6 +312,7 @@ def download_debug_params():
         
         # Get pile parameters from session
         pile_params = session.get('pile_params', {})
+        print("Retrieved pile_params:", pile_params)
         
         # Process the CPT data
         water_table = float(session['pile_params']['water_table'])
@@ -361,11 +373,37 @@ def download_debug_params():
         
         # Prepare the file for download
         buffer.seek(0)
+        
+        # Get the current date in DDMMYYYY format
+        current_date = datetime.now().strftime('%d%m%Y')
+        
+        # Get the user's filename from session, default to original filename if not found
+        pile_params = session.get('pile_params', {})
+        if session.get('type') == 'driven':
+            user_filename = pile_params.get('site_name', '')
+        else:
+            user_filename = pile_params.get('file_name', '')
+
+        # If no user filename, try to use the original uploaded filename
+        if not user_filename:
+            user_filename = session.get('original_filename', '')
+            print("Using original filename:", user_filename)
+
+        print("Final user_filename:", user_filename)
+        
+        # Create the filename, including the user's input if it exists
+        if user_filename:
+            download_name = f"detailed_output_{user_filename}_{current_date}.csv"
+        else:
+            download_name = f"detailed_output_{current_date}.csv"
+            
+        print("Final download_name:", download_name)
+        
         return send_file(
             io.BytesIO(buffer.getvalue().encode()),
             mimetype='text/csv',
             as_attachment=True,
-            download_name=f"debug_params_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+            download_name=download_name
         )
         
     except Exception as e:
