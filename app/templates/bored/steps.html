@@ -35,6 +35,13 @@
                             <div id="ic_graph"></div>
                         </div>
                     </div>
+                    <div class="debug-section">
+                        <div class="button-group">
+                            <a href="{{ url_for('main.download_intermediary_calcs') }}" class="btn btn-info">
+                                <i class="fas fa-download"></i> Download Intermediary Calculations
+                            </a>
+                        </div>
+                    </div>
                     <div class="button-group">
                         <form method="POST" action="{{ url_for('main.calculator_step', type=type, step=2) }}">
                             <button type="submit" class="btn btn-primary">Continue to Step 3</button>

@@ -577,3 +577,67 @@ def pile_description(type):
     if type not in ['driven', 'bored']:
         return redirect(url_for('main.index'))
     return render_template(f'{type}/description.html', type=type)
+
+@bp.route('/download_intermediary_calcs')
+def download_intermediary_calcs():
+    """Download intermediary calculations used for graphs as CSV"""
+    if 'cpt_data_id' not in session:
+        flash('No CPT data available')
+        return redirect(url_for('main.index'))
+    
+    try:
+        data = load_cpt_data(session['cpt_data_id'])
+        if not data:
+            flash('CPT data not found')
+            return redirect(url_for('main.index'))
+        
+        # Get water table from the data itself since it's stored with the CPT data
+        water_table = data['water_table']
+        processed = pre_input_calc(data, water_table)
+        
+        if not processed:
+            flash('Error processing data')
+            return redirect(url_for('main.index'))
+        
+        # Create DataFrame with all intermediate calculations
+        df = pd.DataFrame({
+            'Depth (m)': processed['depth'],
+            'qc (MPa)': processed['qc'],
+            'qt (MPa)': processed['qt'],
+            'fs (kPa)': processed['fs'],
+            'Unit Weight (kN/m³)': processed['gtot'],
+            'Water Pressure u0 (kPa)': processed['u0_kpa'],
+            'Total Vertical Stress σv0 (kPa)': processed['sig_v0'],
+            'Effective Vertical Stress σv0\' (kPa)': processed['sig_v0_prime'],
+            'Fr (%)': processed['fr_percent'],
+            'Normalized Tip Resistance Qtn': processed['qtn'],
+            'Stress Exponent n': processed['n'],
+            'Soil Behavior Type Index Ic': processed['lc'],
+            'Pore Pressure Ratio Bq': processed['bq'],
+            'Correction Factor Kc': processed['kc'],
+            'Corrected Tip Resistance qtc (MPa)': processed['qtc'],
+            'Soil Behavior Index Iz': processed['iz1']
+        })
+        
+        # Get the current date in DDMMYYYY format
+        current_date = datetime.now().strftime('%d%m%Y')
+        
+        # Use original filename if available
+        filename = session.get('original_filename', '')
+        if filename:
+            base_name = os.path.splitext(filename)[0]
+            download_name = f"{base_name}_intermediary_calcs_{current_date}.csv"
+        else:
+            download_name = f"intermediary_calcs_{current_date}.csv"
+        
+        return send_file(
+            io.BytesIO(df.to_csv(index=False).encode()),
+            mimetype='text/csv',
+            as_attachment=True,
+            download_name=download_name
+        )
+        
+    except Exception as e:
+        print(f"Error generating intermediary calculations: {str(e)}")
+        flash('Error generating calculations')
+        return redirect(url_for('main.calculator_step', type=session.get('type', 'driven'), step=2))
