@@ -45,8 +45,38 @@ def index():
             db.session.commit()
     return render_template('index.html', show_modal=show_modal)
 
-@bp.route('/calculator/<type>/step/<int:step>', methods=['GET', 'POST'])
+@bp.route('/<type>/calculator/<int:step>', methods=['GET', 'POST'])
 def calculator_step(type, step):
+    # Check if we're switching pile types
+    if 'type' in session and session['type'] != type:
+        # Store registration data
+        registered = session.get('registered')
+        user_email = session.get('user_email')
+        
+        # Store CPT data
+        cpt_data_id = session.get('cpt_data_id')
+        original_filename = session.get('original_filename')
+        water_table = session.get('water_table')
+        
+        # Clear the session
+        session.clear()
+        
+        # Restore registration data
+        if registered:
+            session['registered'] = registered
+            session['user_email'] = user_email
+        
+        # Restore CPT data
+        if cpt_data_id:
+            session['cpt_data_id'] = cpt_data_id
+        if original_filename:
+            session['original_filename'] = original_filename
+        if water_table:
+            session['water_table'] = water_table
+    
+    # Set the current pile type
+    session['type'] = type
+    
     if type not in ['driven', 'bored', 'helical']:
         return redirect(url_for('main.index'))
     
@@ -163,7 +193,6 @@ def calculator_step(type, step):
             return redirect(url_for('main.calculator_step', type=type, step=3))
         
         elif step == 3:
-            # Validate form data
             if type == 'bored':
                 # Add validation for bored pile parameters
                 required_fields = ['shaft_diameter', 'base_diameter', 'cased_depth', 'water_table', 'pile_tip_depths']
@@ -248,7 +277,10 @@ def calculator_step(type, step):
                 
                 return redirect(url_for('main.calculator_step', type=type, step=4))
             elif type == 'helical':
-                # Add validation for helical pile parameters
+                # Debug print
+                print("Form data:", request.form.to_dict())
+                
+                # Validate required fields
                 required_fields = ['shaft_diameter', 'helix_diameter', 'helix_depth', 'borehole_depth', 'water_table']
                 for field in required_fields:
                     if field not in request.form or not request.form[field]:
@@ -256,14 +288,33 @@ def calculator_step(type, step):
                         return redirect(url_for('main.calculator_step', type=type, step=3))
                 
                 # Store parameters in session
-                session['pile_params'] = {
-                    'shaft_diameter': float(request.form['shaft_diameter']),
-                    'helix_diameter': float(request.form['helix_diameter']),
-                    'helix_depth': float(request.form['helix_depth']),
-                    'borehole_depth': float(request.form['borehole_depth']),
-                    'water_table': float(request.form['water_table']),
+                pile_params = {
+                    'shaft_diameter': request.form.get('shaft_diameter'),
+                    'helix_diameter': request.form.get('helix_diameter'),
+                    'helix_depth': request.form.get('helix_depth'),
+                    'borehole_depth': request.form.get('borehole_depth'),
+                    'water_table': request.form.get('water_table'),
                     'site_name': request.form.get('site_name', '')
                 }
+                
+                # Convert values to float and validate they are greater than 0
+                for key in ['shaft_diameter', 'helix_diameter', 'helix_depth', 'borehole_depth', 'water_table']:
+                    try:
+                        if pile_params[key]:
+                            value = float(pile_params[key])
+                            if key != 'water_table' and value <= 0:
+                                flash(f'{key} must be greater than 0')
+                                return redirect(url_for('main.calculator_step', type=type, step=3))
+                            pile_params[key] = value
+                    except (ValueError, TypeError):
+                        flash(f'Invalid value for {key}')
+                        return redirect(url_for('main.calculator_step', type=type, step=3))
+                
+                # Store in session
+                session['pile_params'] = pile_params
+                
+                # Debug print
+                print("Session pile_params:", session.get('pile_params'))
                 
                 # Process the data and calculate results
                 if 'cpt_data_id' not in session:
@@ -278,7 +329,7 @@ def calculator_step(type, step):
                 # Process the CPT data
                 processed_cpt = pre_input_calc(cpt_data, float(session['pile_params']['water_table']))
                 
-                # Calculate results based on pile type
+                # Calculate results using the helical pile specific function
                 results = calculate_helical_pile_results(processed_cpt, session['pile_params'])
                 
                 # Store results in session
@@ -301,6 +352,10 @@ def calculator_step(type, step):
             
             # Debug print to see what's in the results
             print("RESULTS IN SESSION:", session['results'])
+            
+            # For GET requests, add debug output
+            if request.method == 'GET':
+                print("Session data on results page:", session.get('pile_params'))
             
             return render_template(
                 f'{type}/steps.html', 
@@ -490,31 +545,49 @@ def download_debug_params():
             # For helical piles, create a detailed output format
             results = session.get('results', [])
             
+            # Debug print to see what's in pile_params
+            print("pile_params contents for helical pile:", pile_params)
+            print("Session contents:", dict(session))
+            print("Pile type:", session.get('type'))
+            print("Pile params:", session.get('pile_params'))
+            
+            # Get the pile parameters directly from the session
+            session_pile_params = session.get('pile_params', {})
+            print("Session pile_params:", session_pile_params)
+            
             for result_index, result in enumerate(results):
                 if result_index > 0:
                     buffer.write('\n\n' + '='*50 + '\n\n')
                 
                 tip_depth = result['tipdepth']
                 
-                # Create parameters list - use get() to handle missing keys
+                # Create a more comprehensive parameters list with all user inputs
+                # Use session_pile_params directly without any conversions
                 constants = [
                     ['Tip Depth (m)', tip_depth],
-                    ['Water table depth (m)', float(pile_params.get('water_table', 0))],
-                    ['Pile type', 'Helical'],
-                    ['Shaft diameter (m)', pile_params.get('shaft_diameter', 'N/A')]
+                    ['Water table depth (m)', session_pile_params.get('water_table', 0)],
+                    ['Pile type', 'Helical']
                 ]
                 
-                # Add helical-specific parameters if they exist
-                if 'helix_diameter' in pile_params:
-                    constants.append(['Helix diameter (m)', pile_params.get('helix_diameter')])
-                if 'helix_depth' in pile_params:
-                    constants.append(['Helix depth (m)', pile_params.get('helix_depth')])
-                if 'borehole_depth' in pile_params:
-                    constants.append(['Borehole depth (m)', pile_params.get('borehole_depth')])
+                # Add all parameters from session_pile_params
+                for key, value in session_pile_params.items():
+                    if key not in ['water_table', 'site_name']:  # Already added water_table
+                        if key == 'shaft_diameter':
+                            constants.append(['Shaft diameter (m)', value])
+                        elif key == 'helix_diameter':
+                            constants.append(['Helix diameter (m)', value])
+                        elif key == 'helix_depth':
+                            constants.append(['Helix depth (m)', value])
+                        elif key == 'borehole_depth':
+                            constants.append(['Borehole depth (m)', value])
+                
+                # Add site name if it exists
+                if 'site_name' in session_pile_params and session_pile_params['site_name']:
+                    constants.append(['Site name', session_pile_params['site_name']])
                 
                 # Write parameters
                 df_constants = pd.DataFrame(constants, columns=['Parameter', 'Value'])
-                buffer.write(f'INPUT PARAMETERS FOR TIP DEPTH {tip_depth}m\n')
+                buffer.write(f'INPUT PARAMETERS FOR HELICAL PILE\n')
                 df_constants.to_csv(buffer, index=False)
                 
                 # Write results for this tip depth
@@ -531,10 +604,10 @@ def download_debug_params():
                 # Add intermediate calculations
                 if 'cpt_data_id' in session:
                     # Calculate helical pile specific intermediate values
-                    shaft_diameter = float(pile_params.get('shaft_diameter', 0))
-                    helix_diameter = float(pile_params.get('helix_diameter', 0))
-                    helix_depth = float(pile_params.get('helix_depth', 0))
-                    borehole_depth = float(pile_params.get('borehole_depth', 0))
+                    shaft_diameter = float(session_pile_params.get('shaft_diameter', 0))
+                    helix_diameter = float(session_pile_params.get('helix_diameter', 0))
+                    helix_depth = float(session_pile_params.get('helix_depth', 0))
+                    borehole_depth = float(session_pile_params.get('borehole_depth', 0))
                     
                     # Calculate constants
                     perimeter = math.pi * shaft_diameter
@@ -759,9 +832,11 @@ def register():
     db.session.add(registration)
     db.session.commit()
     
-    session['registered'] = True
-    session['user_email'] = email  # Store email in session
+    # Set session as permanent and add registration info
     session.permanent = True
+    session['registered'] = True
+    session['user_email'] = email
+    
     return redirect(url_for('main.index'))
 
 def admin_required(f):

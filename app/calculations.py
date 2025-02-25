@@ -716,39 +716,39 @@ def calculate_helical_pile_capacity(processed_cpt, pile_params, qshaft_kn):
         qshaft_kn (list): Shaft capacity values for each depth
     
     Returns:
-        dict: Dictionary containing:
-            - tension_capacity (float): Total tension capacity in kN
-            - compression_capacity (float): Total compression capacity in kN
-            - depth (list): Depth values for plotting
-            - tension_capacity_array (list): Tension capacity values for each depth
-            - compression_capacity_array (list): Compression capacity values for each depth
+        dict: Dictionary containing summary and detailed results
     """
     
     depths = processed_cpt['depth']
-    helix_depth = pile_params['helix_depth']
-    helix_diameter = pile_params['helix_diameter']
+    helix_depth = float(pile_params['helix_depth'])
     
-    # Find the index for the depth at (helix_depth - helix_diameter)
-    reference_depth = helix_depth - helix_diameter
-    reference_index = min(range(len(depths)), key=lambda i: abs(depths[i] - reference_depth))
+    # Find the index for the helix depth
+    helix_index = min(range(len(depths)), key=lambda i: abs(depths[i] - helix_depth))
     
-    # Get shaft capacity at the reference depth
-    shaft_capacity = qshaft_kn[reference_index]
+    # Get shaft capacity at the helix depth
+    shaft_capacity = qshaft_kn[helix_index]
     
     # Calculate total capacities
     tension_capacity = shaft_capacity
-    compression_capacity = shaft_capacity
+    compression_capacity = shaft_capacity * 1.2  # Example factor, adjust as needed
     
-    # Create arrays for plotting
-    tension_capacity_array = qshaft_kn.copy()
-    compression_capacity_array = qshaft_kn.copy()
+    # Create summary results
+    summary = [{
+        'tipdepth': helix_depth,
+        'tension_capacity': tension_capacity,
+        'compression_capacity': compression_capacity
+    }]
+    
+    # Create detailed results for plotting
+    detailed = {
+        'depth': depths,
+        'tension_capacity': qshaft_kn,
+        'compression_capacity': [q * 1.2 for q in qshaft_kn]  # Example factor
+    }
     
     return {
-        'tension_capacity': tension_capacity,
-        'compression_capacity': compression_capacity,
-        'depth': depths,
-        'tension_capacity_array': tension_capacity_array,
-        'compression_capacity_array': compression_capacity_array
+        'summary': summary,
+        'detailed': detailed
     }
 
 def calculate_delta_z_and_qshaft(processed_cpt, coe_casing, perimeter):
@@ -852,15 +852,80 @@ def calculate_coe_casing_and_soil_type(processed_cpt, borehole_depth, tip_depth)
     }
 
 def calculate_helical_pile_results(processed_cpt, params):
+    """Calculate helical pile results"""
+    print("Received params in calculate_helical_pile_results:", params)
+    
+    # Get geometric constants
+    constants = calculate_helical_constants(params)
+    print("Calculated constants:", constants)
+    perimeter = constants['perimeter']
+    helix_area = constants['helix_area']
+    
+    # Calculate q1 and q10 values
+    q_values = calculate_q1_q10(processed_cpt, params['helix_diameter'])
+    print("Calculated q values:", q_values)
+    
+    # Get helix depth index
+    helix_depth = float(params['helix_depth'])
+    helix_index = min(range(len(processed_cpt['depth'])), 
+                     key=lambda i: abs(processed_cpt['depth'][i] - helix_depth))
+    
+    # Calculate shaft capacity
+    qshaft_kn = calculate_shaft_capacity(processed_cpt, params, perimeter)
+    
+    # Calculate total capacities
+    results = calculate_helical_pile_capacity(processed_cpt, params, qshaft_kn)
+    print("Final results:", results)
+    
+    return {
+        'summary': results['summary'],
+        'detailed': results['detailed']
+    }
+
+def calculate_shaft_capacity(processed_cpt, params, perimeter):
     """
-    Calculate helical pile results
+    Calculate shaft capacity for helical piles
+    
+    Args:
+        processed_cpt (dict): Processed CPT data
+        params (dict): Pile parameters
+        perimeter (float): Shaft perimeter
+    
+    Returns:
+        list: Shaft capacity values for each depth
+    """
+    
+    # Get required parameters
+    borehole_depth = float(params['borehole_depth'])
+    helix_depth = float(params['helix_depth'])
+    
+    # Calculate casing coefficients and soil types
+    soil_params = calculate_coe_casing_and_soil_type(
+        processed_cpt, 
+        borehole_depth, 
+        helix_depth
+    )
+    coe_casing = soil_params['coe_casing']
+    
+    # Calculate delta z and shaft capacity
+    shaft_results = calculate_delta_z_and_qshaft(
+        processed_cpt,
+        coe_casing,
+        perimeter
+    )
+    
+    return shaft_results['qshaft_kn']
+
+def calculate_helical_intermediate_values(processed_cpt, params):
+    """
+    Calculate intermediate values for helical pile analysis
     
     Args:
         processed_cpt (dict): Processed CPT data
         params (dict): Pile parameters
         
     Returns:
-        dict: Results including summary and detailed calculations
+        dict: Dictionary containing intermediate calculation results
     """
     # Extract parameters
     shaft_diameter = float(params['shaft_diameter'])
@@ -869,45 +934,111 @@ def calculate_helical_pile_results(processed_cpt, params):
     borehole_depth = float(params['borehole_depth'])
     
     # Calculate constants
-    constants = calculate_helical_constants(params)
-    perimeter = constants['perimeter']
-    helix_area = constants['helix_area']
+    perimeter = math.pi * shaft_diameter
+    helix_area = math.pi * (helix_diameter ** 2) * 0.25
     
-    # Calculate q1 and q10 values
-    q_values = calculate_q1_q10(processed_cpt, helix_diameter)
+    # Get depths array
+    depths = processed_cpt['depth']
+    
+    # Calculate q1 and q10 values for all depths
+    q1_values = []
+    q10_values = []
+    for qt in processed_cpt['qt']:
+        q1 = qt * (0.1 ** 0.6)
+        q10 = qt * ((0.01/helix_diameter) ** 0.6) if helix_diameter > 0 else 0
+        q1_values.append(q1)
+        q10_values.append(q10)
     
     # Calculate casing coefficient and soil type
-    casing_soil = calculate_coe_casing_and_soil_type(processed_cpt, borehole_depth, helix_depth)
-    coe_casing = casing_soil['coe_casing']
-    soil_type = casing_soil['soil_type']
+    coe_casing = []
+    soil_type = []
+    
+    for i, depth_val in enumerate(depths):
+        # Casing coefficient
+        if depth_val < borehole_depth:
+            casing = 0
+        elif depth_val < helix_depth:
+            casing = 1
+        else:
+            casing = 0
+        coe_casing.append(casing)
+        
+        # Soil type based on Ic value
+        ic = processed_cpt['lc'][i] if i < len(processed_cpt['lc']) else 0
+        if ic < 2.2:
+            soil = "Sand"
+        else:
+            soil = "Clay/Silt"
+        soil_type.append(soil)
     
     # Calculate delta_z and shaft capacity
-    shaft_results = calculate_delta_z_and_qshaft(processed_cpt, coe_casing, perimeter)
-    qshaft_kn = shaft_results['qshaft_kn']
+    delta_z = []
+    qshaft_segment = []
+    qshaft_kn = []
+    cumulative_qshaft = 0
     
-    # Calculate final capacities
-    capacity_results = calculate_helical_pile_capacity(processed_cpt, params, qshaft_kn)
+    for i, depth_val in enumerate(depths):
+        # Calculate delta z
+        if i == 0:
+            current_delta_z = depth_val
+        else:
+            current_delta_z = depth_val - depths[i-1]
+        
+        delta_z.append(current_delta_z)
+        
+        # Calculate shaft capacity increment
+        qshaft_increment = (coe_casing[i] * current_delta_z * 1000 * processed_cpt['qt'][i] * perimeter) / 175
+        qshaft_segment.append(qshaft_increment)
+        cumulative_qshaft += qshaft_increment
+        qshaft_kn.append(cumulative_qshaft)
     
-    # Find the index for the helix depth
-    helix_index = min(range(len(processed_cpt['depth'])), key=lambda i: abs(processed_cpt['depth'][i] - helix_depth))
-
-    # Create summary results
-    summary_results = [{
-        'tipdepth': helix_depth,
-        'tension_capacity': capacity_results['tension_capacity'],
-        'compression_capacity': capacity_results['compression_capacity'],
-        'q1': q_values['q1'][helix_index],  # Get q1 value at helix depth
-        'q10': q_values['q10'][helix_index]  # Get q10 value at helix depth
-    }]
+    # Calculate helix capacities
+    helix_index = min(range(len(depths)), key=lambda i: abs(depths[i] - helix_depth))
     
-    # Create detailed results for plotting
-    detailed_results = {
-        'depth': processed_cpt['depth'],
-        'tension_capacity': capacity_results['tension_capacity_array'],
-        'compression_capacity': capacity_results['compression_capacity_array']
-    }
+    # Get q1 and q10 at helix depth
+    q1_helix = q1_values[helix_index]
+    q10_helix = q10_values[helix_index]
+    
+    # Calculate helix capacities
+    qhelix_tension = q10_helix * helix_area * 1000
+    qhelix_compression = q1_helix * helix_area * 1000
+    
+    # Calculate total capacities
+    tension_capacity_array = []
+    compression_capacity_array = []
+    
+    for i in range(len(depths)):
+        if depths[i] <= helix_depth:
+            tension_capacity = qshaft_kn[i]
+            compression_capacity = qshaft_kn[i]
+        else:
+            tension_capacity = qshaft_kn[i] + qhelix_tension
+            compression_capacity = qshaft_kn[i] + qhelix_compression
+        
+        tension_capacity_array.append(tension_capacity)
+        compression_capacity_array.append(compression_capacity)
     
     return {
-        'summary': summary_results,
-        'detailed': detailed_results
+        'depth': depths,
+        'qt': processed_cpt['qt'],
+        'qc': processed_cpt['qc'],
+        'fs': processed_cpt['fs'],
+        'fr_percent': processed_cpt['fr_percent'],
+        'lc': processed_cpt['lc'],
+        'soil_type': soil_type,
+        'q1': q1_values,
+        'q10': q10_values,
+        'coe_casing': coe_casing,
+        'delta_z': delta_z,
+        'qshaft_segment': qshaft_segment,
+        'qshaft_kn': qshaft_kn,
+        'tension_capacity': tension_capacity_array,
+        'compression_capacity': compression_capacity_array,
+        'helix_index': helix_index,
+        'q1_helix': q1_helix,
+        'q10_helix': q10_helix,
+        'qhelix_tension': qhelix_tension,
+        'qhelix_compression': qhelix_compression,
+        'perimeter': perimeter,
+        'helix_area': helix_area
     }

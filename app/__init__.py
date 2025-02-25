@@ -8,7 +8,10 @@ def create_app():
     app.config['SECRET_KEY'] = 'your-secret-key-here'
     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///registrations.db'
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+    
+    # Make sure session is permanent and lasts for 1 year
     app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=365)
+    app.config['SESSION_PERMANENT'] = True
     
     db.init_app(app)
     
