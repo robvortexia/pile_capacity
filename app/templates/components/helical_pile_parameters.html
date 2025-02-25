@@ -1,0 +1,111 @@
+<div class="parameters-container">
+    <form method="POST" action="{{ url_for('main.calculator_step', type=type, step=3) }}">
+        <div class="form-section">
+            <div class="form-field">
+                <label>File Name for Download (not required)</label>
+                <input type="text" name="file_name" class="form-control" placeholder="e.g., Site A Helical">
+            </div>
+
+            <div class="form-field">
+                <label>Shaft Diameter (m)</label>
+                <input type="number" name="shaft_diameter" value="0.273" step="0.001" class="form-control" required>
+                <span class="help-text">Central shaft diameter</span>
+            </div>
+
+            <div class="form-field">
+                <label>Helix Diameter (m)</label>
+                <input type="number" name="helix_diameter" value="0.762" step="0.001" class="form-control" required>
+                <span class="help-text">Diameter of helical plate</span>
+            </div>
+
+            <div class="form-field">
+                <label>Helix Depth (m)</label>
+                <input type="number" name="helix_depth" value="5.0" step="0.1" class="form-control" required>
+                <span class="help-text">Depth to helical plate from ground surface</span>
+            </div>
+
+            <div class="form-field">
+                <label>Water Table Depth (m)</label>
+                <input type="number" 
+                       name="water_table" 
+                       value="{{ session['water_table'] }}"
+                       step="0.1" 
+                       class="form-control" 
+                       required>
+                <span class="help-text">Depth to water table from ground surface</span>
+            </div>
+
+            <div class="form-field">
+                <label>Borehole Depth (m)</label>
+                <input type="number" name="borehole_depth" value="1.0" step="0.1" class="form-control" required>
+                <span class="help-text">Depth of pre-drilled hole (if any)</span>
+            </div>
+        </div>
+
+        <div class="button-group">
+            <button type="submit" class="btn btn-primary">Continue to Results</button>
+            <a href="{{ url_for('main.calculator_step', type=type, step=2) }}" class="btn btn-secondary">Back to CPT Data</a>
+        </div>
+    </form>
+</div>
+
+<style>
+.parameters-container {
+    max-width: 500px;
+    margin: 0 auto;
+    background: white;
+    border-radius: 8px;
+    padding: 1.25rem;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+}
+
+.form-section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.form-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+}
+
+.form-field label {
+    font-weight: 500;
+    color: #374151;
+    font-size: 0.85rem;
+    margin-bottom: -0.1rem;
+}
+
+.form-control {
+    width: 100%;
+    padding: 0.4rem 0.5rem;
+    border: 1px solid #e5e7eb;
+    border-radius: 4px;
+    font-size: 0.85rem;
+}
+
+.help-text {
+    font-size: 0.75rem;
+    color: #6b7280;
+    margin-top: -0.1rem;
+}
+
+.button-group {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 1rem;
+}
+
+.btn {
+    padding: 0.4rem 1rem;
+    font-size: 0.85rem;
+}
+
+@media (max-width: 768px) {
+    .parameters-container {
+        padding: 1rem;
+    }
+}
+</style> 

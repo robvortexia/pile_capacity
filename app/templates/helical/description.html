@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="description-container">
+    <div class="description-header">
+        <h1>Description of Helical Pile Analysis</h1>
+    </div>
+
+    <div class="description-content">
+        <div class="description-text">
+            <p>This program uses CPT data to calculate the axial capacity of helical piles.</p>
+            
+            <!-- Add any relevant publication links or method descriptions here -->
+        </div>
+        <div class="description-image">
+            <img src="{{ url_for('static', filename='img/helical_pile.jpg') }}" alt="Helical Pile Illustration">
+        </div>
+    </div>
+
+    <div class="button-group">
+        <a href="{{ url_for('main.calculator_step', type='helical', step=1) }}" class="btn btn-primary">
+            Continue to Analysis
+        </a>
+        <a href="{{ url_for('main.index') }}" class="btn btn-secondary">
+            Back to Home
+        </a>
+    </div>
+</div>
+
+<style>
+.description-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 2rem;
+}
+
+.description-header {
+    margin-bottom: 2rem;
+}
+
+.description-header h1 {
+    font-size: 1.8rem;
+    color: #333;
+}
+
+.description-content {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 2rem;
+    background: white;
+    padding: 2rem;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    margin-bottom: 2rem;
+}
+
+.description-text {
+    font-size: 1.1rem;
+    line-height: 1.6;
+}
+
+.description-image img {
+    max-height: 300px;
+    object-fit: contain;
+}
+
+.link-to-publication {
+    display: inline-block;
+    color: #0066cc;
+    text-decoration: none;
+    margin-top: 1rem;
+}
+
+.link-to-publication:hover {
+    text-decoration: underline;
+}
+</style>
+{% endblock %}

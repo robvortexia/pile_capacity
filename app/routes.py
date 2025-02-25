@@ -47,7 +47,7 @@ def index():
 
 @bp.route('/calculator/<type>/step/<int:step>', methods=['GET', 'POST'])
 def calculator_step(type, step):
-    if type not in ['driven', 'bored']:
+    if type not in ['driven', 'bored', 'helical']:
         return redirect(url_for('main.index'))
     
     if request.method == 'POST':
@@ -182,6 +182,16 @@ def calculator_step(type, step):
                         'pile_end_condition': 0,  # Always open-ended for bored piles
                         'pile_tip_depths': [float(d.strip()) for d in request.form.get('tip_depths', '').split(',')]
                     }
+                elif type == 'helical':
+                    session['type'] = 'helical'
+                    session['pile_params'] = {
+                        'file_name': request.form.get('file_name', ''),
+                        'shaft_diameter': float(request.form.get('shaft_diameter')),
+                        'helix_diameter': float(request.form.get('helix_diameter')),
+                        'helix_depth': float(request.form.get('helix_depth')),
+                        'water_table': float(request.form.get('water_table', 0)),
+                        'borehole_depth': float(request.form.get('borehole_depth'))
+                    }
                 else:  # driven pile
                     session['type'] = 'driven'
                     session['pile_params'] = {
@@ -219,6 +229,9 @@ def calculator_step(type, step):
                     session['debug_id'] = debug_id
                     results_id = save_graphs_data(results['detailed'])
                     session['detailed_results_id'] = results_id
+                elif type == 'helical':
+                    results = calculate_pile_capacity(cpt_data, session['pile_params'], pile_type=type)
+                    session['results'] = results
                 else:
                     results = calculate_pile_capacity(cpt_data, session['pile_params'], pile_type=type)
                     session['results'] = results
@@ -262,6 +275,8 @@ def calculator_step(type, step):
         
         if type == 'bored':
             graphs = create_bored_pile_graphs(data)
+        elif type == 'helical':
+            graphs = create_cpt_graphs(data, data['water_table'])
         else:
             water_table = float(session.get('water_table', 0))
             graphs = create_cpt_graphs(data, water_table)
@@ -419,6 +434,62 @@ def download_debug_params():
                     'Soil Behavior Index Iz': processed['iz1']
                 })
                 df_cpt.to_csv(buffer, index=False)
+        elif pile_type == 'helical':
+            # For helical piles, create a simplified output format
+            results = session.get('results', [])
+            
+            for result_index, result in enumerate(results):
+                if result_index > 0:
+                    buffer.write('\n\n' + '='*50 + '\n\n')
+                
+                tip_depth = result['tipdepth']
+                
+                # Create parameters list
+                constants = [
+                    ['Tip Depth (m)', tip_depth],
+                    ['Water table depth (m)', float(pile_params['water_table'])],
+                    ['Pile type', 'Helical'],
+                    ['Shaft diameter (m)', pile_params.get('shaft_diameter', 'N/A')],
+                    ['Helix diameter (m)', pile_params.get('helix_diameter', 'N/A')],
+                    ['Helix depth (m)', pile_params.get('helix_depth', 'N/A')],
+                    ['Borehole depth (m)', pile_params.get('borehole_depth', 'N/A')]
+                ]
+                
+                # Write parameters
+                df_constants = pd.DataFrame(constants, columns=['Parameter', 'Value'])
+                buffer.write(f'INPUT PARAMETERS FOR TIP DEPTH {tip_depth}m\n')
+                df_constants.to_csv(buffer, index=False)
+                
+                # Write results for this tip depth
+                buffer.write('\nRESULTS\n')
+                df_result = pd.DataFrame([{
+                    'Tip Depth (m)': result['tipdepth'],
+                    'Tension Capacity (kN)': result['tension_capacity'],
+                    'Compression Capacity (kN)': result['compression_capacity']
+                }])
+                df_result.to_csv(buffer, index=False)
+                
+                # Write CPT data
+                buffer.write('\nCPT DATA\n')
+                df_cpt = pd.DataFrame({
+                    'depth': processed['depth'],
+                    'qc (MPa)': processed['qc'],
+                    'qt (MPa)': processed['qt'],
+                    'fs (kPa)': processed['fs'],
+                    'Unit Weight (kN/m³)': processed['gtot'],
+                    'Water Pressure u0 (kPa)': processed['u0_kpa'],
+                    'Total Vertical Stress σv0 (kPa)': processed['sig_v0'],
+                    'Effective Vertical Stress σv0\' (kPa)': processed['sig_v0_prime'],
+                    'Fr (%)': processed['fr_percent'],
+                    'Normalized Tip Resistance Qtn': processed['qtn'],
+                    'Stress Exponent n': processed['n'],
+                    'Soil Behavior Type Index Ic': processed['lc'],
+                    'Pore Pressure Ratio Bq': processed['bq'],
+                    'Correction Factor Kc': processed['kc'],
+                    'Corrected Tip Resistance qtc (MPa)': processed['qtc'],
+                    'Soil Behavior Index Iz': processed['iz1']
+                })
+                df_cpt.to_csv(buffer, index=False)
         else:
             flash('No detailed data available for this pile type')
             return redirect(url_for('main.calculator_step', type=pile_type or 'bored', step=4))
@@ -432,6 +503,8 @@ def download_debug_params():
         # Get the user's filename from session, default to original filename if not found
         if pile_type == 'driven':
             user_filename = pile_params.get('site_name', '')
+        elif pile_type == 'helical':
+            user_filename = pile_params.get('file_name', '')
         else:
             user_filename = pile_params.get('file_name', '')
         
@@ -625,7 +698,7 @@ def export_registrations():
 
 @bp.route('/<type>/description')
 def pile_description(type):
-    if type not in ['driven', 'bored']:
+    if type not in ['driven', 'bored', 'helical']:
         return redirect(url_for('main.index'))
     return render_template(f'{type}/description.html', type=type)
 
