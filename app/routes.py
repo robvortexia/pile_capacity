@@ -315,14 +315,16 @@ def download_debug_params():
         print("Retrieved pile_params:", pile_params)
         
         # Process the CPT data
-        water_table = float(session['pile_params']['water_table'])
+        water_table = float(pile_params.get('water_table', 0))
         processed = pre_input_calc(data, water_table)
         
         # Create a string buffer
         buffer = io.StringIO()
         
-        debug_id = session.get('debug_id')
-        if debug_id:
+        pile_type = session.get('type')
+        
+        if pile_type == 'bored' and 'debug_id' in session:
+            debug_id = session['debug_id']
             debug_details = load_debug_details(debug_id)
             if debug_details and len(debug_details) > 0:
                 
@@ -334,26 +336,16 @@ def download_debug_params():
                     # Create constants list with tip depth included
                     constants = [
                         ['Tip Depth (m)', tip_detail['tip_depth']],
-                        ['Water table depth (m)', float(session['pile_params']['water_table'])]
+                        ['Water table depth (m)', float(pile_params['water_table'])]
                     ]
                     
                     # Add pile type specific parameters
-                    if session.get('type') == 'driven':
-                        constants.extend([
-                            ['Pile type', 'Driven'],
-                            ['Pile end condition', pile_params.get('pile_end_condition', 'N/A')],
-                            ['Pile shape', pile_params.get('pile_shape', 'N/A')],
-                            ['Pile diameter/width (m)', pile_params.get('pile_diameter', 'N/A')],
-                            ['Wall thickness (mm)', pile_params.get('wall_thickness', 'N/A')],
-                            ['Borehole depth (m)', pile_params.get('borehole_depth', 'N/A')]
-                        ])
-                    else:
-                        constants.extend([
-                            ['Pile type', 'Bored'],
-                            ['Shaft diameter (m)', pile_params.get('shaft_diameter', 'N/A')],
-                            ['Base diameter (m)', pile_params.get('base_diameter', 'N/A')],
-                            ['Cased depth (m)', pile_params.get('cased_depth', 'N/A')]
-                        ])
+                    constants.extend([
+                        ['Pile type', 'Bored'],
+                        ['Shaft diameter (m)', pile_params.get('shaft_diameter', 'N/A')],
+                        ['Base diameter (m)', pile_params.get('base_diameter', 'N/A')],
+                        ['Cased depth (m)', pile_params.get('cased_depth', 'N/A')]
+                    ])
                     
                     # Write constants
                     df_constants = pd.DataFrame(constants, columns=['Parameter', 'Value'])
@@ -370,6 +362,66 @@ def download_debug_params():
                     # Add a blank line between constants and data
                     buffer.write('\nCPT DATA AND CALCULATIONS\n')
                     df_data.to_csv(buffer, index=False)
+        elif pile_type == 'driven':
+            # For driven piles, create a simplified output format
+            results = session.get('results', [])
+            
+            for result_index, result in enumerate(results):
+                if result_index > 0:
+                    buffer.write('\n\n' + '='*50 + '\n\n')
+                
+                tip_depth = result['tipdepth']
+                
+                # Create parameters list
+                constants = [
+                    ['Tip Depth (m)', tip_depth],
+                    ['Water table depth (m)', float(pile_params['water_table'])],
+                    ['Pile type', 'Driven'],
+                    ['Pile end condition', pile_params.get('pile_end_condition', 'N/A')],
+                    ['Pile shape', pile_params.get('pile_shape', 'N/A')],
+                    ['Pile diameter/width (m)', pile_params.get('pile_diameter', 'N/A')],
+                    ['Wall thickness (mm)', pile_params.get('wall_thickness', 'N/A')],
+                    ['Borehole depth (m)', pile_params.get('borehole_depth', 'N/A')]
+                ]
+                
+                # Write parameters
+                df_constants = pd.DataFrame(constants, columns=['Parameter', 'Value'])
+                buffer.write(f'INPUT PARAMETERS FOR TIP DEPTH {tip_depth}m\n')
+                df_constants.to_csv(buffer, index=False)
+                
+                # Write results for this tip depth
+                buffer.write('\nRESULTS\n')
+                df_result = pd.DataFrame([{
+                    'Tip Depth (m)': result['tipdepth'],
+                    'Tension Capacity (kN)': result['tension_capacity'],
+                    'Compression Capacity (kN)': result['compression_capacity']
+                }])
+                df_result.to_csv(buffer, index=False)
+                
+                # Write CPT data
+                buffer.write('\nCPT DATA\n')
+                df_cpt = pd.DataFrame({
+                    'depth': processed['depth'],
+                    'qc (MPa)': processed['qc'],
+                    'qt (MPa)': processed['qt'],
+                    'fs (kPa)': processed['fs'],
+                    'Unit Weight (kN/m³)': processed['gtot'],
+                    'Water Pressure u0 (kPa)': processed['u0_kpa'],
+                    'Total Vertical Stress σv0 (kPa)': processed['sig_v0'],
+                    'Effective Vertical Stress σv0\' (kPa)': processed['sig_v0_prime'],
+                    'Fr (%)': processed['fr_percent'],
+                    'Normalized Tip Resistance Qtn': processed['qtn'],
+                    'Stress Exponent n': processed['n'],
+                    'Soil Behavior Type Index Ic': processed['lc'],
+                    'Pore Pressure Ratio Bq': processed['bq'],
+                    'Correction Factor Kc': processed['kc'],
+                    'Corrected Tip Resistance qtc (MPa)': processed['qtc'],
+                    'Soil Behavior Index Iz': processed['iz1']
+                })
+                df_cpt.to_csv(buffer, index=False)
+        else:
+            flash('No detailed data available for this pile type')
+            return redirect(url_for('main.calculator_step', type=pile_type or 'bored', step=4))
         
         # Prepare the file for download
         buffer.seek(0)
@@ -378,17 +430,16 @@ def download_debug_params():
         current_date = datetime.now().strftime('%d%m%Y')
         
         # Get the user's filename from session, default to original filename if not found
-        pile_params = session.get('pile_params', {})
-        if session.get('type') == 'driven':
+        if pile_type == 'driven':
             user_filename = pile_params.get('site_name', '')
         else:
             user_filename = pile_params.get('file_name', '')
-
+        
         # If no user filename, try to use the original uploaded filename
         if not user_filename:
             user_filename = session.get('original_filename', '')
             print("Using original filename:", user_filename)
-
+        
         print("Final user_filename:", user_filename)
         
         # Create the filename, including the user's input if it exists
@@ -409,7 +460,7 @@ def download_debug_params():
     except Exception as e:
         print(f"Debug download error: {str(e)}")
         flash(f'Error generating debug data: {str(e)}')
-        return redirect(url_for('main.calculator_step', type='bored', step=4))
+        return redirect(url_for('main.calculator_step', type=session.get('type', 'bored'), step=4))
 
 def create_data_dataframe(processed, calc_dict):
     """Helper function to create the data DataFrame with calculations"""
