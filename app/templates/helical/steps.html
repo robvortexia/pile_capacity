@@ -12,9 +12,7 @@
             <h2>Step 1: CPT Data</h2>
             {% include 'components/upload_form.html' %}
             <div class="button-group">
-                <a href="{{ url_for('main.index') }}" class="btn btn-secondary">
-                    Back to Home
-                </a>
+                <a href="{{ url_for('main.index') }}" class="btn btn-secondary">Back to Home</a>
             </div>
         </div>
         {% endif %}
@@ -22,35 +20,30 @@
         <div class="step {% if step >= 2 %}active{% endif %}">
             <h2>Step 2: View CPT Data</h2>
             {% if step == 2 %}
-                <div class="step active">
-                    <h2>Step 2: View CPT Data</h2>
-                    <div class="graphs-grid">
-                        <div class="graph-container">
-                            <div id="qt_graph"></div>
-                        </div>
-                        <div class="graph-container">
-                            <div id="fr_graph"></div>
-                        </div>
-                        <div class="graph-container">
-                            <div id="ic_graph"></div>
-                        </div>
-                    </div>
-                    <div class="debug-section">
-                        <div class="button-group">
-                            <a href="{{ url_for('main.download_intermediary_calcs') }}" class="btn btn-info">
-                                <i class="fas fa-download"></i> Download Intermediary Calculations
-                            </a>
-                        </div>
-                    </div>
-                    <div class="button-group">
-                        <form method="POST" action="{{ url_for('main.calculator_step', type=type, step=2) }}">
-                            <button type="submit" class="btn btn-primary">Continue to Step 3</button>
-                        </form>
-                        <a href="{{ url_for('main.calculator_step', type=type, step=1) }}" class="btn btn-secondary">
-                            Back to Step 1
-                        </a>
-                    </div>
+            <div class="graphs-grid">
+                <div class="graph-container">
+                    <div id="qt_graph"></div>
                 </div>
+                <div class="graph-container">
+                    <div id="fr_graph"></div>
+                </div>
+                <div class="graph-container">
+                    <div id="ic_graph"></div>
+                </div>
+            </div>
+            <div class="debug-section">
+                <div class="button-group">
+                    <a href="{{ url_for('main.download_intermediary_calcs') }}" class="btn btn-info">
+                        <i class="fas fa-download"></i> Download Intermediary Calculations
+                    </a>
+                </div>
+            </div>
+            <div class="button-group">
+                <form method="POST" action="{{ url_for('main.calculator_step', type=type, step=2) }}">
+                    <button type="submit" class="btn btn-primary">Continue to Step 3</button>
+                </form>
+                <a href="{{ url_for('main.calculator_step', type=type, step=1) }}" class="btn btn-secondary">Back to Step 1</a>
+            </div>
             {% endif %}
         </div>
 
@@ -64,60 +57,95 @@
         <div class="step {% if step >= 4 %}active{% endif %}">
             <h2>Step 4: Results</h2>
             {% if step == 4 %}
-                <div class="step active">
-                    <h2>Step 4: Results</h2>
-                    <div class="results-container">
-                        <div class="input-summary">
-                            <h3>Input Parameters</h3>
-                            <table class="table">
-                                <tr><th>Parameter</th><th>Value</th></tr>
-                                <tr>
-                                    <td>Shaft Diameter</td>
-                                    <td>{{ session['pile_params']['shaft_diameter'] }} m</td>
-                                </tr>
-                                <tr>
-                                    <td>Helix Diameter</td>
-                                    <td>{{ session['pile_params']['helix_diameter'] }} m</td>
-                                </tr>
-                                <tr>
-                                    <td>Helix Depth</td>
-                                    <td>{{ session['pile_params']['helix_depth'] }} m</td>
-                                </tr>
-                                <tr>
-                                    <td>Borehole Depth</td>
-                                    <td>{{ session['pile_params']['borehole_depth'] }} m</td>
-                                </tr>
-                                <tr>
-                                    <td>Water Table Depth</td>
-                                    <td>{{ session['pile_params']['water_table'] }} m</td>
-                                </tr>
-                            </table>
-                        </div>
+            <div class="results-container">
+                <div class="input-summary">
+                    <h3>Input Parameters</h3>
+                    <table class="table">
+                        <tr><th>Parameter</th><th>Value</th></tr>
+                        <tr>
+                            <td>Shaft Diameter</td>
+                            <td>{{ session['pile_params']['shaft_diameter'] }} m</td>
+                        </tr>
+                        <tr>
+                            <td>Helix Diameter</td>
+                            <td>{{ session['pile_params']['helix_diameter'] }} m</td>
+                        </tr>
+                        <tr>
+                            <td>Helix Depth</td>
+                            <td>{{ session['pile_params']['helix_depth'] }} m</td>
+                        </tr>
+                        <tr>
+                            <td>Borehole Depth</td>
+                            <td>{{ session['pile_params']['borehole_depth'] }} m</td>
+                        </tr>
+                        <tr>
+                            <td>Water Table Depth</td>
+                            <td>{{ session['pile_params']['water_table'] }} m</td>
+                        </tr>
+                    </table>
+                </div>
 
-                        <div class="debug-section">
-                            <div class="button-group mb-3">
-                                <a href="{{ url_for('main.download_debug_params') }}" class="btn btn-info">
-                                    <i class="fas fa-download"></i> Download Detailed Output
-                                </a>
-                                <a href="{{ url_for('main.download_results') }}" class="btn btn-info ml-2">
-                                    <i class="fas fa-download"></i> Download Results
-                                </a>
-                            </div>
-                        </div>
+                <div class="results-summary">
+                    <h3>Calculated Capacities</h3>
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Depth (m)</th>
+                                <th>q1 (MPa)</th>
+                                <th>q10 (MPa)</th>
+                                <th>Tension Capacity (kN)</th>
+                                <th>Compression Capacity (kN)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for result in results %}
+                            <tr>
+                                <td>{{ "%.2f"|format(result.tipdepth) }}</td>
+                                <td>
+                                    {% if result.q1 is defined %}
+                                        {{ "%.2f"|format(result.q1) }}
+                                    {% else %}
+                                        N/A
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if result.q10 is defined %}
+                                        {{ "%.2f"|format(result.q10) }}
+                                    {% else %}
+                                        N/A
+                                    {% endif %}
+                                </td>
+                                <td>{{ "%.2f"|format(result.tension_capacity) }}</td>
+                                <td>{{ "%.2f"|format(result.compression_capacity) }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
 
-                        <div class="graphs-grid">
-                            <div class="graph-container">
-                                <div id="capacity_graph"></div>
-                            </div>
-                        </div>
-
-                        <div class="button-group">
-                            <a href="{{ url_for('main.calculator_step', type=type, step=3) }}" class="btn btn-secondary">
-                                Back to Step 3
-                            </a>
-                        </div>
+                <div class="graphs-grid">
+                    <div class="graph-container">
+                        <div id="capacity_graph"></div>
                     </div>
                 </div>
+
+                <div class="debug-section">
+                    <div class="button-group mb-3">
+                        <a href="{{ url_for('main.download_debug_params') }}" class="btn btn-info">
+                            <i class="fas fa-download"></i> Download Detailed Output
+                        </a>
+                        <a href="{{ url_for('main.download_results') }}" class="btn btn-info ml-2">
+                            <i class="fas fa-download"></i> Download Results
+                        </a>
+                    </div>
+                </div>
+
+                <div class="button-group">
+                    <a href="{{ url_for('main.calculator_step', type=type, step=3) }}" class="btn btn-secondary">
+                        Back to Step 3
+                    </a>
+                </div>
+            </div>
             {% endif %}
         </div>
     </div>
@@ -142,17 +170,21 @@
 {% endif %}
 
 {% if step == 4 and detailed_results %}
+<script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
 <script>
-    var detailed_results = {{ detailed_results | tojson | safe }};
-    
+    var config = {
+        responsive: true,
+        displayModeBar: false
+    };
+
     var capacityData = [{
-        x: detailed_results.depth,
-        y: detailed_results.tension_capacity,
+        x: {{ detailed_results.depth|tojson }},
+        y: {{ detailed_results.tension_capacity|tojson }},
         name: 'Tension Capacity',
         type: 'scatter'
     }, {
-        x: detailed_results.depth,
-        y: detailed_results.compression_capacity,
+        x: {{ detailed_results.depth|tojson }},
+        y: {{ detailed_results.compression_capacity|tojson }},
         name: 'Compression Capacity',
         type: 'scatter'
     }];

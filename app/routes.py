@@ -8,7 +8,7 @@ import plotly.graph_objects as go
 import plotly.utils
 import numpy as np
 from .utils import save_cpt_data, load_cpt_data, create_cpt_graphs, save_graphs_data, load_graphs_data, generate_csv_download, save_debug_details, load_debug_details, create_bored_pile_graphs
-from .calculations import calculate_pile_capacity, process_cpt_data, pre_input_calc, get_iterative_values, calculate_bored_pile_results
+from .calculations import calculate_pile_capacity, process_cpt_data, pre_input_calc, get_iterative_values, calculate_bored_pile_results, calculate_helical_pile_results
 from datetime import datetime, timedelta
 from .models import db, Registration, Visit
 from functools import wraps
@@ -163,85 +163,132 @@ def calculator_step(type, step):
             return redirect(url_for('main.calculator_step', type=type, step=3))
         
         elif step == 3:
-            try:
-                # Debug logging
-                print("Form data received:", request.form)
+            # Validate form data
+            if type == 'bored':
+                # Add validation for bored pile parameters
+                required_fields = ['shaft_diameter', 'base_diameter', 'cased_depth', 'water_table', 'pile_tip_depths']
+                for field in required_fields:
+                    if field not in request.form or not request.form[field]:
+                        flash(f'Missing required field: {field}')
+                        return redirect(url_for('main.calculator_step', type=type, step=3))
                 
-                # Store the pile parameters in session based on pile type
-                if type == 'bored':
-                    session['type'] = 'bored'
-                    session['pile_params'] = {
-                        'file_name': request.form.get('file_name', ''),
-                        'shaft_diameter': float(request.form.get('shaft_diameter')),
-                        'base_diameter': float(request.form.get('base_diameter')),
-                        'cased_depth': float(request.form.get('cased_depth')),
-                        'water_table': float(request.form.get('water_table', 0)),
-                        'tip_depths': [float(d.strip()) for d in request.form.get('tip_depths', '').split(',')],
-                        'borehole_depth': float(request.form.get('cased_depth')),
-                        'pile_shape': 0,  # Always circular for bored piles
-                        'pile_end_condition': 0,  # Always open-ended for bored piles
-                        'pile_tip_depths': [float(d.strip()) for d in request.form.get('tip_depths', '').split(',')]
-                    }
-                elif type == 'helical':
-                    session['type'] = 'helical'
-                    session['pile_params'] = {
-                        'file_name': request.form.get('file_name', ''),
-                        'shaft_diameter': float(request.form.get('shaft_diameter')),
-                        'helix_diameter': float(request.form.get('helix_diameter')),
-                        'helix_depth': float(request.form.get('helix_depth')),
-                        'water_table': float(request.form.get('water_table', 0)),
-                        'borehole_depth': float(request.form.get('borehole_depth'))
-                    }
-                else:  # driven pile
-                    session['type'] = 'driven'
-                    session['pile_params'] = {
-                        'site_name': request.form.get('site_name', ''),
-                        'pile_end_condition': request.form.get('pile_end_condition'),
-                        'pile_shape': request.form.get('pile_shape'),
-                        'pile_diameter': float(request.form.get('pile_diameter')),
-                        'wall_thickness': float(request.form.get('wall_thickness', 0)),
-                        'borehole_depth': float(request.form.get('borehole_depth')),
-                        'pile_tip_depths': [float(d.strip()) for d in request.form.get('pile_tip_depths', '').split(',')],
-                        'water_table': float(session.get('water_table', 0))
-                    }
+                # Parse pile tip depths from the comma-separated string
+                tip_depths_str = request.form.get('pile_tip_depths', '')
+                try:
+                    pile_tip_depths = [float(d.strip()) for d in tip_depths_str.split(',')]
+                except ValueError:
+                    flash('Invalid pile tip depths format. Please enter numbers separated by commas.')
+                    return redirect(url_for('main.calculator_step', type=type, step=3))
                 
-                print("Pile params stored in session:", session['pile_params'])
+                # Store parameters in session
+                session['pile_params'] = {
+                    'shaft_diameter': float(request.form['shaft_diameter']),
+                    'base_diameter': float(request.form['base_diameter']),
+                    'cased_depth': float(request.form['cased_depth']),
+                    'water_table': float(request.form['water_table']),
+                    'site_name': request.form.get('file_name', ''),
+                    'pile_tip_depths': pile_tip_depths
+                }
                 
-                # Calculate results using the parameters and CPT data
+                # Process the data and calculate results
                 if 'cpt_data_id' not in session:
-                    flash('No CPT data found. Please go back to step 1.')
+                    flash('No CPT data available. Please upload data first.')
                     return redirect(url_for('main.calculator_step', type=type, step=1))
                 
                 cpt_data = load_cpt_data(session['cpt_data_id'])
                 if not cpt_data:
-                    flash('CPT data not found. Please go back to step 1.')
+                    flash('CPT data not found. Please upload data again.')
                     return redirect(url_for('main.calculator_step', type=type, step=1))
                 
-                print("About to calculate pile capacity")
-                if type == 'bored':
-                    water_table = float(session['pile_params']['water_table'])
-                    processed_cpt = pre_input_calc(cpt_data, water_table)
-                    results = calculate_bored_pile_results(processed_cpt, session['pile_params'])
-                    
-                    # Store only summary in session, save detailed results to storage
-                    session['results'] = results['summary']
-                    debug_id = save_debug_details(results['detailed'])
-                    session['debug_id'] = debug_id
-                    results_id = save_graphs_data(results['detailed'])
-                    session['detailed_results_id'] = results_id
-                elif type == 'helical':
-                    results = calculate_pile_capacity(cpt_data, session['pile_params'], pile_type=type)
-                    session['results'] = results
-                else:
-                    results = calculate_pile_capacity(cpt_data, session['pile_params'], pile_type=type)
-                    session['results'] = results
+                # Calculate results
+                results = calculate_pile_capacity(cpt_data, session['pile_params'], pile_type=type)
+                session['results'] = results
                 
                 return redirect(url_for('main.calculator_step', type=type, step=4))
+            elif type == 'driven':
+                # Add validation for driven pile parameters
+                required_fields = ['pile_diameter', 'wall_thickness', 'borehole_depth', 'pile_shape', 'pile_end_condition']
+                for field in required_fields:
+                    if field not in request.form:
+                        flash(f'Missing required field: {field}')
+                        return redirect(url_for('main.calculator_step', type=type, step=3))
                 
-            except Exception as e:
-                print("Error occurred:", str(e))
-                flash(f'Error calculating results: {str(e)}')
-                return redirect(url_for('main.calculator_step', type=type, step=3))
+                # Parse pile tip depths from the comma-separated string
+                tip_depths_str = request.form.get('pile_tip_depths', '')
+                try:
+                    pile_tip_depths = [float(d.strip()) for d in tip_depths_str.split(',')]
+                except ValueError:
+                    flash('Invalid pile tip depths format. Please enter numbers separated by commas.')
+                    return redirect(url_for('main.calculator_step', type=type, step=3))
+                
+                session['pile_params'] = {
+                    'pile_diameter': float(request.form['pile_diameter']),
+                    'wall_thickness': float(request.form['wall_thickness']),
+                    'borehole_depth': float(request.form['borehole_depth']),
+                    'pile_shape': request.form['pile_shape'],
+                    'pile_end_condition': request.form['pile_end_condition'],
+                    'water_table': float(session['water_table']),  # Get from previous step
+                    'site_name': request.form.get('site_name', ''),
+                    'pile_tip_depths': pile_tip_depths
+                }
+                
+                # Process the data and calculate results
+                if 'cpt_data_id' not in session:
+                    flash('No CPT data available. Please upload data first.')
+                    return redirect(url_for('main.calculator_step', type=type, step=1))
+                
+                cpt_data = load_cpt_data(session['cpt_data_id'])
+                if not cpt_data:
+                    flash('CPT data not found. Please upload data again.')
+                    return redirect(url_for('main.calculator_step', type=type, step=1))
+                
+                # Calculate results
+                results = calculate_pile_capacity(cpt_data, session['pile_params'], pile_type=type)
+                session['results'] = results
+                
+                return redirect(url_for('main.calculator_step', type=type, step=4))
+            elif type == 'helical':
+                # Add validation for helical pile parameters
+                required_fields = ['shaft_diameter', 'helix_diameter', 'helix_depth', 'borehole_depth', 'water_table']
+                for field in required_fields:
+                    if field not in request.form or not request.form[field]:
+                        flash(f'Missing required field: {field}')
+                        return redirect(url_for('main.calculator_step', type=type, step=3))
+                
+                # Store parameters in session
+                session['pile_params'] = {
+                    'shaft_diameter': float(request.form['shaft_diameter']),
+                    'helix_diameter': float(request.form['helix_diameter']),
+                    'helix_depth': float(request.form['helix_depth']),
+                    'borehole_depth': float(request.form['borehole_depth']),
+                    'water_table': float(request.form['water_table']),
+                    'site_name': request.form.get('site_name', '')
+                }
+                
+                # Process the data and calculate results
+                if 'cpt_data_id' not in session:
+                    flash('No CPT data available. Please upload data first.')
+                    return redirect(url_for('main.calculator_step', type=type, step=1))
+                
+                cpt_data = load_cpt_data(session['cpt_data_id'])
+                if not cpt_data:
+                    flash('CPT data not found. Please upload data again.')
+                    return redirect(url_for('main.calculator_step', type=type, step=1))
+                
+                # Process the CPT data
+                processed_cpt = pre_input_calc(cpt_data, float(session['pile_params']['water_table']))
+                
+                # Calculate results based on pile type
+                results = calculate_helical_pile_results(processed_cpt, session['pile_params'])
+                
+                # Store results in session
+                session['results'] = results['summary']
+                session['detailed_results'] = results['detailed']
+                
+                return redirect(url_for('main.calculator_step', type=type, step=4))
+            else:
+                results = calculate_pile_capacity(cpt_data, session['pile_params'], pile_type=type)
+                session['results'] = results
         
         elif step == 4:
             if 'results' not in session:
@@ -249,8 +296,11 @@ def calculator_step(type, step):
                 return redirect(url_for('main.calculator_step', type=type, step=3))
             
             detailed_results = None
-            if type == 'bored' and 'detailed_results_id' in session:
-                detailed_results = load_graphs_data(session['detailed_results_id'])
+            if type == 'bored' and 'detailed_results' in session:
+                detailed_results = session['detailed_results']
+            
+            # Debug print to see what's in the results
+            print("RESULTS IN SESSION:", session['results'])
             
             return render_template(
                 f'{type}/steps.html', 
@@ -294,8 +344,8 @@ def calculator_step(type, step):
             return redirect(url_for('main.calculator_step', type=type, step=3))
         
         detailed_results = None
-        if type == 'bored' and 'detailed_results_id' in session:
-            detailed_results = load_graphs_data(session['detailed_results_id'])
+        if type == 'bored' and 'detailed_results' in session:
+            detailed_results = session['detailed_results']
         
         return render_template(
             f'{type}/steps.html', 
@@ -408,6 +458,8 @@ def download_debug_params():
                 buffer.write('\nRESULTS\n')
                 df_result = pd.DataFrame([{
                     'Tip Depth (m)': result['tipdepth'],
+                    'q1 (MPa)': result.get('q1', 'N/A'),  # Use get() to handle missing keys
+                    'q10 (MPa)': result.get('q10', 'N/A'),  # Use get() to handle missing keys
                     'Tension Capacity (kN)': result['tension_capacity'],
                     'Compression Capacity (kN)': result['compression_capacity']
                 }])
@@ -435,7 +487,7 @@ def download_debug_params():
                 })
                 df_cpt.to_csv(buffer, index=False)
         elif pile_type == 'helical':
-            # For helical piles, create a simplified output format
+            # For helical piles, create a detailed output format
             results = session.get('results', [])
             
             for result_index, result in enumerate(results):
@@ -444,16 +496,21 @@ def download_debug_params():
                 
                 tip_depth = result['tipdepth']
                 
-                # Create parameters list
+                # Create parameters list - use get() to handle missing keys
                 constants = [
                     ['Tip Depth (m)', tip_depth],
-                    ['Water table depth (m)', float(pile_params['water_table'])],
+                    ['Water table depth (m)', float(pile_params.get('water_table', 0))],
                     ['Pile type', 'Helical'],
-                    ['Shaft diameter (m)', pile_params.get('shaft_diameter', 'N/A')],
-                    ['Helix diameter (m)', pile_params.get('helix_diameter', 'N/A')],
-                    ['Helix depth (m)', pile_params.get('helix_depth', 'N/A')],
-                    ['Borehole depth (m)', pile_params.get('borehole_depth', 'N/A')]
+                    ['Shaft diameter (m)', pile_params.get('shaft_diameter', 'N/A')]
                 ]
+                
+                # Add helical-specific parameters if they exist
+                if 'helix_diameter' in pile_params:
+                    constants.append(['Helix diameter (m)', pile_params.get('helix_diameter')])
+                if 'helix_depth' in pile_params:
+                    constants.append(['Helix depth (m)', pile_params.get('helix_depth')])
+                if 'borehole_depth' in pile_params:
+                    constants.append(['Borehole depth (m)', pile_params.get('borehole_depth')])
                 
                 # Write parameters
                 df_constants = pd.DataFrame(constants, columns=['Parameter', 'Value'])
@@ -464,76 +521,163 @@ def download_debug_params():
                 buffer.write('\nRESULTS\n')
                 df_result = pd.DataFrame([{
                     'Tip Depth (m)': result['tipdepth'],
+                    'q1 (MPa)': result.get('q1', 'N/A'),
+                    'q10 (MPa)': result.get('q10', 'N/A'),
                     'Tension Capacity (kN)': result['tension_capacity'],
                     'Compression Capacity (kN)': result['compression_capacity']
                 }])
                 df_result.to_csv(buffer, index=False)
                 
-                # Write CPT data
-                buffer.write('\nCPT DATA\n')
-                df_cpt = pd.DataFrame({
-                    'depth': processed['depth'],
-                    'qc (MPa)': processed['qc'],
-                    'qt (MPa)': processed['qt'],
-                    'fs (kPa)': processed['fs'],
-                    'Unit Weight (kN/m³)': processed['gtot'],
-                    'Water Pressure u0 (kPa)': processed['u0_kpa'],
-                    'Total Vertical Stress σv0 (kPa)': processed['sig_v0'],
-                    'Effective Vertical Stress σv0\' (kPa)': processed['sig_v0_prime'],
-                    'Fr (%)': processed['fr_percent'],
-                    'Normalized Tip Resistance Qtn': processed['qtn'],
-                    'Stress Exponent n': processed['n'],
-                    'Soil Behavior Type Index Ic': processed['lc'],
-                    'Pore Pressure Ratio Bq': processed['bq'],
-                    'Correction Factor Kc': processed['kc'],
-                    'Corrected Tip Resistance qtc (MPa)': processed['qtc'],
-                    'Soil Behavior Index Iz': processed['iz1']
-                })
-                df_cpt.to_csv(buffer, index=False)
-        else:
-            flash('No detailed data available for this pile type')
-            return redirect(url_for('main.calculator_step', type=pile_type or 'bored', step=4))
+                # Add intermediate calculations
+                if 'cpt_data_id' in session:
+                    # Calculate helical pile specific intermediate values
+                    shaft_diameter = float(pile_params.get('shaft_diameter', 0))
+                    helix_diameter = float(pile_params.get('helix_diameter', 0))
+                    helix_depth = float(pile_params.get('helix_depth', 0))
+                    borehole_depth = float(pile_params.get('borehole_depth', 0))
+                    
+                    # Calculate constants
+                    perimeter = math.pi * shaft_diameter
+                    helix_area = math.pi * (helix_diameter ** 2) * 0.25
+                    
+                    # Calculate q1 and q10 values for all depths
+                    q1_values = []
+                    q10_values = []
+                    for qt in processed['qt']:
+                        q1 = qt * (0.1 ** 0.6)
+                        q10 = qt * ((0.01/helix_diameter) ** 0.6) if helix_diameter > 0 else 0
+                        q1_values.append(q1)
+                        q10_values.append(q10)
+                    
+                    # Calculate casing coefficient and soil type
+                    coe_casing = []
+                    soil_type = []
+                    
+                    for i, depth_val in enumerate(processed['depth']):
+                        # Casing coefficient
+                        if depth_val < borehole_depth:
+                            casing = 0
+                        elif depth_val < helix_depth:
+                            casing = 1
+                        else:
+                            casing = 0
+                        coe_casing.append(casing)
+                        
+                        # Soil type based on Ic value - simplified to Sand/Clay-Silt
+                        ic = processed['lc'][i] if i < len(processed['lc']) else 0
+                        if ic < 2.2:
+                            soil = "Sand"
+                        else:
+                            soil = "Clay/Silt"
+                        soil_type.append(soil)
+                    
+                    # Calculate delta_z and shaft capacity
+                    delta_z = []
+                    qshaft_segment = []
+                    qshaft_kn = []
+                    cumulative_qshaft = 0
+                    
+                    for i, depth_val in enumerate(processed['depth']):
+                        # Calculate delta z
+                        if i == 0:
+                            current_delta_z = depth_val
+                        else:
+                            current_delta_z = depth_val - processed['depth'][i-1]
+                        
+                        delta_z.append(current_delta_z)
+                        
+                        # Calculate shaft capacity increment
+                        qshaft_increment = (coe_casing[i] * current_delta_z * 1000 * processed['qt'][i] * perimeter) / 175
+                        qshaft_segment.append(qshaft_increment)
+                        cumulative_qshaft += qshaft_increment
+                        qshaft_kn.append(cumulative_qshaft)
+                    
+                    # Calculate helix capacities
+                    helix_index = min(range(len(processed['depth'])), key=lambda i: abs(processed['depth'][i] - helix_depth))
+                    
+                    # Get q1 and q10 at helix depth
+                    q1_helix = q1_values[helix_index]
+                    q10_helix = q10_values[helix_index]
+                    
+                    # Calculate helix capacities
+                    qhelix_tension = q10_helix * helix_area * 1000
+                    qhelix_compression = q1_helix * helix_area * 1000
+                    
+                    # Calculate total capacities
+                    tension_capacity_array = []
+                    compression_capacity_array = []
+                    
+                    for i in range(len(processed['depth'])):
+                        if processed['depth'][i] <= helix_depth:
+                            tension_capacity = qshaft_kn[i] + qhelix_tension
+                            compression_capacity = qshaft_kn[i] + qhelix_compression
+                        else:
+                            tension_capacity = qshaft_kn[i]
+                            compression_capacity = qshaft_kn[i]
+                        
+                        tension_capacity_array.append(tension_capacity)
+                        compression_capacity_array.append(compression_capacity)
+                    
+                    # Create a DataFrame with all intermediate calculations
+                    buffer.write('\nINTERMEDIATE CALCULATIONS\n')
+                    df_intermediate = pd.DataFrame({
+                        'Depth (m)': processed['depth'],
+                        'qt (MPa)': processed['qt'],
+                        'qc (MPa)': processed['qc'],
+                        'fs (kPa)': processed['fs'],
+                        'Unit Weight (kN/m³)': processed['gtot'],
+                        'Fr (%)': processed['fr_percent'],
+                        'Soil Behavior Type Index Ic': processed['lc'],
+                        'Soil Type': soil_type,
+                        'Normalized Tip Resistance Qtn': processed.get('qtn', [0] * len(processed['depth'])),
+                        'Stress Exponent n': processed.get('n', [0] * len(processed['depth'])),
+                        'q1 (MPa)': q1_values,
+                        'q10 (MPa)': q10_values,
+                        'Casing Coefficient': coe_casing,
+                        'Delta Z (m)': delta_z,
+                        'Shaft Capacity Segment (kN)': qshaft_segment,
+                        'Shaft Capacity Cumulative (kN)': qshaft_kn,
+                        'Tension Capacity (kN)': tension_capacity_array,
+                        'Compression Capacity (kN)': compression_capacity_array,
+                        'Pore Pressure Ratio Bq': processed.get('bq', [0] * len(processed['depth'])),
+                        'Effective Vertical Stress σv0\' (kPa)': processed.get('sig_v0_prime', [0] * len(processed['depth']))
+                    })
+                    df_intermediate.to_csv(buffer, index=False)
+                    
+                    # Add helix-specific calculations
+                    buffer.write('\nHELIX CALCULATIONS\n')
+                    df_helix = pd.DataFrame([{
+                        'Shaft Perimeter (m)': perimeter,
+                        'Helix Area (m²)': helix_area,
+                        'q1 at Helix Depth (MPa)': q1_helix,
+                        'q10 at Helix Depth (MPa)': q10_helix,
+                        'Helix Tension Capacity (kN)': qhelix_tension,
+                        'Helix Compression Capacity (kN)': qhelix_compression,
+                        'Total Tension Capacity (kN)': tension_capacity_array[helix_index],
+                        'Total Compression Capacity (kN)': compression_capacity_array[helix_index]
+                    }])
+                    df_helix.to_csv(buffer, index=False)
         
-        # Prepare the file for download
-        buffer.seek(0)
+        # Get the buffer value
+        buffer_value = buffer.getvalue()
         
-        # Get the current date in DDMMYYYY format
-        current_date = datetime.now().strftime('%d%m%Y')
-        
-        # Get the user's filename from session, default to original filename if not found
-        if pile_type == 'driven':
-            user_filename = pile_params.get('site_name', '')
-        elif pile_type == 'helical':
-            user_filename = pile_params.get('file_name', '')
-        else:
-            user_filename = pile_params.get('file_name', '')
-        
-        # If no user filename, try to use the original uploaded filename
-        if not user_filename:
-            user_filename = session.get('original_filename', '')
-            print("Using original filename:", user_filename)
-        
+        # Create a response with the CSV data
+        user_filename = session.get('original_filename', 'output')
+        download_name = f"detailed_output_{user_filename}_{datetime.now().strftime('%d%m%Y')}.csv"
+        print("Using original filename:", user_filename)
         print("Final user_filename:", user_filename)
-        
-        # Create the filename, including the user's input if it exists
-        if user_filename:
-            download_name = f"detailed_output_{user_filename}_{current_date}.csv"
-        else:
-            download_name = f"detailed_output_{current_date}.csv"
-            
         print("Final download_name:", download_name)
         
-        return send_file(
-            io.BytesIO(buffer.getvalue().encode()),
-            mimetype='text/csv',
-            as_attachment=True,
-            download_name=download_name
+        return Response(
+            buffer_value,
+            mimetype="text/csv",
+            headers={"Content-disposition": f"attachment; filename={download_name}"}
         )
-        
+    
     except Exception as e:
         print(f"Debug download error: {str(e)}")
-        flash(f'Error generating debug data: {str(e)}')
-        return redirect(url_for('main.calculator_step', type=session.get('type', 'bored'), step=4))
+        flash(f"Error generating download: {str(e)}")
+        return redirect(url_for('main.calculator_step', type=session.get('type', 'helical'), step=4))
 
 def create_data_dataframe(processed, calc_dict):
     """Helper function to create the data DataFrame with calculations"""
