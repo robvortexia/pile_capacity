@@ -76,66 +76,181 @@
     
     {% if step == 4 %}
     <div class="step-content">
-        <h2>Step 4: Input Summary</h2>
+        <h2>Step 4: Helical Pile Results</h2>
+        
+        <div class="results-summary">
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h3>Pile Parameters</h3>
+                </div>
+                <div class="card-body">
+                    <table class="table table-bordered">
+                        <tbody>
+                            <tr>
+                                <th>Site Name</th>
+                                <td>{{ session.get('pile_params', {}).get('site_name', 'N/A') }}</td>
+                            </tr>
+                            <tr>
+                                <th>Shaft Diameter</th>
+                                <td>{{ session.get('pile_params', {}).get('shaft_diameter', 'N/A') }} m</td>
+                            </tr>
+                            <tr>
+                                <th>Helix Diameter</th>
+                                <td>{{ session.get('pile_params', {}).get('helix_diameter', 'N/A') }} m</td>
+                            </tr>
+                            <tr>
+                                <th>Helix Depth</th>
+                                <td>{{ session.get('pile_params', {}).get('helix_depth', 'N/A') }} m</td>
+                            </tr>
+                            <tr>
+                                <th>Borehole Depth</th>
+                                <td>{{ session.get('pile_params', {}).get('borehole_depth', 'N/A') }} m</td>
+                            </tr>
+                            <tr>
+                                <th>Water Table</th>
+                                <td>{{ session.get('pile_params', {}).get('water_table', 'N/A') }} m</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h3>Capacity Results</h3>
+                </div>
+                <div class="card-body">
+                    <table class="table table-bordered table-striped">
+                        <thead>
+                            <tr>
+                                <th>CAPACITY</th>
+                                <th>Qshaft (kN)</th>
+                                <th>Q at δ=10mm (kN)</th>
+                                <th>Qult (kN)</th>
+                                <th>Installation torque (kNm)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>Tension</td>
+                                <td>{{ "%.3f"|format(results.summary.qshaft) }}</td>
+                                <td>{{ "%.2f"|format(detailed_results.qhelix_tension) }}</td>
+                                <td>{{ "%.2f"|format(results.summary.qult_tension) }}</td>
+                                <td rowspan="2">{{ "%.2f"|format(detailed_results.qhelix_tension / 19.0) }}</td>
+                            </tr>
+                            <tr>
+                                <td>Compression</td>
+                                <td>{{ "%.3f"|format(results.summary.qshaft) }}</td>
+                                <td>{{ "%.2f"|format(detailed_results.qhelix_compression) }}</td>
+                                <td>{{ "%.2f"|format(results.summary.qult_compression) }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        {% if detailed_results %}
         <div class="card">
+            <div class="card-header">
+                <h3>Calculation Details</h3>
+            </div>
             <div class="card-body">
-                <h3>Pile Parameters</h3>
-                <table class="table table-striped">
-                    <tr>
-                        <th>Parameter</th>
-                        <th>Value</th>
-                    </tr>
-                    <tr>
-                        <td>Shaft Diameter</td>
-                        <td>{{ session.get('pile_params', {}).get('shaft_diameter', 'N/A') }} m</td>
-                    </tr>
-                    <tr>
-                        <td>Helix Diameter</td>
-                        <td>{{ session.get('pile_params', {}).get('helix_diameter', 'N/A') }} m</td>
-                    </tr>
-                    <tr>
-                        <td>Helix Depth</td>
-                        <td>{{ session.get('pile_params', {}).get('helix_depth', 'N/A') }} m</td>
-                    </tr>
-                    <tr>
-                        <td>Borehole Depth</td>
-                        <td>{{ session.get('pile_params', {}).get('borehole_depth', 'N/A') }} m</td>
-                    </tr>
-                    <tr>
-                        <td>Water Table Depth</td>
-                        <td>{{ session.get('pile_params', {}).get('water_table', 'N/A') }} m</td>
-                    </tr>
-                    {% if session.get('pile_params', {}).get('site_name') %}
-                    <tr>
-                        <td>Site Name</td>
-                        <td>{{ session.get('pile_params', {}).get('site_name', '') }}</td>
-                    </tr>
-                    {% endif %}
-                </table>
-                
-                {% if constants %}
-                <h3>Calculated Constants</h3>
-                <table class="table table-striped">
-                    <tr>
-                        <td>Shaft Perimeter</td>
-                        <td>{{ "%.4f"|format(constants.perimeter) }} m</td>
-                    </tr>
-                    <tr>
-                        <td>Helix Area</td>
-                        <td>{{ "%.4f"|format(constants.helix_area) }} m²</td>
-                    </tr>
-                </table>
-                {% endif %}
+                <div class="row">
+                    <div class="col-md-6">
+                        <h4>Geometric Properties</h4>
+                        <table class="table table-sm table-bordered">
+                            <tbody>
+                                <tr>
+                                    <th>Shaft Perimeter</th>
+                                    <td>{{ "%.4f"|format(detailed_results.perimeter) }} m</td>
+                                </tr>
+                                <tr>
+                                    <th>Helix Area</th>
+                                    <td>{{ "%.4f"|format(detailed_results.helix_area) }} m²</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="col-md-6">
+                        <h4>Helix Properties at {{ "%.2f"|format(session.get('pile_params', {}).get('helix_depth', 0)) }} m</h4>
+                        <table class="table table-sm table-bordered">
+                            <tbody>
+                                <tr>
+                                    <th>q1 at Helix</th>
+                                    <td>{{ "%.4f"|format(detailed_results.q1_helix) }} MPa</td>
+                                </tr>
+                                <tr>
+                                    <th>q10 at Helix</th>
+                                    <td>{{ "%.4f"|format(detailed_results.q10_helix) }} MPa</td>
+                                </tr>
+                                <tr>
+                                    <th>Helix Tension Capacity</th>
+                                    <td>{{ "%.2f"|format(detailed_results.qhelix_tension) }} kN</td>
+                                </tr>
+                                <tr>
+                                    <th>Helix Compression Capacity</th>
+                                    <td>{{ "%.2f"|format(detailed_results.qhelix_compression) }} kN</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="mt-4">
+                    <h4>Calculation Table</h4>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Depth (m)</th>
+                                    <th>qt (MPa)</th>
+                                    <th>q1 (MPa)</th>
+                                    <th>q10 (MPa)</th>
+                                    <th>Ic</th>
+                                    <th>Soil Type</th>
+                                    <th>Casing Coef</th>
+                                    <th>Delta Z (m)</th>
+                                    <th>Shaft Segment (kN)</th>
+                                    <th>Shaft Cumul. (kN)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for i in range(detailed_results.depth|length) %}
+                                <tr {% if detailed_results.depth[i] == session.get('pile_params', {}).get('helix_depth', 0) %}class="table-primary"{% endif %}>
+                                    <td>{{ "%.2f"|format(detailed_results.depth[i]) }}</td>
+                                    <td>{{ "%.4f"|format(detailed_results.qt[i]) }}</td>
+                                    <td>{{ "%.4f"|format(detailed_results.q1[i]) }}</td>
+                                    <td>{{ "%.4f"|format(detailed_results.q10[i]) }}</td>
+                                    <td>{{ "%.2f"|format(detailed_results.lc[i]) }}</td>
+                                    <td>{{ detailed_results.soil_type[i] }}</td>
+                                    <td>{{ detailed_results.coe_casing[i] }}</td>
+                                    <td>{{ "%.4f"|format(detailed_results.delta_z[i]) }}</td>
+                                    <td>{{ "%.2f"|format(detailed_results.qshaft_segment[i]) }}</td>
+                                    <td>{{ "%.2f"|format(detailed_results.qshaft_kn[i]) }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
                 
                 <div class="button-group mt-4">
-                    <a href="{{ url_for('main.calculator_step', type=type, step=5) }}" class="btn btn-primary">
-                        View Detailed Calculations
-                    </a>
-                    <a href="{{ url_for('main.calculator_step', type=type, step=3) }}" class="btn btn-secondary">
-                        Back to Parameters
+                    <a href="{{ url_for('main.download_debug_params') }}" class="btn btn-info">
+                        <i class="fas fa-download"></i> Download All Calculations
                     </a>
                 </div>
             </div>
+        </div>
+        {% endif %}
+
+        <div class="button-group mt-4">
+            <a href="{{ url_for('main.calculator_step', type=type, step=3) }}" class="btn btn-secondary">
+                Back to Step 3
+            </a>
+            <a href="{{ url_for('main.index') }}" class="btn btn-primary">
+                Return to Home
+            </a>
         </div>
     </div>
     {% endif %}

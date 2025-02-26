@@ -17,6 +17,7 @@ from io import StringIO
 from sqlalchemy.sql import func
 import logging
 import io
+from .helical_calculations import calculate_helical_pile_results
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -277,9 +278,6 @@ def calculator_step(type, step):
                 
                 return redirect(url_for('main.calculator_step', type=type, step=4))
             elif type == 'helical':
-                # Debug print
-                print("Form data:", request.form.to_dict())
-                
                 # Validate required fields
                 required_fields = ['shaft_diameter', 'helix_diameter', 'helix_depth', 'borehole_depth', 'water_table']
                 for field in required_fields:
@@ -297,7 +295,7 @@ def calculator_step(type, step):
                     'site_name': request.form.get('site_name', '')
                 }
                 
-                # Convert values to float and validate they are greater than 0
+                # Convert values to float and validate
                 for key in ['shaft_diameter', 'helix_diameter', 'helix_depth', 'borehole_depth', 'water_table']:
                     try:
                         if pile_params[key]:
@@ -313,9 +311,6 @@ def calculator_step(type, step):
                 # Store in session
                 session['pile_params'] = pile_params
                 
-                # Debug print
-                print("Session pile_params:", session.get('pile_params'))
-                
                 # Process the data and calculate results
                 if 'cpt_data_id' not in session:
                     flash('No CPT data available. Please upload data first.')
@@ -329,14 +324,22 @@ def calculator_step(type, step):
                 # Process the CPT data
                 processed_cpt = pre_input_calc(cpt_data, float(session['pile_params']['water_table']))
                 
-                # Calculate results using the helical pile specific function
-                results = calculate_helical_pile_results(processed_cpt, session['pile_params'])
-                
-                # Store results in session
-                session['results'] = results['summary']
-                session['detailed_results'] = results['detailed']
-                
-                return redirect(url_for('main.calculator_step', type=type, step=4))
+                try:
+                    # Use our new isolated module function
+                    results = calculate_helical_pile_results(processed_cpt, session['pile_params'])
+                    
+                    # Store results in session
+                    session['results'] = results['summary']
+                    session['detailed_results'] = results['detailed']
+                    
+                    # Log successful calculation
+                    logger.info(f"Helical pile calculations completed successfully for {pile_params['site_name']}")
+                    
+                    return redirect(url_for('main.calculator_step', type=type, step=4))
+                except Exception as e:
+                    logger.error(f"Error in helical pile calculations: {str(e)}")
+                    flash(f"Error in calculation: {str(e)}")
+                    return redirect(url_for('main.calculator_step', type=type, step=3))
             else:
                 results = calculate_pile_capacity(cpt_data, session['pile_params'], pile_type=type)
                 session['results'] = results
@@ -540,20 +543,32 @@ def download_debug_params():
                     'Corrected Tip Resistance qtc (MPa)': processed['qtc'],
                     'Soil Behavior Index Iz': processed['iz1']
                 })
+                df_cpt = pd.DataFrame({
+                    'depth': processed['depth'],
+                    'qc (MPa)': processed['qc'],
+                    'qt (MPa)': processed['qt'],
+                    'fs (kPa)': processed['fs'],
+                    'Unit Weight (kN/m³)': processed['gtot'],
+                    'Water Pressure u0 (kPa)': processed['u0_kpa'],
+                    'Total Vertical Stress σv0 (kPa)': processed['sig_v0'],
+                    'Effective Vertical Stress σv0\' (kPa)': processed['sig_v0_prime'],
+                    'Fr (%)': processed['fr_percent'],
+                    'Normalized Tip Resistance Qtn': processed['qtn'],
+                    'Stress Exponent n': processed['n'],
+                    'Soil Behavior Type Index Ic': processed['lc'],
+                    'Pore Pressure Ratio Bq': processed['bq'],
+                    'Correction Factor Kc': processed['kc'],
+                    'Corrected Tip Resistance qtc (MPa)': processed['qtc'],
+                    'Soil Behavior Index Iz': processed['iz1']
+                })
                 df_cpt.to_csv(buffer, index=False)
         elif pile_type == 'helical':
             # For helical piles, create a detailed output format
             results = session.get('results', [])
+            detailed_results = session.get('detailed_results', {})
             
-            # Debug print to see what's in pile_params
-            print("pile_params contents for helical pile:", pile_params)
-            print("Session contents:", dict(session))
-            print("Pile type:", session.get('type'))
-            print("Pile params:", session.get('pile_params'))
-            
-            # Get the pile parameters directly from the session
+            # Get pile parameters from session
             session_pile_params = session.get('pile_params', {})
-            print("Session pile_params:", session_pile_params)
             
             for result_index, result in enumerate(results):
                 if result_index > 0:
@@ -561,174 +576,74 @@ def download_debug_params():
                 
                 tip_depth = result['tipdepth']
                 
-                # Create a more comprehensive parameters list with all user inputs
-                # Use session_pile_params directly without any conversions
+                # Create parameters table
                 constants = [
                     ['Tip Depth (m)', tip_depth],
                     ['Water table depth (m)', session_pile_params.get('water_table', 0)],
-                    ['Pile type', 'Helical']
+                    ['Pile type', 'Helical'],
+                    ['Shaft diameter (m)', session_pile_params.get('shaft_diameter', 'N/A')],
+                    ['Helix diameter (m)', session_pile_params.get('helix_diameter', 'N/A')],
+                    ['Helix depth (m)', session_pile_params.get('helix_depth', 'N/A')],
+                    ['Borehole depth (m)', session_pile_params.get('borehole_depth', 'N/A')],
+                    ['Site name', session_pile_params.get('site_name', 'N/A')]
                 ]
                 
-                # Add all parameters from session_pile_params
-                for key, value in session_pile_params.items():
-                    if key not in ['water_table', 'site_name']:  # Already added water_table
-                        if key == 'shaft_diameter':
-                            constants.append(['Shaft diameter (m)', value])
-                        elif key == 'helix_diameter':
-                            constants.append(['Helix diameter (m)', value])
-                        elif key == 'helix_depth':
-                            constants.append(['Helix depth (m)', value])
-                        elif key == 'borehole_depth':
-                            constants.append(['Borehole depth (m)', value])
-                
-                # Add site name if it exists
-                if 'site_name' in session_pile_params and session_pile_params['site_name']:
-                    constants.append(['Site name', session_pile_params['site_name']])
-                
-                # Write parameters
+                # Write constants
                 df_constants = pd.DataFrame(constants, columns=['Parameter', 'Value'])
-                buffer.write(f'INPUT PARAMETERS FOR HELICAL PILE\n')
+                buffer.write(f'INPUT PARAMETERS\n')
                 df_constants.to_csv(buffer, index=False)
                 
-                # Write results for this tip depth
+                # Write results
                 buffer.write('\nRESULTS\n')
                 df_result = pd.DataFrame([{
-                    'Tip Depth (m)': result['tipdepth'],
-                    'q1 (MPa)': result.get('q1', 'N/A'),
-                    'q10 (MPa)': result.get('q10', 'N/A'),
+                    'Depth (m)': result['tipdepth'],
                     'Tension Capacity (kN)': result['tension_capacity'],
                     'Compression Capacity (kN)': result['compression_capacity']
                 }])
                 df_result.to_csv(buffer, index=False)
                 
-                # Add intermediate calculations
-                if 'cpt_data_id' in session:
-                    # Calculate helical pile specific intermediate values
-                    shaft_diameter = float(session_pile_params.get('shaft_diameter', 0))
-                    helix_diameter = float(session_pile_params.get('helix_diameter', 0))
-                    helix_depth = float(session_pile_params.get('helix_depth', 0))
-                    borehole_depth = float(session_pile_params.get('borehole_depth', 0))
-                    
-                    # Calculate constants
-                    perimeter = math.pi * shaft_diameter
-                    helix_area = math.pi * (helix_diameter ** 2) * 0.25
-                    
-                    # Calculate q1 and q10 values for all depths
-                    q1_values = []
-                    q10_values = []
-                    for qt in processed['qt']:
-                        q1 = qt * (0.1 ** 0.6)
-                        q10 = qt * ((0.01/helix_diameter) ** 0.6) if helix_diameter > 0 else 0
-                        q1_values.append(q1)
-                        q10_values.append(q10)
-                    
-                    # Calculate casing coefficient and soil type
-                    coe_casing = []
-                    soil_type = []
-                    
-                    for i, depth_val in enumerate(processed['depth']):
-                        # Casing coefficient
-                        if depth_val < borehole_depth:
-                            casing = 0
-                        elif depth_val < helix_depth:
-                            casing = 1
-                        else:
-                            casing = 0
-                        coe_casing.append(casing)
-                        
-                        # Soil type based on Ic value - simplified to Sand/Clay-Silt
-                        ic = processed['lc'][i] if i < len(processed['lc']) else 0
-                        if ic < 2.2:
-                            soil = "Sand"
-                        else:
-                            soil = "Clay/Silt"
-                        soil_type.append(soil)
-                    
-                    # Calculate delta_z and shaft capacity
-                    delta_z = []
-                    qshaft_segment = []
-                    qshaft_kn = []
-                    cumulative_qshaft = 0
-                    
-                    for i, depth_val in enumerate(processed['depth']):
-                        # Calculate delta z
-                        if i == 0:
-                            current_delta_z = depth_val
-                        else:
-                            current_delta_z = depth_val - processed['depth'][i-1]
-                        
-                        delta_z.append(current_delta_z)
-                        
-                        # Calculate shaft capacity increment
-                        qshaft_increment = (coe_casing[i] * current_delta_z * 1000 * processed['qt'][i] * perimeter) / 175
-                        qshaft_segment.append(qshaft_increment)
-                        cumulative_qshaft += qshaft_increment
-                        qshaft_kn.append(cumulative_qshaft)
-                    
-                    # Calculate helix capacities
-                    helix_index = min(range(len(processed['depth'])), key=lambda i: abs(processed['depth'][i] - helix_depth))
-                    
-                    # Get q1 and q10 at helix depth
-                    q1_helix = q1_values[helix_index]
-                    q10_helix = q10_values[helix_index]
-                    
-                    # Calculate helix capacities
-                    qhelix_tension = q10_helix * helix_area * 1000
-                    qhelix_compression = q1_helix * helix_area * 1000
-                    
-                    # Calculate total capacities
-                    tension_capacity_array = []
-                    compression_capacity_array = []
-                    
-                    for i in range(len(processed['depth'])):
-                        if processed['depth'][i] <= helix_depth:
-                            tension_capacity = qshaft_kn[i] + qhelix_tension
-                            compression_capacity = qshaft_kn[i] + qhelix_compression
-                        else:
-                            tension_capacity = qshaft_kn[i]
-                            compression_capacity = qshaft_kn[i]
-                        
-                        tension_capacity_array.append(tension_capacity)
-                        compression_capacity_array.append(compression_capacity)
-                    
-                    # Create a DataFrame with all intermediate calculations
+                # Add intermediate calculations if available
+                if detailed_results and 'depth' in detailed_results:
                     buffer.write('\nINTERMEDIATE CALCULATIONS\n')
-                    df_intermediate = pd.DataFrame({
-                        'Depth (m)': processed['depth'],
-                        'qt (MPa)': processed['qt'],
-                        'qc (MPa)': processed['qc'],
-                        'fs (kPa)': processed['fs'],
-                        'Unit Weight (kN/m³)': processed['gtot'],
-                        'Fr (%)': processed['fr_percent'],
-                        'Soil Behavior Type Index Ic': processed['lc'],
-                        'Soil Type': soil_type,
-                        'Normalized Tip Resistance Qtn': processed.get('qtn', [0] * len(processed['depth'])),
-                        'Stress Exponent n': processed.get('n', [0] * len(processed['depth'])),
-                        'q1 (MPa)': q1_values,
-                        'q10 (MPa)': q10_values,
-                        'Casing Coefficient': coe_casing,
-                        'Delta Z (m)': delta_z,
-                        'Shaft Capacity Segment (kN)': qshaft_segment,
-                        'Shaft Capacity Cumulative (kN)': qshaft_kn,
-                        'Tension Capacity (kN)': tension_capacity_array,
-                        'Compression Capacity (kN)': compression_capacity_array,
-                        'Pore Pressure Ratio Bq': processed.get('bq', [0] * len(processed['depth'])),
-                        'Effective Vertical Stress σv0\' (kPa)': processed.get('sig_v0_prime', [0] * len(processed['depth']))
-                    })
-                    df_intermediate.to_csv(buffer, index=False)
+                    
+                    # Create DataFrame from detailed results
+                    calc_data = {
+                        'Depth (m)': detailed_results['depth'],
+                        'qt (MPa)': detailed_results['qt'],
+                        'qc (MPa)': detailed_results['qc'],
+                        'fs (kPa)': detailed_results['fs'],
+                        'Fr (%)': detailed_results['fr_percent'],
+                        'Soil Behavior Type Index Ic': detailed_results['lc'],
+                        'Soil Type': detailed_results['soil_type'],
+                        'q1 (MPa)': detailed_results['q1'],
+                        'q10 (MPa)': detailed_results['q10'],
+                        'Casing Coefficient': detailed_results['coe_casing'],
+                        'Delta Z (m)': detailed_results['delta_z'],
+                        'Shaft Capacity Segment (kN)': detailed_results['qshaft_segment'],
+                        'Shaft Capacity Cumulative (kN)': detailed_results['qshaft_kn']
+                    }
+                    
+                    # Add capacity columns if available
+                    if 'tension_capacity' in detailed_results:
+                        calc_data['Tension Capacity (kN)'] = detailed_results['tension_capacity']
+                    if 'compression_capacity' in detailed_results:
+                        calc_data['Compression Capacity (kN)'] = detailed_results['compression_capacity']
+                        
+                    df_calculations = pd.DataFrame(calc_data)
+                    df_calculations.to_csv(buffer, index=False)
                     
                     # Add helix-specific calculations
                     buffer.write('\nHELIX CALCULATIONS\n')
-                    df_helix = pd.DataFrame([{
-                        'Shaft Perimeter (m)': perimeter,
-                        'Helix Area (m²)': helix_area,
-                        'q1 at Helix Depth (MPa)': q1_helix,
-                        'q10 at Helix Depth (MPa)': q10_helix,
-                        'Helix Tension Capacity (kN)': qhelix_tension,
-                        'Helix Compression Capacity (kN)': qhelix_compression,
-                        'Total Tension Capacity (kN)': tension_capacity_array[helix_index],
-                        'Total Compression Capacity (kN)': compression_capacity_array[helix_index]
-                    }])
+                    helix_data = [
+                        ['Perimeter (m)', detailed_results.get('perimeter', 'N/A')],
+                        ['Helix Area (m²)', detailed_results.get('helix_area', 'N/A')],
+                        ['Helix Index (depth point)', detailed_results.get('helix_index', 'N/A')],
+                        ['q1 at Helix (MPa)', detailed_results.get('q1_helix', 'N/A')],
+                        ['q10 at Helix (MPa)', detailed_results.get('q10_helix', 'N/A')],
+                        ['Helix Tension Component (kN)', detailed_results.get('qhelix_tension', 'N/A')],
+                        ['Helix Compression Component (kN)', detailed_results.get('qhelix_compression', 'N/A')]
+                    ]
+                    df_helix = pd.DataFrame(helix_data, columns=['Parameter', 'Value'])
                     df_helix.to_csv(buffer, index=False)
         
         # Get the buffer value
