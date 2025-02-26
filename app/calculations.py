@@ -780,11 +780,20 @@ def calculate_delta_z_and_qshaft(processed_cpt, coe_casing, perimeter):
     for i in range(len(depths)):
         # Calculate delta z
         if i == 0:
-            # For the first point, use the depth itself as delta_z
-            current_delta_z = depths[i]
+            # For the first point, set delta_z to None (will display as blank)
+            current_delta_z = None
+            delta_z.append(current_delta_z)
+            
+            # First segment should be 0
+            qshaft_kn.append(0)
         else:
             # For subsequent points, calculate difference from previous depth
             current_delta_z = depths[i] - depths[i-1]
+            delta_z.append(current_delta_z)
+            
+            # Calculate shaft capacity increment
+            qshaft_increment = (coe_casing[i] * current_delta_z * 1000 * qt_values[i] * perimeter) / 175
+            qshaft_kn.append(cumulative_qshaft + qshaft_increment)
         
         delta_z.append(current_delta_z)
         

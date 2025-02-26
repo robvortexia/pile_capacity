@@ -133,6 +133,7 @@ def calculate_delta_z_and_qshaft(processed_cpt, coe_casing, perimeter):
     qt_values = processed_cpt['qt']
     
     delta_z = []
+    qshaft_segment = []
     qshaft_kn = []
     
     # Initialize cumulative shaft capacity
@@ -141,23 +142,30 @@ def calculate_delta_z_and_qshaft(processed_cpt, coe_casing, perimeter):
     for i in range(len(depths)):
         # Calculate delta z
         if i == 0:
-            # For the first point, use the depth itself as delta_z
-            current_delta_z = depths[i]
+            # For the first point, set delta_z to None or empty string
+            current_delta_z = None
+            delta_z.append(current_delta_z)
+            
+            # First segment should be 0
+            qshaft_segment_value = 0
+            qshaft_segment.append(qshaft_segment_value)
+            qshaft_kn.append(0)
         else:
             # For subsequent points, calculate difference from previous depth
             current_delta_z = depths[i] - depths[i-1]
-        
-        delta_z.append(current_delta_z)
-        
-        # Calculate shaft capacity increment
-        qshaft_increment = (coe_casing[i] * current_delta_z * 1000 * qt_values[i] * perimeter) / 175
-        
-        # Update cumulative shaft capacity
-        cumulative_qshaft += qshaft_increment
-        qshaft_kn.append(cumulative_qshaft)
+            delta_z.append(current_delta_z)
+            
+            # Calculate shaft capacity increment
+            qshaft_segment_value = (coe_casing[i] * current_delta_z * 1000 * qt_values[i] * perimeter) / 175
+            qshaft_segment.append(qshaft_segment_value)
+            
+            # Update cumulative shaft capacity
+            cumulative_qshaft += qshaft_segment_value
+            qshaft_kn.append(cumulative_qshaft)
     
     return {
         'delta_z': delta_z,
+        'qshaft_segment': qshaft_segment,
         'qshaft_kn': qshaft_kn
     }
 
@@ -320,12 +328,15 @@ def calculate_helical_intermediate_values(processed_cpt, params):
     # Get depths array
     depths = processed_cpt['depth']
     
-    # Calculate q1 and q10 values for all depths
+    # Calculate q1 and q10 values
     q1_values = []
     q10_values = []
     for qt in processed_cpt['qt']:
+        # Prevent division by zero
+        safe_helix_diameter = max(helix_diameter, 0.001)  # Use at least 1mm to prevent division by zero
+        
         q1 = qt * (0.1 ** 0.6)
-        q10 = qt * ((0.01/helix_diameter) ** 0.6) if helix_diameter > 0 else 0
+        q10 = qt * ((0.01/safe_helix_diameter) ** 0.6)
         q1_values.append(q1)
         q10_values.append(q10)
     
@@ -360,78 +371,67 @@ def calculate_helical_intermediate_values(processed_cpt, params):
     for i, depth_val in enumerate(depths):
         # Calculate delta z
         if i == 0:
-            current_delta_z = depth_val
+            # For the first point, set delta_z to 0
+            current_delta_z = 0.0
+            delta_z.append(current_delta_z)
+            
+            # First segment should be 0
+            qshaft_segment.append(0)
+            qshaft_kn.append(0)
         else:
+            # For subsequent points, calculate difference from previous depth
             current_delta_z = depth_val - depths[i-1]
-        
-        delta_z.append(current_delta_z)
-        
-        # Calculate shaft capacity increment
-        qshaft_increment = (coe_casing[i] * current_delta_z * 1000 * processed_cpt['qt'][i] * perimeter) / 175
-        qshaft_segment.append(qshaft_increment)
-        cumulative_qshaft += qshaft_increment
-        qshaft_kn.append(cumulative_qshaft)
+            delta_z.append(current_delta_z)
+            
+            # Calculate shaft capacity increment
+            qshaft_increment = (coe_casing[i] * current_delta_z * 1000 * processed_cpt['qt'][i] * perimeter) / 175
+            qshaft_segment.append(qshaft_increment)
+            
+            # Update cumulative shaft capacity
+            cumulative_qshaft += qshaft_increment
+            qshaft_kn.append(cumulative_qshaft)
     
     # Calculate helix capacities
     helix_index = min(range(len(depths)), key=lambda i: abs(depths[i] - helix_depth))
     
-    # Get q1 and q10 at helix depth
+    # Get values at the helix depth for the template
     q1_helix = q1_values[helix_index]
     q10_helix = q10_values[helix_index]
     
-    # Calculate helix capacities
+    # Calculate helix capacities for the template
     qhelix_tension = q10_helix * helix_area * 1000
     qhelix_compression = q1_helix * helix_area * 1000
     
-    # UPDATED CALCULATIONS for Q at delta = 10mm
+    # Calculate tension and compression capacities
+    tension_capacity = []
+    compression_capacity = []
     
-    # For TENSION: Find the depth index for (helix_depth - helix_diameter)
-    tension_effective_depth = max(0, helix_depth - helix_diameter)
-    tension_effective_index = min(range(len(depths)), key=lambda i: abs(depths[i] - tension_effective_depth))
-    
-    # Get minimum q10 value between tip depth and (tip depth - helix diameter) for TENSION
-    tension_min_q10 = min(q10_values[helix_index], q10_values[tension_effective_index])
-    
-    # Calculate q(10mm) for tension: 0.6 * min_q10
-    q_10mm_tens = 0.6 * tension_min_q10
-    
-    # For COMPRESSION: Find the depth index for (helix_depth + helix_diameter)
-    compression_effective_depth = min(helix_depth + helix_diameter, depths[-1])  # Cap at max depth
-    compression_effective_index = min(range(len(depths)), key=lambda i: abs(depths[i] - compression_effective_depth))
-    
-    # Get minimum q10 value between tip depth and (tip depth + helix diameter) for COMPRESSION
-    compression_min_q10 = min(q10_values[helix_index], q10_values[compression_effective_index])
-    
-    # Calculate q(10mm) for compression: 0.8 * min_q10
-    q_10mm_comp = 0.8 * compression_min_q10
-    
-    # Calculate Q at delta = 10mm
-    q_delta_10mm_tension = q_10mm_tens * helix_area * 1000 + qshaft_kn[tension_effective_index]
-    q_delta_10mm_compression = q_10mm_comp * helix_area * 1000 + qshaft_kn[helix_index]  # Use shaft capacity at helix depth
-    
-    # Calculate total capacities
-    tension_capacity_array = []
-    compression_capacity_array = []
+    # Calculate effective depth for capacity (tipdepth-Dh)
+    effective_depth = helix_depth - helix_diameter
+    effective_index = min(range(len(depths)), key=lambda i: abs(depths[i] - effective_depth))
     
     for i in range(len(depths)):
-        if depths[i] <= helix_depth:
-            tension_capacity = qshaft_kn[i]
-            compression_capacity = qshaft_kn[i]
+        if i <= effective_index:
+            # For depths above or at the effective depth (tipdepth-Dh)
+            tension_capacity.append(qshaft_kn[i] + qhelix_tension)
+            compression_capacity.append(qshaft_kn[i] + qhelix_compression)
         else:
-            tension_capacity = qshaft_kn[i] + qhelix_tension
-            compression_capacity = qshaft_kn[i] + qhelix_compression
-        
-        tension_capacity_array.append(tension_capacity)
-        compression_capacity_array.append(compression_capacity)
+            # For depths below the effective depth
+            tension_capacity.append(qshaft_kn[i])
+            compression_capacity.append(qshaft_kn[i])
     
-    # Calculate ultimate capacities
-    qult_tension = tension_capacity_array[-1]
-    qult_compression = compression_capacity_array[-1]
+    # Calculate ultimate capacities at effective depth (tipdepth-Dh)
+    qult_tension = tension_capacity[effective_index]
+    qult_compression = compression_capacity[effective_index]
     
-    # Calculate installation torque
-    installation_torque = 0.4 * qult_tension * shaft_diameter * 0.92
+    # Calculate settlements
+    q_delta_10mm_tension = qult_tension * 0.8  # Simplified assumption for 10mm settlement
+    q_delta_10mm_compression = qult_compression * 0.8  # Simplified assumption for 10mm settlement
     
-    # Add all calculation results to the response
+    # Calculate installation torque (simplified)
+    installation_torque = qult_compression / 20  # Simplified relationship
+    
+    # Create output dictionary
     result = {
         'depth': depths,
         'qt': processed_cpt['qt'],
@@ -439,35 +439,30 @@ def calculate_helical_intermediate_values(processed_cpt, params):
         'fs': processed_cpt['fs'],
         'fr_percent': processed_cpt['fr_percent'],
         'lc': processed_cpt['lc'],
-        'soil_type': soil_type,
         'q1': q1_values,
         'q10': q10_values,
+        'q1_helix': q1_helix,             # Add specific helix values for template
+        'q10_helix': q10_helix,           # Add specific helix values for template
+        'qhelix_tension': qhelix_tension, # Add specific helix values for template
+        'qhelix_compression': qhelix_compression, # Add specific helix values for template
+        'soil_type': soil_type,
         'coe_casing': coe_casing,
         'delta_z': delta_z,
         'qshaft_segment': qshaft_segment,
         'qshaft_kn': qshaft_kn,
-        'tension_capacity': tension_capacity_array,
-        'compression_capacity': compression_capacity_array,
-        'helix_index': helix_index,
-        'q1_helix': q1_helix,
-        'q10_helix': q10_helix,
-        'qhelix_tension': qhelix_tension,
-        'qhelix_compression': qhelix_compression,
-        'perimeter': perimeter,
-        'helix_area': helix_area,
-        'tension_effective_depth': tension_effective_depth,
-        'tension_effective_index': tension_effective_index,
-        'tension_min_q10': tension_min_q10,
-        'compression_effective_depth': compression_effective_depth,
-        'compression_effective_index': compression_effective_index,
-        'compression_min_q10': compression_min_q10,
-        'q_10mm_tens': q_10mm_tens,
-        'q_10mm_comp': q_10mm_comp,
+        'tension_capacity': tension_capacity,
+        'compression_capacity': compression_capacity,
         'qult_tension': qult_tension,
         'qult_compression': qult_compression,
         'q_delta_10mm_tension': q_delta_10mm_tension,
         'q_delta_10mm_compression': q_delta_10mm_compression,
-        'installation_torque': installation_torque
+        'installation_torque': installation_torque,
+        'perimeter': perimeter,           # Add geometric properties for template
+        'helix_area': helix_area,         # Add geometric properties for template
+        'shaft_diameter': shaft_diameter, # Add input parameters
+        'helix_diameter': helix_diameter, # Add input parameters
+        'helix_depth': helix_depth,       # Add input parameters
+        'borehole_depth': borehole_depth  # Add input parameters
     }
     
     return result
@@ -501,48 +496,117 @@ def calculate_helical_pile_results(processed_cpt, params):
         perimeter = constants['perimeter']
         helix_area = constants['helix_area']
         
-        # Calculate shaft capacity
-        qshaft_kn = calculate_shaft_capacity(processed_cpt, params, perimeter)
-        
-        # Calculate helical pile intermediate values
-        intermediate_results = calculate_helical_intermediate_values(processed_cpt, params)
-        
-        # Calculate final results
-        results = calculate_helical_pile_capacity(processed_cpt, params, qshaft_kn)
-        logger.info("Helical pile calculations completed successfully")
-        
-        # Calculate intermediate values
+        # Calculate all intermediate values
         detailed_results = calculate_helical_intermediate_values(processed_cpt, params)
         
-        # Get the helix depth
+        # Get the helix depth and calculate effective depth
         helix_depth = params['helix_depth']
+        helix_diameter = params['helix_diameter']
+        effective_depth = helix_depth - helix_diameter
         
-        # Find the nearest depth index to our helix depth
-        helix_index = min(range(len(detailed_results['depth'])), key=lambda i: abs(detailed_results['depth'][i] - helix_depth))
-        
-        # Calculate effective depth (helix depth - helix diameter)
-        effective_depth = helix_depth - params['helix_diameter']
+        # Find the nearest depth index to our effective depth (tipdepth-Dh)
         effective_index = min(range(len(detailed_results['depth'])), key=lambda i: abs(detailed_results['depth'][i] - effective_depth))
-        
-        # Get shaft capacity
-        qshaft = detailed_results['qshaft_kn'][effective_index]
         
         # Get ultimate capacities (already calculated in intermediate values)
         qult_tension = detailed_results.get('qult_tension', 0)
         qult_compression = detailed_results.get('qult_compression', 0)
+        q_delta_10mm_tension = detailed_results.get('q_delta_10mm_tension', 0)
+        q_delta_10mm_compression = detailed_results.get('q_delta_10mm_compression', 0)
+        installation_torque = detailed_results.get('installation_torque', 0)
         
         # Summary results
         summary = {
             'tipdepth': helix_depth,
-            'qshaft': qshaft,
+            'effective_depth': effective_depth,  # Add effective depth to summary
+            'qshaft': detailed_results['qshaft_kn'][effective_index],  # Use effective_index instead of helix_index
             'qult_tension': qult_tension,
-            'qult_compression': qult_compression
+            'qult_compression': qult_compression,
+            'q_delta_10mm_tension': q_delta_10mm_tension,
+            'q_delta_10mm_compression': q_delta_10mm_compression,
+            'installation_torque': installation_torque
         }
+        
+        # Add input parameters to the detailed results for completeness
+        detailed_results['input_parameters'] = params
+        
+        # Create a tabular format for download that can be easily converted to CSV
+        # Each row will have depth and all calculations at that depth
+        download_rows = []
+        
+        # Add header row with column names
+        header = [
+            "Depth (m)",
+            "qt (MPa)",
+            "qc (MPa)",
+            "fs (kPa)",
+            "Fr (%)",
+            "Ic",
+            "Soil Type",
+            "q1 (MPa)",
+            "q10 (MPa)",
+            "Casing Coefficient",
+            "Delta Z (m)",
+            "Shaft Segment (kN)",
+            "Cumulative Shaft (kN)",
+            "Tension Capacity (kN)",
+            "Compression Capacity (kN)"
+        ]
+        download_rows.append(header)
+        
+        # Add data rows
+        for i in range(len(detailed_results['depth'])):
+            row = [
+                detailed_results['depth'][i],
+                detailed_results['qt'][i],
+                detailed_results['qc'][i],
+                detailed_results['fs'][i],
+                detailed_results['fr_percent'][i],
+                detailed_results['lc'][i],
+                detailed_results['soil_type'][i],
+                detailed_results['q1'][i],
+                detailed_results['q10'][i],
+                detailed_results['coe_casing'][i],
+                detailed_results['delta_z'][i],
+                detailed_results['qshaft_segment'][i],
+                detailed_results['qshaft_kn'][i],
+                detailed_results['tension_capacity'][i],
+                detailed_results['compression_capacity'][i]
+            ]
+            download_rows.append(row)
+        
+        # Add summary information at the end
+        download_rows.append([])  # Empty row for spacing
+        download_rows.append(["SUMMARY INFORMATION"])
+        download_rows.append(["Input Parameters"])
+        for key, value in params.items():
+            download_rows.append([key, value])
+        
+        download_rows.append([])  # Empty row for spacing
+        download_rows.append(["Geometric Constants"])
+        download_rows.append(["Perimeter (m)", perimeter])
+        download_rows.append(["Helix Area (m²)", helix_area])
+        
+        download_rows.append([])  # Empty row for spacing
+        download_rows.append(["Helix Information"])
+        download_rows.append(["Helix Depth (m)", helix_depth])
+        download_rows.append(["q1 at Helix", detailed_results['q1_helix']])
+        download_rows.append(["q10 at Helix", detailed_results['q10_helix']])
+        download_rows.append(["Helix Tension Capacity (kN)", detailed_results['qhelix_tension']])
+        download_rows.append(["Helix Compression Capacity (kN)", detailed_results['qhelix_compression']])
+        
+        download_rows.append([])  # Empty row for spacing
+        download_rows.append(["Final Results"])
+        download_rows.append(["Ultimate Tension Capacity (kN)", qult_tension])
+        download_rows.append(["Ultimate Compression Capacity (kN)", qult_compression])
+        download_rows.append(["Tension Capacity at 10mm (kN)", q_delta_10mm_tension])
+        download_rows.append(["Compression Capacity at 10mm (kN)", q_delta_10mm_compression])
+        download_rows.append(["Installation Torque (kNm)", installation_torque])
         
         # Return both summary and detailed results
         return {
             'summary': summary,
-            'detailed': detailed_results
+            'detailed': detailed_results,
+            'download_data': download_rows
         }
     
     except Exception as e:

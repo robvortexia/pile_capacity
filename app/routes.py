@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, request, jsonify, flash, redirect, url_for, session, Response, send_file
+from flask import Blueprint, render_template, request, jsonify, flash, redirect, url_for, session, Response, send_file, current_app
 from werkzeug.utils import secure_filename
 import pandas as pd
 import os
@@ -404,8 +404,8 @@ def calculator_step(type, step):
                 
                 cpt_data = load_cpt_data(session['cpt_data_id'])
                 if not cpt_data:
-                    flash('CPT data not found. Please upload data again.')
-                    return redirect(url_for('main.calculator_step', type=type, step=1))
+                    flash('CPT data not found. Please upload data again.', 'error')
+                    return redirect(url_for('main.calculator_step', type='helical', step=1))
                 
                 # Process the CPT data
                 processed_cpt = pre_input_calc(cpt_data, float(session['pile_params']['water_table']))
@@ -985,3 +985,210 @@ def download_intermediary_calcs():
         print(f"Error generating intermediary calculations: {str(e)}")
         flash('Error generating calculations')
         return redirect(url_for('main.calculator_step', type=session.get('type', 'driven'), step=2))
+
+@bp.route('/download_helical_calculations')
+def download_helical_calculations():
+    """Download all helical pile calculation data in CSV format"""
+    try:
+        # Get the calculation results from the session
+        if 'results_id' not in session:
+            flash('No calculation results found', 'error')
+            return redirect(url_for('main.index'))
+        
+        # Load the calculation results
+        results = load_calculation_results(session['results_id'])
+        if not results:
+            flash('Calculation results not found', 'error')
+            return redirect(url_for('main.index'))
+        
+        # Debug logging - print the keys in the results dictionary
+        current_app.logger.info(f"Results keys: {list(results.keys())}")
+        
+        # Get pile parameters
+        pile_params = {}
+        if 'pile_params' in results:
+            pile_params = results['pile_params']
+        elif 'detailed' in results and 'input_parameters' in results['detailed']:
+            pile_params = results['detailed']['input_parameters']
+        elif 'summary' in results and isinstance(results['summary'], dict) and 'tipdepth' in results['summary']:
+            # Try to extract from session if not in results
+            pile_params = session.get('pile_params', {})
+        
+        # Debug logging
+        current_app.logger.info(f"Downloading helical pile calculations")
+        current_app.logger.info(f"Pile params: {pile_params}")
+        
+        # Get the detailed results
+        detailed_results = {}
+        if 'detailed' in results:
+            detailed_results = results['detailed']
+        elif 'detailed_results' in results:
+            detailed_results = results['detailed_results']
+        
+        # Debug logging - print the keys in the detailed_results dictionary
+        if detailed_results:
+            current_app.logger.info(f"Detailed results keys: {list(detailed_results.keys())}")
+        else:
+            current_app.logger.warning("No detailed results found")
+        
+        # Get the user's filename or use a default
+        user_filename = pile_params.get('site_name', '')
+        if not user_filename:
+            user_filename = "helical_pile_calculations"
+        current_app.logger.info(f"Using original filename: {user_filename}")
+        
+        # Clean the filename
+        user_filename = ''.join(c for c in user_filename if c.isalnum() or c in '._- ')
+        user_filename = user_filename.strip()
+        if not user_filename:
+            user_filename = "helical_pile_calculations"
+        current_app.logger.info(f"Final user_filename: {user_filename}")
+        
+        # Create a timestamp for the filename
+        from datetime import datetime
+        timestamp = datetime.now().strftime("%d%m%Y")
+        download_name = f"{user_filename}_detailed_{timestamp}.csv"
+        current_app.logger.info(f"Final download_name: {download_name}")
+        
+        # Create a CSV from the data
+        import csv
+        import io
+        
+        output = io.StringIO()
+        writer = csv.writer(output)
+        
+        # If we have pre-formatted download data, use it
+        if 'download_data' in results and results['download_data']:
+            current_app.logger.info("Using pre-formatted download data")
+            for row in results['download_data']:
+                writer.writerow(row)
+        else:
+            # Otherwise, build the CSV from detailed results
+            current_app.logger.info("Building CSV from detailed results")
+            
+            # Create header row
+            header = [
+                "Depth (m)",
+                "qt (MPa)",
+                "qc (MPa)",
+                "fs (kPa)",
+                "Fr (%)",
+                "Ic",
+                "Soil Type",
+                "q1 (MPa)",
+                "q10 (MPa)",
+                "Casing Coefficient",
+                "Delta Z (m)",
+                "Shaft Segment (kN)",
+                "Cumulative Shaft (kN)",
+                "Tension Capacity (kN)",
+                "Compression Capacity (kN)"
+            ]
+            writer.writerow(header)
+            
+            # Check if we have depth data
+            if not detailed_results or 'depth' not in detailed_results or not detailed_results['depth']:
+                current_app.logger.error("No depth data found in detailed results")
+                writer.writerow(["No detailed calculation data available"])
+            else:
+                # Add data rows
+                for i in range(len(detailed_results['depth'])):
+                    try:
+                        row = [
+                            detailed_results['depth'][i],
+                            detailed_results.get('qt', [0] * len(detailed_results['depth']))[i],
+                            detailed_results.get('qc', [0] * len(detailed_results['depth']))[i],
+                            detailed_results.get('fs', [0] * len(detailed_results['depth']))[i],
+                            detailed_results.get('fr_percent', [0] * len(detailed_results['depth']))[i],
+                            detailed_results.get('lc', [0] * len(detailed_results['depth']))[i],
+                            detailed_results.get('soil_type', ['Unknown'] * len(detailed_results['depth']))[i],
+                            detailed_results.get('q1', [0] * len(detailed_results['depth']))[i],
+                            detailed_results.get('q10', [0] * len(detailed_results['depth']))[i],
+                            detailed_results.get('coe_casing', [0] * len(detailed_results['depth']))[i],
+                            detailed_results.get('delta_z', [0] * len(detailed_results['depth']))[i],
+                            detailed_results.get('qshaft_segment', [0] * len(detailed_results['depth']))[i],
+                            detailed_results.get('qshaft_kn', [0] * len(detailed_results['depth']))[i],
+                            detailed_results.get('tension_capacity', [0] * len(detailed_results['depth']))[i],
+                            detailed_results.get('compression_capacity', [0] * len(detailed_results['depth']))[i]
+                        ]
+                        writer.writerow(row)
+                    except (IndexError, KeyError) as e:
+                        current_app.logger.error(f"Error writing row {i}: {str(e)}")
+                        continue
+            
+            # Add empty row for spacing
+            writer.writerow([])
+            
+            # Add summary information
+            writer.writerow(["SUMMARY INFORMATION"])
+            writer.writerow(["Input Parameters"])
+            for key, value in pile_params.items():
+                writer.writerow([key, value])
+            
+            # Add geometric constants if available
+            writer.writerow([])  # Empty row for spacing
+            writer.writerow(["Geometric Constants"])
+            writer.writerow(["Perimeter (m)", detailed_results.get('perimeter', 'N/A')])
+            writer.writerow(["Helix Area (m²)", detailed_results.get('helix_area', 'N/A')])
+            
+            # Add helix information if available
+            writer.writerow([])  # Empty row for spacing
+            writer.writerow(["Helix Information"])
+            writer.writerow(["Helix Depth (m)", pile_params.get('helix_depth', 'N/A')])
+            writer.writerow(["q1 at Helix", detailed_results.get('q1_helix', 'N/A')])
+            writer.writerow(["q10 at Helix", detailed_results.get('q10_helix', 'N/A')])
+            writer.writerow(["Helix Tension Capacity (kN)", detailed_results.get('qhelix_tension', 'N/A')])
+            writer.writerow(["Helix Compression Capacity (kN)", detailed_results.get('qhelix_compression', 'N/A')])
+            
+            # Add effective depth calculations if available
+            writer.writerow([])  # Empty row for spacing
+            writer.writerow(["Effective Depth Calculations"])
+            writer.writerow(["Tension Effective Depth (m)", detailed_results.get('tension_effective_depth', 'N/A')])
+            writer.writerow(["Tension Min q10", detailed_results.get('tension_min_q10', 'N/A')])
+            writer.writerow(["q(10mm) Tension", detailed_results.get('q_10mm_tens', 'N/A')])
+            writer.writerow(["Compression Effective Depth (m)", detailed_results.get('compression_effective_depth', 'N/A')])
+            writer.writerow(["Compression Min q10", detailed_results.get('compression_min_q10', 'N/A')])
+            writer.writerow(["q(10mm) Compression", detailed_results.get('q_10mm_comp', 'N/A')])
+            
+            # Add final results
+            writer.writerow([])  # Empty row for spacing
+            writer.writerow(["Final Results"])
+            
+            # Get summary data from different possible locations
+            summary_data = {}
+            if 'summary' in results:
+                summary_data = results['summary']
+            elif 'summary_data' in results:
+                summary_data = results['summary_data']
+            elif 'summary_data' in session:
+                summary_data = session['summary_data']
+            
+            # Write final results
+            writer.writerow(["Ultimate Tension Capacity (kN)", summary_data.get('qult_tension', detailed_results.get('qult_tension', 'N/A'))])
+            writer.writerow(["Ultimate Compression Capacity (kN)", summary_data.get('qult_compression', detailed_results.get('qult_compression', 'N/A'))])
+            writer.writerow(["Tension Capacity at 10mm (kN)", detailed_results.get('q_delta_10mm_tension', 'N/A')])
+            writer.writerow(["Compression Capacity at 10mm (kN)", detailed_results.get('q_delta_10mm_compression', 'N/A')])
+            writer.writerow(["Installation Torque (kNm)", detailed_results.get('installation_torque', 'N/A')])
+        
+        # Prepare the file for download
+        output.seek(0)
+        
+        # Add more debug logging right before sending the file
+        current_app.logger.info(f"Sending file with size: {len(output.getvalue())} bytes")
+        
+        return send_file(
+            io.BytesIO(output.getvalue().encode('utf-8')),
+            mimetype='text/csv',
+            as_attachment=True,
+            download_name=download_name
+        )
+    
+    except Exception as e:
+        # Log the full exception with traceback
+        import traceback
+        current_app.logger.error(f"Error in download_helical_calculations: {str(e)}")
+        current_app.logger.error(traceback.format_exc())
+        
+        # Flash a more helpful error message
+        flash(f"Error generating download: {str(e)}", 'error')
+        return redirect(url_for('main.index'))
