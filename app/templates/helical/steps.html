@@ -71,6 +71,13 @@
     <div class="step-content">
         <h2>Step 3: Pile Parameters</h2>
         {% include 'components/helical_pile_parameters.html' %}
+        
+        <div class="button-group mt-4">
+            <form method="POST" action="{{ url_for('main.calculator_step', type=type, step=3) }}">
+                <button type="submit" class="btn btn-primary">Continue to Summary</button>
+            </form>
+            <a href="{{ url_for('main.calculator_step', type=type, step=2) }}" class="btn btn-secondary">Back to Step 2</a>
+        </div>
     </div>
     {% endif %}
     
@@ -133,16 +140,16 @@
                         <tbody>
                             <tr>
                                 <td>Tension</td>
-                                <td>{{ "%.3f"|format(results.summary.qshaft) }}</td>
+                                <td>{{ "%.3f"|format(results.qshaft) }}</td>
                                 <td>{{ "%.2f"|format(detailed_results.qhelix_tension) }}</td>
-                                <td>{{ "%.2f"|format(results.summary.qult_tension) }}</td>
+                                <td>{{ "%.2f"|format(results.qult_tension) }}</td>
                                 <td rowspan="2">{{ "%.2f"|format(detailed_results.qhelix_tension / 19.0) }}</td>
                             </tr>
                             <tr>
                                 <td>Compression</td>
-                                <td>{{ "%.3f"|format(results.summary.qshaft) }}</td>
+                                <td>{{ "%.3f"|format(results.qshaft) }}</td>
                                 <td>{{ "%.2f"|format(detailed_results.qhelix_compression) }}</td>
-                                <td>{{ "%.2f"|format(results.summary.qult_compression) }}</td>
+                                <td>{{ "%.2f"|format(results.qult_compression) }}</td>
                             </tr>
                         </tbody>
                     </table>

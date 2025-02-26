@@ -10,6 +10,8 @@ import os
 import math
 from .calculations import pre_input_calc
 from flask import session
+import uuid
+from flask import current_app
 
 def generate_csv_download(data, filename="results.csv"):
     df = pd.DataFrame(data)
@@ -361,3 +363,31 @@ def validate_and_process_data(df):
         })
     
     return processed_data
+
+def save_calculation_results(results):
+    """Save calculation results to a file and return the file ID."""
+    results_id = str(uuid.uuid4())
+    results_dir = os.path.join(current_app.instance_path, 'results')
+    
+    # Create directory if it doesn't exist
+    if not os.path.exists(results_dir):
+        os.makedirs(results_dir)
+    
+    # Save results to file
+    results_path = os.path.join(results_dir, f'{results_id}.json')
+    with open(results_path, 'w') as f:
+        json.dump(results, f)
+    
+    return results_id
+
+def load_calculation_results(results_id):
+    """Load calculation results from a file."""
+    results_path = os.path.join(current_app.instance_path, 'results', f'{results_id}.json')
+    
+    if not os.path.exists(results_path):
+        return None
+    
+    with open(results_path, 'r') as f:
+        results = json.load(f)
+    
+    return results

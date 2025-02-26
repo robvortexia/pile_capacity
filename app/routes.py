@@ -7,7 +7,12 @@ import json
 import plotly.graph_objects as go
 import plotly.utils
 import numpy as np
-from .utils import save_cpt_data, load_cpt_data, create_cpt_graphs, save_graphs_data, load_graphs_data, generate_csv_download, save_debug_details, load_debug_details, create_bored_pile_graphs
+from .utils import (
+    save_cpt_data, load_cpt_data, create_cpt_graphs, 
+    save_graphs_data, load_graphs_data, generate_csv_download, 
+    save_debug_details, load_debug_details, create_bored_pile_graphs,
+    save_calculation_results, load_calculation_results
+)
 from .calculations import calculate_pile_capacity, process_cpt_data, pre_input_calc, get_iterative_values, calculate_bored_pile_results, calculate_helical_pile_results
 from datetime import datetime, timedelta
 from .models import db, Registration, Visit
@@ -81,6 +86,87 @@ def calculator_step(type, step):
     if type not in ['driven', 'bored', 'helical']:
         return redirect(url_for('main.index'))
     
+    # Handle helical pile processing specifically
+    if type == 'helical' and step == 3 and request.method == 'POST':
+        try:
+            # Get parameters from form
+            pile_params = {
+                'site_name': request.form.get('site_name', ''),
+                'shaft_diameter': float(request.form.get('shaft_diameter', 0)),
+                'helix_diameter': float(request.form.get('helix_diameter', 0)),
+                'helix_depth': float(request.form.get('helix_depth', 0)),
+                'borehole_depth': float(request.form.get('borehole_depth', 0)),
+                'water_table': float(request.form.get('water_table', 0))
+            }
+            
+            # Store parameters in session
+            session['pile_params'] = pile_params
+            
+            # Load CPT data
+            if 'cpt_data_id' in session:
+                cpt_data = load_cpt_data(session['cpt_data_id'])
+                if not cpt_data:
+                    flash('CPT data not found. Please upload data again.', 'error')
+                    return redirect(url_for('main.calculator_step', type='helical', step=1))
+                
+                # Process the CPT data
+                water_table = float(pile_params['water_table'])
+                processed_cpt = pre_input_calc(cpt_data, water_table)
+                
+                # Calculate results
+                try:
+                    results = calculate_helical_pile_results(processed_cpt, pile_params)
+                    
+                    # DON'T store entire results in session - just store a reference ID
+                    results_id = save_calculation_results(results)
+                    session['results_id'] = results_id
+                    
+                    # Only store basic summary data in session
+                    session['summary_data'] = {
+                        'tipdepth': results['summary']['tipdepth'],
+                        'qshaft': results['summary']['qshaft'],
+                        'qult_tension': results['summary']['qult_tension'],
+                        'qult_compression': results['summary']['qult_compression']
+                    }
+                    
+                    # Redirect to step 4
+                    return redirect(url_for('main.calculator_step', type='helical', step=4))
+                except Exception as e:
+                    logger.error(f"Error in helical pile calculations: {str(e)}")
+                    flash(f'Error in calculation: {str(e)}', 'error')
+                    return redirect(url_for('main.calculator_step', type='helical', step=3))
+            else:
+                flash('No CPT data available', 'error')
+                return redirect(url_for('main.calculator_step', type='helical', step=1))
+                
+        except Exception as e:
+            logger.error(f"Error processing helical pile parameters: {str(e)}")
+            flash(f'Error: {str(e)}', 'error')
+            return redirect(url_for('main.calculator_step', type='helical', step=3))
+    
+    # Handle step 4 - Results display
+    elif type == 'helical' and step == 4:
+        # Check if we have results ID
+        if 'results_id' not in session:
+            flash('No calculation results available. Please complete the analysis first.', 'warning')
+            return redirect(url_for('main.calculator_step', type='helical', step=3))
+        
+        # Load results from storage
+        results = load_calculation_results(session['results_id'])
+        if not results:
+            flash('Results not found. Please recalculate.', 'error')
+            return redirect(url_for('main.calculator_step', type='helical', step=3))
+        
+        # Render the results page
+        return render_template(
+            'helical/steps.html',
+            step=step,
+            type=type,
+            results=results['summary'],
+            detailed_results=results['detailed']
+        )
+    
+    # Continue with the rest of the route handler
     if request.method == 'POST':
         if step == 1:  # Handle file upload
             if 'cpt_file' not in request.files:
