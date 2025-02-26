@@ -419,15 +419,20 @@ def calculate_helical_intermediate_values(processed_cpt, params):
     q1_at_extended_depth = q1_values[extended_index]
     q10_at_extended_depth = q10_values[extended_index]
     
+    
     # Take the minimum q1 value between these two points for tension
     min_q1_tension = min(q1_helix, q1_at_effective_depth)
+    
+    # Take the minimum q1 value between these two points for compression
+    min_q1_compression = min(q1_helix, q1_at_extended_depth)
+
     
     # Take the minimum q10 values between appropriate points
     min_q10_tension = min(q10_helix, q10_at_effective_depth)  # Between tip and tip-Dh
     min_q10_compression = min(q10_helix, q10_at_extended_depth)  # Between tip and tip+Dh
     
     # Calculate qb0.1 values for compression and tension at tipdepth
-    qb01_comp = 0.8 * q1_helix  # 80% of q1 for compression
+    qb01_comp = 0.8 * min_q1_compression  # 80% of q1 for compression
     qb01_tension = 0.6 * min_q1_tension  # 60% of minimum q1 for tension, not q10_helix
     
     # Calculate helix capacities with qb0.1 values at tipdepth
@@ -454,8 +459,9 @@ def calculate_helical_intermediate_values(processed_cpt, params):
     for i in range(len(depths)):
         if i <= effective_index:
             # For depths above or at the effective depth (tipdepth-Dh)
-            tension_capacity.append(qshaft_kn[i] + (q10_helix * helix_area * 1000))
-            compression_capacity.append(qshaft_kn[i] + (q1_helix * helix_area * 1000))
+            # Use the correct factors and minimum q1 values
+            tension_capacity.append(qshaft_kn[i] + (0.6 * min_q1_tension * helix_area * 1000))
+            compression_capacity.append(qshaft_kn[i] + (0.8 * min_q1_compression * helix_area * 1000))
         else:
             # For depths below the effective depth
             tension_capacity.append(qshaft_kn[i])
@@ -469,8 +475,8 @@ def calculate_helical_intermediate_values(processed_cpt, params):
     q_delta_10mm_compression = 0.8 * min_q10_compression * helix_area * 1000 + qshaft_kn[effective_index]
     q_delta_10mm_tension = 0.6 * min_q10_tension * helix_area * 1000 + qshaft_kn[effective_index]
     
-    # Calculate installation torque (simplified)
-    installation_torque = qult_compression / 20  # Simplified relationship
+    # Calculate installation torque using new formula
+    installation_torque = 0.4 * qult_tension * (shaft_diameter ** 0.92)
     
     # Create output dictionary
     result = {
