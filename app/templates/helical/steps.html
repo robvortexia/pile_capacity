@@ -141,14 +141,14 @@
                             <tr>
                                 <td>Tension</td>
                                 <td>{{ "%.3f"|format(results.qshaft) }}</td>
-                                <td>{{ "%.2f"|format(detailed_results.qhelix_tension) }}</td>
+                                <td>{{ "%.2f"|format(detailed_results.q_delta_10mm_tension) }}</td>
                                 <td>{{ "%.2f"|format(results.qult_tension) }}</td>
-                                <td rowspan="2">{{ "%.2f"|format(detailed_results.qhelix_tension / 19.0) }}</td>
+                                <td rowspan="2">{{ "%.2f"|format(detailed_results.installation_torque) }}</td>
                             </tr>
                             <tr>
                                 <td>Compression</td>
                                 <td>{{ "%.3f"|format(results.qshaft) }}</td>
-                                <td>{{ "%.2f"|format(detailed_results.qhelix_compression) }}</td>
+                                <td>{{ "%.2f"|format(detailed_results.q_delta_10mm_compression) }}</td>
                                 <td>{{ "%.2f"|format(results.qult_compression) }}</td>
                             </tr>
                         </tbody>

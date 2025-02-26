@@ -383,8 +383,56 @@ def calculate_helical_intermediate_values(processed_cpt, params):
     qhelix_tension = q10_helix * helix_area * 1000
     qhelix_compression = q1_helix * helix_area * 1000
     
-    # Prepare results dictionary
-    results = {
+    # UPDATED CALCULATIONS for Q at delta = 10mm
+    
+    # For TENSION: Find the depth index for (helix_depth - helix_diameter)
+    tension_effective_depth = max(0, helix_depth - helix_diameter)
+    tension_effective_index = min(range(len(depths)), key=lambda i: abs(depths[i] - tension_effective_depth))
+    
+    # Get minimum q10 value between tip depth and (tip depth - helix diameter) for TENSION
+    tension_min_q10 = min(q10_values[helix_index], q10_values[tension_effective_index])
+    
+    # Calculate q(10mm) for tension: 0.6 * min_q10
+    q_10mm_tens = 0.6 * tension_min_q10
+    
+    # For COMPRESSION: Find the depth index for (helix_depth + helix_diameter)
+    compression_effective_depth = min(helix_depth + helix_diameter, depths[-1])  # Cap at max depth
+    compression_effective_index = min(range(len(depths)), key=lambda i: abs(depths[i] - compression_effective_depth))
+    
+    # Get minimum q10 value between tip depth and (tip depth + helix diameter) for COMPRESSION
+    compression_min_q10 = min(q10_values[helix_index], q10_values[compression_effective_index])
+    
+    # Calculate q(10mm) for compression: 0.8 * min_q10
+    q_10mm_comp = 0.8 * compression_min_q10
+    
+    # Calculate Q at delta = 10mm
+    q_delta_10mm_tension = q_10mm_tens * helix_area * 1000 + qshaft_kn[tension_effective_index]
+    q_delta_10mm_compression = q_10mm_comp * helix_area * 1000 + qshaft_kn[helix_index]  # Use shaft capacity at helix depth
+    
+    # Calculate total capacities
+    tension_capacity_array = []
+    compression_capacity_array = []
+    
+    for i in range(len(depths)):
+        if depths[i] <= helix_depth:
+            tension_capacity = qshaft_kn[i]
+            compression_capacity = qshaft_kn[i]
+        else:
+            tension_capacity = qshaft_kn[i] + qhelix_tension
+            compression_capacity = qshaft_kn[i] + qhelix_compression
+        
+        tension_capacity_array.append(tension_capacity)
+        compression_capacity_array.append(compression_capacity)
+    
+    # Calculate ultimate capacities
+    qult_tension = tension_capacity_array[-1]
+    qult_compression = compression_capacity_array[-1]
+    
+    # Calculate installation torque
+    installation_torque = 0.4 * qult_tension * shaft_diameter * 0.92
+    
+    # Add all calculation results to the response
+    result = {
         'depth': depths,
         'qt': processed_cpt['qt'],
         'qc': processed_cpt['qc'],
@@ -398,16 +446,31 @@ def calculate_helical_intermediate_values(processed_cpt, params):
         'delta_z': delta_z,
         'qshaft_segment': qshaft_segment,
         'qshaft_kn': qshaft_kn,
+        'tension_capacity': tension_capacity_array,
+        'compression_capacity': compression_capacity_array,
         'helix_index': helix_index,
         'q1_helix': q1_helix,
         'q10_helix': q10_helix,
         'qhelix_tension': qhelix_tension,
         'qhelix_compression': qhelix_compression,
         'perimeter': perimeter,
-        'helix_area': helix_area
+        'helix_area': helix_area,
+        'tension_effective_depth': tension_effective_depth,
+        'tension_effective_index': tension_effective_index,
+        'tension_min_q10': tension_min_q10,
+        'compression_effective_depth': compression_effective_depth,
+        'compression_effective_index': compression_effective_index,
+        'compression_min_q10': compression_min_q10,
+        'q_10mm_tens': q_10mm_tens,
+        'q_10mm_comp': q_10mm_comp,
+        'qult_tension': qult_tension,
+        'qult_compression': qult_compression,
+        'q_delta_10mm_tension': q_delta_10mm_tension,
+        'q_delta_10mm_compression': q_delta_10mm_compression,
+        'installation_torque': installation_torque
     }
     
-    return results
+    return result
 
 def calculate_helical_pile_results(processed_cpt, params):
     """
