@@ -273,7 +273,9 @@ def calculate_helical_pile_capacity(processed_cpt, pile_params, qshaft_kn):
         'tension_capacity_array': tension_capacity_array,
         'compression_capacity_array': compression_capacity_array,
         'qult_tension': qult_tension,
-        'qult_compression': qult_compression
+        'qult_compression': qult_compression,
+        'qhelix_tension': qhelix_tension,
+        'qhelix_compression': qhelix_compression
     }
     
     return results
@@ -398,9 +400,48 @@ def calculate_helical_intermediate_values(processed_cpt, params):
     q1_helix = q1_values[helix_index]
     q10_helix = q10_values[helix_index]
     
-    # Calculate helix capacities for the template
+    # Keep these variables for template compatibility
     qhelix_tension = q10_helix * helix_area * 1000
     qhelix_compression = q1_helix * helix_area * 1000
+    
+    # Calculate effective depth for tension capacity (tipdepth-Dh)
+    effective_depth = helix_depth - helix_diameter
+    effective_index = min(range(len(depths)), key=lambda i: abs(depths[i] - effective_depth))
+    q1_at_effective_depth = q1_values[effective_index]
+    q10_at_effective_depth = q10_values[effective_index]
+    
+    # Calculate extended depth for compression capacity (tipdepth+Dh)
+    extended_depth = helix_depth + helix_diameter
+    # Make sure we don't go beyond the available data
+    if extended_depth > depths[-1]:
+        extended_depth = depths[-1]
+    extended_index = min(range(len(depths)), key=lambda i: abs(depths[i] - extended_depth))
+    q1_at_extended_depth = q1_values[extended_index]
+    q10_at_extended_depth = q10_values[extended_index]
+    
+    # Take the minimum q1 value between these two points for tension
+    min_q1_tension = min(q1_helix, q1_at_effective_depth)
+    
+    # Take the minimum q10 values between appropriate points
+    min_q10_tension = min(q10_helix, q10_at_effective_depth)  # Between tip and tip-Dh
+    min_q10_compression = min(q10_helix, q10_at_extended_depth)  # Between tip and tip+Dh
+    
+    # Calculate qb0.1 values for compression and tension at tipdepth
+    qb01_comp = 0.8 * q1_helix  # 80% of q1 for compression
+    qb01_tension = 0.6 * min_q1_tension  # 60% of minimum q1 for tension, not q10_helix
+    
+    # Calculate helix capacities with qb0.1 values at tipdepth
+    qb01_comp_capacity = qb01_comp * helix_area * 1000  # kN
+    qb01_tension_capacity = qb01_tension * helix_area * 1000  # kN
+    
+    # Calculate total capacities at tipdepth (original helix depth)
+    tipdepth_shaft = qshaft_kn[helix_index]
+    qult_comp_tipdepth = tipdepth_shaft + qb01_comp_capacity
+    qult_tension_tipdepth = tipdepth_shaft + qb01_tension_capacity
+    
+    # Calculate 10mm settlement capacities using min q10 values as per new formulas
+    q_10mm_comp_tipdepth = 0.8 * min_q10_compression * helix_area * 1000 + tipdepth_shaft
+    q_10mm_tension_tipdepth = 0.6 * min_q10_tension * helix_area * 1000 + tipdepth_shaft
     
     # Calculate tension and compression capacities
     tension_capacity = []
@@ -413,8 +454,8 @@ def calculate_helical_intermediate_values(processed_cpt, params):
     for i in range(len(depths)):
         if i <= effective_index:
             # For depths above or at the effective depth (tipdepth-Dh)
-            tension_capacity.append(qshaft_kn[i] + qhelix_tension)
-            compression_capacity.append(qshaft_kn[i] + qhelix_compression)
+            tension_capacity.append(qshaft_kn[i] + (q10_helix * helix_area * 1000))
+            compression_capacity.append(qshaft_kn[i] + (q1_helix * helix_area * 1000))
         else:
             # For depths below the effective depth
             tension_capacity.append(qshaft_kn[i])
@@ -424,9 +465,9 @@ def calculate_helical_intermediate_values(processed_cpt, params):
     qult_tension = tension_capacity[effective_index]
     qult_compression = compression_capacity[effective_index]
     
-    # Calculate settlements
-    q_delta_10mm_tension = qult_tension * 0.8  # Simplified assumption for 10mm settlement
-    q_delta_10mm_compression = qult_compression * 0.8  # Simplified assumption for 10mm settlement
+    # Calculate settlements using min q10 values - correct formulas
+    q_delta_10mm_compression = 0.8 * min_q10_compression * helix_area * 1000 + qshaft_kn[effective_index]
+    q_delta_10mm_tension = 0.6 * min_q10_tension * helix_area * 1000 + qshaft_kn[effective_index]
     
     # Calculate installation torque (simplified)
     installation_torque = qult_compression / 20  # Simplified relationship
@@ -441,10 +482,10 @@ def calculate_helical_intermediate_values(processed_cpt, params):
         'lc': processed_cpt['lc'],
         'q1': q1_values,
         'q10': q10_values,
-        'q1_helix': q1_helix,             # Add specific helix values for template
-        'q10_helix': q10_helix,           # Add specific helix values for template
-        'qhelix_tension': qhelix_tension, # Add specific helix values for template
-        'qhelix_compression': qhelix_compression, # Add specific helix values for template
+        'q1_helix': q1_helix,
+        'q10_helix': q10_helix,
+        'qhelix_tension': qhelix_tension,
+        'qhelix_compression': qhelix_compression,
         'soil_type': soil_type,
         'coe_casing': coe_casing,
         'delta_z': delta_z,
@@ -457,12 +498,20 @@ def calculate_helical_intermediate_values(processed_cpt, params):
         'q_delta_10mm_tension': q_delta_10mm_tension,
         'q_delta_10mm_compression': q_delta_10mm_compression,
         'installation_torque': installation_torque,
-        'perimeter': perimeter,           # Add geometric properties for template
-        'helix_area': helix_area,         # Add geometric properties for template
-        'shaft_diameter': shaft_diameter, # Add input parameters
-        'helix_diameter': helix_diameter, # Add input parameters
-        'helix_depth': helix_depth,       # Add input parameters
-        'borehole_depth': borehole_depth  # Add input parameters
+        'perimeter': perimeter,
+        'helix_area': helix_area,
+        'shaft_diameter': shaft_diameter,
+        'helix_diameter': helix_diameter,
+        'helix_depth': helix_depth,
+        'borehole_depth': borehole_depth,
+        'qb01_comp': qb01_comp,
+        'qb01_tension': qb01_tension,
+        'qb01_comp_capacity': qb01_comp_capacity,
+        'qb01_tension_capacity': qb01_tension_capacity,
+        'qult_comp_tipdepth': qult_comp_tipdepth,
+        'qult_tension_tipdepth': qult_tension_tipdepth,
+        'q_10mm_comp_tipdepth': q_10mm_comp_tipdepth,
+        'q_10mm_tension_tipdepth': q_10mm_tension_tipdepth
     }
     
     return result
@@ -514,6 +563,14 @@ def calculate_helical_pile_results(processed_cpt, params):
         q_delta_10mm_compression = detailed_results.get('q_delta_10mm_compression', 0)
         installation_torque = detailed_results.get('installation_torque', 0)
         
+        # Get capacities at original tipdepth
+        qb01_comp = detailed_results.get('qb01_comp', 0)
+        qb01_tension = detailed_results.get('qb01_tension', 0)
+        qult_comp_tipdepth = detailed_results.get('qult_comp_tipdepth', 0)
+        qult_tension_tipdepth = detailed_results.get('qult_tension_tipdepth', 0)
+        q_10mm_comp_tipdepth = detailed_results.get('q_10mm_comp_tipdepth', 0)
+        q_10mm_tension_tipdepth = detailed_results.get('q_10mm_tension_tipdepth', 0)
+        
         # Summary results
         summary = {
             'tipdepth': helix_depth,
@@ -523,7 +580,14 @@ def calculate_helical_pile_results(processed_cpt, params):
             'qult_compression': qult_compression,
             'q_delta_10mm_tension': q_delta_10mm_tension,
             'q_delta_10mm_compression': q_delta_10mm_compression,
-            'installation_torque': installation_torque
+            'installation_torque': installation_torque,
+            # Add values at original tipdepth to summary
+            'qb01_comp': qb01_comp,
+            'qb01_tension': qb01_tension,
+            'qult_comp_tipdepth': qult_comp_tipdepth,
+            'qult_tension_tipdepth': qult_tension_tipdepth,
+            'q_10mm_comp_tipdepth': q_10mm_comp_tipdepth,
+            'q_10mm_tension_tipdepth': q_10mm_tension_tipdepth
         }
         
         # Add input parameters to the detailed results for completeness
@@ -591,8 +655,8 @@ def calculate_helical_pile_results(processed_cpt, params):
         download_rows.append(["Helix Depth (m)", helix_depth])
         download_rows.append(["q1 at Helix", detailed_results['q1_helix']])
         download_rows.append(["q10 at Helix", detailed_results['q10_helix']])
-        download_rows.append(["Helix Tension Capacity (kN)", detailed_results['qhelix_tension']])
-        download_rows.append(["Helix Compression Capacity (kN)", detailed_results['qhelix_compression']])
+        download_rows.append(["qb0.1 Compression (MPa)", detailed_results['qb01_comp']])
+        download_rows.append(["qb0.1 Tension (MPa)", detailed_results['qb01_tension']])
         
         download_rows.append([])  # Empty row for spacing
         download_rows.append(["Final Results"])
@@ -601,6 +665,16 @@ def calculate_helical_pile_results(processed_cpt, params):
         download_rows.append(["Tension Capacity at 10mm (kN)", q_delta_10mm_tension])
         download_rows.append(["Compression Capacity at 10mm (kN)", q_delta_10mm_compression])
         download_rows.append(["Installation Torque (kNm)", installation_torque])
+        
+        # Add results at original tipdepth
+        download_rows.append([])  # Empty row for spacing
+        download_rows.append(["Results at Original Tipdepth"])
+        download_rows.append(["qb0.1 Compression (MPa)", qb01_comp])
+        download_rows.append(["qb0.1 Tension (MPa)", qb01_tension])
+        download_rows.append(["Ultimate Compression Capacity at Tipdepth (kN)", qult_comp_tipdepth])
+        download_rows.append(["Ultimate Tension Capacity at Tipdepth (kN)", qult_tension_tipdepth])
+        download_rows.append(["Compression Capacity at 10mm at Tipdepth (kN)", q_10mm_comp_tipdepth])
+        download_rows.append(["Tension Capacity at 10mm at Tipdepth (kN)", q_10mm_tension_tipdepth])
         
         # Return both summary and detailed results
         return {
