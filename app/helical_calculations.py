@@ -600,10 +600,52 @@ def calculate_helical_pile_results(processed_cpt, params):
         detailed_results['input_parameters'] = params
         
         # Create a tabular format for download that can be easily converted to CSV
-        # Each row will have depth and all calculations at that depth
         download_rows = []
         
-        # Add header row with column names
+        # Add header row with title
+        download_rows.append(["HELICAL PILE CALCULATION RESULTS"])
+        download_rows.append([])  # Empty row for spacing
+        
+        # Add input parameters first
+        download_rows.append(["INPUT PARAMETERS"])
+        for key, value in params.items():
+            download_rows.append([key, value])
+            
+        download_rows.append([])  # Empty row for spacing
+        download_rows.append(["GEOMETRIC CONSTANTS"])
+        download_rows.append(["Perimeter (m)", perimeter])
+        download_rows.append(["Helix Area (m²)", helix_area])
+        
+        download_rows.append([])  # Empty row for spacing
+        download_rows.append(["HELIX PROPERTIES"])
+        download_rows.append(["Helix Depth (m)", helix_depth])
+        download_rows.append(["q1 at Helix", detailed_results['q1_helix']])
+        download_rows.append(["q10 at Helix", detailed_results['q10_helix']])
+        download_rows.append(["qb0.1 Compression (MPa)", detailed_results['qb01_comp']])
+        download_rows.append(["qb0.1 Tension (MPa)", detailed_results['qb01_tension']])
+        
+        download_rows.append([])  # Empty row for spacing
+        download_rows.append(["FINAL RESULTS"])
+        download_rows.append(["Ultimate Tension Capacity (kN)", qult_tension])
+        download_rows.append(["Ultimate Compression Capacity (kN)", qult_compression])
+        download_rows.append(["Tension Capacity at 10mm (kN)", q_delta_10mm_tension])
+        download_rows.append(["Compression Capacity at 10mm (kN)", q_delta_10mm_compression])
+        download_rows.append(["Installation Torque (kNm)", installation_torque])
+        
+        download_rows.append([])  # Empty row for spacing
+        download_rows.append(["RESULTS AT ORIGINAL TIPDEPTH"])
+        download_rows.append(["qb0.1 Compression (MPa)", qb01_comp])
+        download_rows.append(["qb0.1 Tension (MPa)", qb01_tension])
+        download_rows.append(["Ultimate Compression Capacity at Tipdepth (kN)", qult_comp_tipdepth])
+        download_rows.append(["Ultimate Tension Capacity at Tipdepth (kN)", qult_tension_tipdepth])
+        download_rows.append(["Compression Capacity at 10mm at Tipdepth (kN)", q_10mm_comp_tipdepth])
+        download_rows.append(["Tension Capacity at 10mm at Tipdepth (kN)", q_10mm_tension_tipdepth])
+
+        download_rows.append([])  # Empty row for spacing
+        download_rows.append(["DETAILED CALCULATION TABLE"])
+        download_rows.append([])  # Empty row for spacing
+        
+        # Add header row for detailed calculations
         header = [
             "Depth (m)",
             "qt (MPa)",
@@ -643,44 +685,6 @@ def calculate_helical_pile_results(processed_cpt, params):
                 detailed_results['compression_capacity'][i]
             ]
             download_rows.append(row)
-        
-        # Add summary information at the end
-        download_rows.append([])  # Empty row for spacing
-        download_rows.append(["SUMMARY INFORMATION"])
-        download_rows.append(["Input Parameters"])
-        for key, value in params.items():
-            download_rows.append([key, value])
-        
-        download_rows.append([])  # Empty row for spacing
-        download_rows.append(["Geometric Constants"])
-        download_rows.append(["Perimeter (m)", perimeter])
-        download_rows.append(["Helix Area (m²)", helix_area])
-        
-        download_rows.append([])  # Empty row for spacing
-        download_rows.append(["Helix Information"])
-        download_rows.append(["Helix Depth (m)", helix_depth])
-        download_rows.append(["q1 at Helix", detailed_results['q1_helix']])
-        download_rows.append(["q10 at Helix", detailed_results['q10_helix']])
-        download_rows.append(["qb0.1 Compression (MPa)", detailed_results['qb01_comp']])
-        download_rows.append(["qb0.1 Tension (MPa)", detailed_results['qb01_tension']])
-        
-        download_rows.append([])  # Empty row for spacing
-        download_rows.append(["Final Results"])
-        download_rows.append(["Ultimate Tension Capacity (kN)", qult_tension])
-        download_rows.append(["Ultimate Compression Capacity (kN)", qult_compression])
-        download_rows.append(["Tension Capacity at 10mm (kN)", q_delta_10mm_tension])
-        download_rows.append(["Compression Capacity at 10mm (kN)", q_delta_10mm_compression])
-        download_rows.append(["Installation Torque (kNm)", installation_torque])
-        
-        # Add results at original tipdepth
-        download_rows.append([])  # Empty row for spacing
-        download_rows.append(["Results at Original Tipdepth"])
-        download_rows.append(["qb0.1 Compression (MPa)", qb01_comp])
-        download_rows.append(["qb0.1 Tension (MPa)", qb01_tension])
-        download_rows.append(["Ultimate Compression Capacity at Tipdepth (kN)", qult_comp_tipdepth])
-        download_rows.append(["Ultimate Tension Capacity at Tipdepth (kN)", qult_tension_tipdepth])
-        download_rows.append(["Compression Capacity at 10mm at Tipdepth (kN)", q_10mm_comp_tipdepth])
-        download_rows.append(["Tension Capacity at 10mm at Tipdepth (kN)", q_10mm_tension_tipdepth])
         
         # Return both summary and detailed results
         return {

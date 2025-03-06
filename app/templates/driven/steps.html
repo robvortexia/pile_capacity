@@ -110,7 +110,9 @@
 <script>
     var config = {
         responsive: true,
-        displayModeBar: false
+        displayModeBar: false,
+        displaylogo: false,
+        modeBarButtonsToRemove: ['zoom2d', 'pan2d', 'select2d', 'lasso2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d', 'resetScale2d']
     };
     
     var qtGraph = JSON.parse('{{ graphs.qt | safe }}');
@@ -118,65 +120,96 @@
     var icGraph = JSON.parse('{{ graphs.ic | safe }}');
     var izGraph = JSON.parse('{{ graphs.iz | safe }}');
     
+    // Extend layout for all graphs
+    [qtGraph, frGraph, icGraph, izGraph].forEach(graph => {
+        graph.layout = {
+            ...graph.layout,
+            autosize: true,
+            height: null,  // Let Plotly calculate height
+            margin: { l: 50, r: 20, t: 30, b: 30 },
+            plot_bgcolor: 'white',
+            paper_bgcolor: 'white'
+        };
+    });
+    
+    // Function to handle window resize
+    function resizeGraphs() {
+        const graphDivs = ['qt_graph', 'fr_graph', 'ic_graph', 'iz_graph'];
+        graphDivs.forEach(div => {
+            const container = document.getElementById(div).parentElement;
+            const height = container.clientHeight;
+            Plotly.relayout(div, {
+                height: height
+            });
+        });
+    }
+    
+    // Create the plots
     Plotly.newPlot('qt_graph', qtGraph.data, qtGraph.layout, config);
     Plotly.newPlot('fr_graph', frGraph.data, frGraph.layout, config);
     Plotly.newPlot('ic_graph', icGraph.data, icGraph.layout, config);
     Plotly.newPlot('iz_graph', izGraph.data, izGraph.layout, config);
+    
+    // Add window resize listener
+    window.addEventListener('resize', resizeGraphs);
+    
+    // Initial resize
+    setTimeout(resizeGraphs, 100);
 </script>
 {% endif %}
 
 <style>
 .container {
     max-width: 100%;
-    padding: 0.5rem;
+    padding: 1rem;
     margin: 0 auto;
     box-sizing: border-box;
-    overflow-x: hidden;
+    overflow: hidden;
 }
 
 .step {
     background: white;
-    padding: 0.5rem;
+    padding: 1rem;
     border-radius: 8px;
-    width: 100%;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
 }
 
 .graphs-grid {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 0.25rem;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 0.5rem;
     width: 100%;
-    margin: 0.5rem 0;
-    height: calc(100vh - 250px);
+    margin: 0;
+    height: calc(100vh - 100px);
+    min-height: 900px;
 }
 
 .graph-container {
     width: 100%;
-    min-width: 0;
-    max-width: 100%;
     height: 100%;
-    aspect-ratio: 1;
     background: white;
-    border: none;
-    padding: 0.15rem;
-    overflow: hidden;
+    border-radius: 8px;
+    padding: 0;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    display: flex;
+    flex-direction: column;
 }
 
 .graph-container > div {
-    height: 100% !important;
     width: 100% !important;
-    max-width: 100% !important;
+    height: 100% !important;
+    flex: 1;
 }
 
 .button-group {
-    margin-top: 0.5rem;
+    margin-top: 1rem;
     display: flex;
-    gap: 0.25rem;
+    gap: 0.5rem;
 }
 
 h2 {
-    margin: 0 0 0.25rem 0;
-    font-size: 1.15rem;
+    margin: 0 0 1rem 0;
+    font-size: 1.25rem;
     color: #333;
 }
 

@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import plotly.utils
+from scipy.interpolate import interp1d
 
 def get_ifr(diameter):
     return math.tanh(0.3 * ((diameter * 1000 / 35.68)**0.5))
@@ -128,73 +129,48 @@ def get_fr_percent(fs_value, qc_value, sig_v0_value):
     return (fs_value/(qc_value*1000 - sig_v0_value))*100
 
 def get_qp_clay_array(depthArray, qtArray, nominalSizeDoN, nominalSizeT):
-    diameter = nominalSizeDoN
-    t = nominalSizeT
-    qpArray = []
-    for i in range(len(depthArray)):
-        if i == len(depthArray)-1:
-            deltaz = 0
-        else:
-            deltaz = depthArray[i+1]-depthArray[i]
-        
-        if deltaz != 0:
-            avgcells = 20*t / deltaz
-        else:
-            avgcells = 0
-        qpc = 0
-        depth = depthArray[i]
-        if depth > (8*diameter) and avgcells > 0:
-            qtsum = 0
-            n = 0
-            start_j = max(i - round(avgcells), 0)
-            end_j = min(i + round(avgcells), len(qtArray)-1)
-            for idx in range(start_j, end_j+1):
-                val = qtArray[idx]
-                if val > 0:
-                    qtsum += val
-                    n += 1
-            if n > 0:
-                qpc = qtsum/n
-            else:
-                qpc = 0
-        else:
-            qpc = 0
-        qpArray.append(qpc)
-    return qpArray
+    """Calculate qp values for clay using vectorized operations"""
+    depthArray = np.array(depthArray)
+    qtArray = np.array(qtArray)
+    
+    # Points less than 8*diameter return 0
+    qpArray = np.zeros_like(qtArray)
+    valid_points = depthArray > (8*nominalSizeDoN)
+    
+    if not np.any(valid_points):
+        return qpArray.tolist()
+    
+    # For valid points, calculate the moving average
+    window_size = int(np.ceil(20 * nominalSizeT / np.mean(np.diff(depthArray))))
+    window_size = max(1, min(window_size, len(qtArray) // 2))  # Reasonable limits
+    
+    # Use numpy's convolve for efficient moving average
+    weights = np.ones(2*window_size + 1) / (2*window_size + 1)
+    qpArray[valid_points] = np.convolve(qtArray, weights, mode='same')[valid_points]
+    
+    return qpArray.tolist()
 
 def get_qp_sand_array(depthArray, qtArray, nominalSizeDoN):
-    diameter = nominalSizeDoN
-    qpArray = []
-    for i in range(len(depthArray)):
-        if i == len(depthArray)-1:
-            deltaz = 0
-        else:
-            deltaz = depthArray[i+1]-depthArray[i]
-
-        if deltaz == 0:
-            qpArray.append(0)
-            continue
-        avgcells = round(1.5*diameter / deltaz)
-        qpc = 0
-        depth = depthArray[i]
-        if depth > (8*diameter) and avgcells > 0:
-            qtsum = 0
-            n = 0
-            start_j = max(i-avgcells, 0)
-            end_j = min(i+avgcells, len(qtArray)-1)
-            for idx in range(start_j, end_j+1):
-                val = qtArray[idx]
-                if val > 0:
-                    qtsum += val
-                    n += 1
-            if n > 0:
-                qpc = qtsum/n
-            else:
-                qpc = 0
-        else:
-            qpc = 0
-        qpArray.append(qpc)
-    return qpArray
+    """Calculate qp values for sand using vectorized operations"""
+    depthArray = np.array(depthArray)
+    qtArray = np.array(qtArray)
+    
+    # Points less than 8*diameter return 0
+    qpArray = np.zeros_like(qtArray)
+    valid_points = depthArray > (8*nominalSizeDoN)
+    
+    if not np.any(valid_points):
+        return qpArray.tolist()
+    
+    # For valid points, calculate the moving average
+    window_size = int(np.ceil(1.5 * nominalSizeDoN / np.mean(np.diff(depthArray))))
+    window_size = max(1, min(window_size, len(qtArray) // 2))  # Reasonable limits
+    
+    # Use numpy's convolve for efficient moving average
+    weights = np.ones(2*window_size + 1) / (2*window_size + 1)
+    qpArray[valid_points] = np.convolve(qtArray, weights, mode='same')[valid_points]
+    
+    return qpArray.tolist()
 
 def get_qp_mix_array(qp_sand_val, qp_clay_val, lc):
     if lc > 2.5:
@@ -296,10 +272,34 @@ def pre_input_calc(data, water_table):
         print(f"Error in pre_input_calc: {str(e)}")
         return None
 
+def interpolate_at_depth(depths, values, target_depth):
+    """
+    Interpolate a value at a specific depth
+    
+    Args:
+        depths (list): List of depths
+        values (list): List of values corresponding to depths
+        target_depth (float): Depth at which to interpolate
+        
+    Returns:
+        float: Interpolated value at target depth
+    """
+    # Create interpolation function
+    f = interp1d(depths, values, kind='linear', bounds_error=False, fill_value='extrapolate')
+    return float(f(target_depth))
+
 def calculate_pile_capacity(cpt_data, params, pile_type='driven'):
     print(f"Params received in calculate_pile_capacity: {params}")
     print(f"Water table from params: {params['water_table']}")
     processed_cpt = pre_input_calc(cpt_data, float(params['water_table']))
+    
+    # Check data point spacing
+    depths = processed_cpt['depth']
+    min_spacing = min(np.diff(depths))
+    print(f"Minimum spacing between data points: {min_spacing}m")
+    
+    # If spacing is already smaller than 0.1m, skip interpolation
+    needs_interpolation = min_spacing > 0.1
     
     if pile_type == 'bored':
         # Bored pile specific calculations
@@ -310,30 +310,34 @@ def calculate_pile_capacity(cpt_data, params, pile_type='driven'):
         pile_perimeter = get_pile_perimeter(pile_shape, shaft_diameter)
         Ab = math.pi * base_diameter * base_diameter * 0.25  # Base area
         
-        depths = processed_cpt['depth']
         results = []
         
         for tip in params['pile_tip_depths']:
-            tip_index = min(range(len(depths)), key=lambda i: abs(depths[i]-tip))
-            chosen_tip = depths[tip_index]
+            tip_depth = float(tip)  # Ensure tip is float
             
-            # Find the zone for qb0.1 calculation (tip to tip + base_diameter)
-            zone_end = chosen_tip + base_diameter
-            zone_end_index = min(range(len(depths)), key=lambda i: abs(depths[i]-zone_end))
+            # If we don't need interpolation, find nearest point
+            if not needs_interpolation:
+                tip_index = min(range(len(depths)), key=lambda i: abs(depths[i]-tip_depth))
+                tip_depth = depths[tip_index]  # Use actual depth
+            
+            # Calculate zone for qb0.1 calculation (tip to tip + base_diameter)
+            zone_end = tip_depth + base_diameter
             qb01_values = []
             
             qs_tension_cumulative = 0
             qs_compression_cumulative = 0
             
+            # Calculate shaft resistance up to the tip depth
             for i in range(len(depths)):
-                if depths[i] > chosen_tip:
+                if depths[i] > tip_depth:
                     continue
-                    
+                
+                # Get values at current depth
                 qt_val = processed_cpt['qt'][i]
                 lc_val = processed_cpt['lc'][i]
                 
                 # Calculate casing coefficient
-                coe_casing = get_coe_casing(depths[i], borehole_depth, chosen_tip)
+                coe_casing = get_coe_casing(depths[i], borehole_depth, tip_depth)
                 
                 # Calculate compression first since tension depends on it
                 tf_compression = get_tf_compression_bored(coe_casing, lc_val, qt_val)
@@ -341,7 +345,7 @@ def calculate_pile_capacity(cpt_data, params, pile_type='driven'):
                 
                 # Calculate qb01_adop for base resistance
                 qb01_adop = get_qb01_adop(lc_val, qt_val)
-                if tip_index <= i <= zone_end_index:
+                if depths[i] >= tip_depth and depths[i] <= zone_end:
                     qb01_values.append(qb01_adop)
                 
                 # Calculate shaft resistance for this segment
@@ -358,102 +362,113 @@ def calculate_pile_capacity(cpt_data, params, pile_type='driven'):
             base_resistance = min_qb01 * Ab * 1000  # Convert to kN
             
             results.append({
-                'tipdepth': chosen_tip,
+                'tipdepth': tip_depth,
                 'tension_capacity': qs_tension_cumulative,
                 'compression_capacity': qs_compression_cumulative + base_resistance
             })
         
         return results
     else:
-        # Driven pile logic
+        # Driven pile logic - optimized version
         pile_shape = 0 if params['pile_shape'] == 'circular' else 1
         pile_end_condition = 0 if params['pile_end_condition'] == 'open' else 1
         nominal_size_don = float(params['pile_diameter'])
         nominal_size_t = float(params.get('wall_thickness', 0))/1000
     
-    borehole = float(params['borehole_depth'])
-    tip_depths = params['pile_tip_depths']
+        borehole = float(params['borehole_depth'])
+        tip_depths = [float(tip) for tip in params['pile_tip_depths']]
 
-    if pile_end_condition == 0:
-        diameter = nominal_size_don - 2*nominal_size_t
-    else:
-        diameter = nominal_size_don
+        if pile_end_condition == 0:
+            diameter = nominal_size_don - 2*nominal_size_t
+        else:
+            diameter = nominal_size_don
 
-    ifr_value = get_ifr(diameter)
-    are_value = get_ar(pile_end_condition, nominal_size_don, ifr_value, diameter)
-    area_value = get_area_b(pile_shape, nominal_size_don)
-    dstar_value = get_dstar(pile_end_condition, nominal_size_don, diameter)
-    
-    # If dstar_value=0 (can happen if diameter=nominalSizeDon), fallback to nominal_size_don 
-    # to avoid division by zero errors.
-    if dstar_value == 0:
-        dstar_value = nominal_size_don
+        # Calculate constants once
+        ifr_value = get_ifr(diameter)
+        are_value = get_ar(pile_end_condition, nominal_size_don, ifr_value, diameter)
+        area_value = get_area_b(pile_shape, nominal_size_don)
+        dstar_value = get_dstar(pile_end_condition, nominal_size_don, diameter)
+        if dstar_value == 0:
+            dstar_value = nominal_size_don
+        pile_perimeter = get_pile_perimeter(pile_shape, nominal_size_don)
 
-    pile_perimeter = get_pile_perimeter(pile_shape, nominal_size_don)
-
-    qp_clay = get_qp_clay_array(processed_cpt['depth'], processed_cpt['qt'], nominal_size_don, nominal_size_t)
-    qp_sand = get_qp_sand_array(processed_cpt['depth'], processed_cpt['qtc'], nominal_size_don)
-
-    depths = processed_cpt['depth']
-    results = []
-    for tip in tip_depths:
-        # Find closest depth index to given tip to match JS logic which uses exact indices
-        tip_index = min(range(len(depths)), key=lambda i: abs(depths[i]-tip))
-        chosen_tip = depths[tip_index]  # actual CPT depth used
-
-        h = [max(0, chosen_tip - d) for d in processed_cpt['depth']]
-
-        qs_tension = []
-        qs_compression = []
-        qb_sand_list = []
-        qb_clay_list = []
-        qb_final_list = []
-
-        for i in range(len(processed_cpt['depth'])):
-            depth = processed_cpt['depth'][i]
-            qt_val = processed_cpt['qt'][i]
-            qtc_val = processed_cpt['qtc'][i]
-            lc_val = processed_cpt['lc'][i]
-            coe_casing = get_coe_casing(depth, borehole, chosen_tip)
-
-            qp_value = get_qp_mix_array(qp_sand[i], qp_clay[i], lc_val)
-            qb1_sand_val = get_qb1_sand(are_value, qp_sand[i])
-            qb1_clay_val = get_qb1_clay(qp_clay[i], dstar_value, nominal_size_don)
-            qb1_adop_val = get_qb1_adop(lc_val, qb1_sand_val, qb1_clay_val)
-
-            qb_final_val = get_qb_final(qb1_adop_val, area_value)
-            qb_sand_val = get_qb_sand(qp_value, are_value, area_value)
-            qb_clay_val = get_qb_clay(pile_end_condition, qt_val, area_value)
-
-            if lc_val < 2.5:
-                delta_ord = get_delta_ord(qtc_val, processed_cpt['sig_v0_prime'][i], nominal_size_don)
-                orc_val = get_orc(qtc_val, are_value, nominal_size_don, h[i])
-                tf_sand = get_tf_sand(coe_casing, delta_ord, orc_val)
+        # Pre-calculate arrays outside the loop
+        qp_sand_array = np.array(get_qp_sand_array(depths, processed_cpt['qtc'], nominal_size_don))
+        qp_clay_array = np.array(get_qp_clay_array(depths, processed_cpt['qt'], nominal_size_don, nominal_size_t))
+        
+        results = []
+        
+        for tip_depth in tip_depths:
+            # If we don't need interpolation, find nearest point
+            if not needs_interpolation:
+                tip_index = min(range(len(depths)), key=lambda i: abs(depths[i]-tip_depth))
+                tip_depth = depths[tip_index]
+            
+            # Calculate h values using vectorized operations
+            h = np.maximum(0, tip_depth - np.array(depths))
+            
+            # Initialize arrays
+            qs_tension = np.zeros(len(depths))
+            qs_compression = np.zeros(len(depths))
+            
+            # Vectorized calculations where possible
+            coe_casing = np.array([get_coe_casing(d, borehole, tip_depth) for d in depths])
+            lc_values = np.array(processed_cpt['lc'])
+            qt_values = np.array(processed_cpt['qt'])
+            qtc_values = np.array(processed_cpt['qtc'])
+            
+            # Calculate qp values using vectorized operations
+            qp_values = np.where(lc_values > 2.5, qp_clay_array, qp_sand_array)
+            
+            # Calculate base resistance components
+            qb1_sand = get_qb1_sand(are_value, qp_sand_array)
+            qb1_clay = get_qb1_clay(qp_clay_array, dstar_value, nominal_size_don)
+            qb1_adop = np.where(lc_values > 2.5, qb1_clay, qb1_sand)
+            qb_final = get_qb_final(qb1_adop, area_value)
+            
+            # Calculate shaft resistance
+            for i in range(len(depths)):
+                if depths[i] > tip_depth:
+                    continue
+                
+                if lc_values[i] < 2.5:
+                    delta_ord = get_delta_ord(qtc_values[i], processed_cpt['sig_v0_prime'][i], nominal_size_don)
+                    orc_val = get_orc(qtc_values[i], are_value, nominal_size_don, h[i])
+                    tf_sand = get_tf_sand(coe_casing[i], delta_ord, orc_val)
+                else:
+                    tf_sand = 0
+                
+                tf_clay = get_tf_clay(qt_values[i], coe_casing[i], h[i], dstar_value)
+                tf_adop_tension = get_tf_adop_tension(processed_cpt['iz1'][i], tf_clay, tf_sand, lc_values[i])
+                tf_adop_compression = get_tf_adop_compression(processed_cpt['iz1'][i], tf_clay, tf_sand, lc_values[i])
+                
+                # Calculate cumulative shaft resistance
+                if i == 0:
+                    delta_z = depths[i]
+                else:
+                    delta_z = depths[i] - depths[i-1]
+                
+                qs_tension[i] = (0 if i == 0 else qs_tension[i-1]) + tf_adop_tension * pile_perimeter * delta_z
+                qs_compression[i] = (0 if i == 0 else qs_compression[i-1]) + tf_adop_compression * pile_perimeter * delta_z
+            
+            # Get final capacities
+            if needs_interpolation:
+                tension_capacity = interpolate_at_depth(depths, qs_tension, tip_depth)
+                compression_base = interpolate_at_depth(depths, qb_final, tip_depth)
+                compression_shaft = interpolate_at_depth(depths, qs_compression, tip_depth)
+                compression_capacity = compression_shaft + compression_base
             else:
-                tf_sand = 0
-
-            tf_clay = get_tf_clay(qt_val, coe_casing, h[i], dstar_value)
-            tf_adop_tension = get_tf_adop_tension(processed_cpt['iz1'][i], tf_clay, tf_sand, lc_val)
-            tf_adop_compression = get_tf_adop_compression(processed_cpt['iz1'][i], tf_clay, tf_sand, lc_val)
-
-            prev_qs_tension = qs_tension[-1] if qs_tension else 0
-            prev_qs_compression = qs_compression[-1] if qs_compression else 0
-            qs_tension.append(get_qs(i, processed_cpt['depth'], tf_adop_tension, pile_perimeter, prev_qs_tension))
-            qs_compression.append(get_qs(i, processed_cpt['depth'], tf_adop_compression, pile_perimeter, prev_qs_compression))
-            qb_sand_list.append(qb_sand_val)
-            qb_clay_list.append(qb_clay_val)
-            qb_final_list.append(qb_final_val)
-
-        tension_capacity = qs_tension[tip_index]
-        compression_capacity = qs_compression[tip_index] + qb_final_list[tip_index]
-
-        results.append({
-            'tipdepth': chosen_tip,
-            'tension_capacity': tension_capacity,
-            'compression_capacity': compression_capacity
-        })
-
-    return results
+                tip_index = min(range(len(depths)), key=lambda i: abs(depths[i]-tip_depth))
+                tension_capacity = qs_tension[tip_index]
+                compression_capacity = qs_compression[tip_index] + qb_final[tip_index]
+            
+            results.append({
+                'tipdepth': tip_depth,
+                'tension_capacity': float(tension_capacity),
+                'compression_capacity': float(compression_capacity)
+            })
+        
+        return results
 
 def process_cpt_data(data):
     try:

@@ -29,11 +29,11 @@ sample_cpt_data = [
 
 # Sample pile parameters
 pile_params = {
-    'shaft_diameter': 0.762,
-    'helix_diameter': 1.5,
-    'helix_depth': 7.0,
-    'borehole_depth': 1.0,
-    'water_table': 2.0
+    'shaft_diameter': 0.11,
+    'helix_diameter': 0.39,
+    'helix_depth': 2.6,
+    'borehole_depth': 0,
+    'water_table': 5
 }
 
 def run_test():

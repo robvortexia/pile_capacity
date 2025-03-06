@@ -93,7 +93,26 @@ def create_cpt_graphs(data, water_table=None):
         'showgrid': True,
         'gridcolor': 'lightgrey',
         'gridwidth': 1,
-        'side': 'top'
+        'side': 'top',
+        'zeroline': False,
+        'automargin': True
+    }
+    
+    # Common graph settings
+    common_layout = {
+        'plot_bgcolor': 'white',
+        'margin': {'l': 50, 'r': 20, 't': 30, 'b': 30},
+        'font': {'size': 10},
+        'autosize': True,
+        'showlegend': False,
+        'yaxis': {
+            'title': {'text': 'Depth (m)', 'standoff': 5},
+            'autorange': 'reversed',
+            'range': [max(processed_data['depth']), 0],
+            'dtick': 10,
+            'tickfont': {'size': 10},
+            **base_layout
+        }
     }
     
     qt_graph = {
@@ -107,22 +126,14 @@ def create_cpt_graphs(data, water_table=None):
             )
         ],
         'layout': {
-            'title': {'text': 'qt', 'x': 0.5, 'xanchor': 'center', 'font': {'size': 14}},
+            'title': {'text': 'qt (MPa)', 'x': 0.5, 'xanchor': 'center', 'font': {'size': 12}, 'y': 0.95},
             'xaxis': {
-                'title': None,  # Removed x-axis title
-                'dtick': 7,
+                'title': None,
+                'dtick': 5,
+                'tickfont': {'size': 10},
                 **base_layout
             },
-            'yaxis': {
-                'title': 'Depth (m)',
-                'autorange': 'reversed',
-                'range': [0, 100],
-                'dtick': 25,
-                **base_layout
-            },
-            'plot_bgcolor': 'white',
-            'margin': {'l': 80, 'r': 30, 't': 40, 'b': 50},
-            'font': {'size': 12}
+            **common_layout
         }
     }
     
@@ -137,22 +148,15 @@ def create_cpt_graphs(data, water_table=None):
             )
         ],
         'layout': {
-            'title': {'text': 'Fr (%)', 'x': 0.5, 'xanchor': 'center', 'font': {'size': 14}},
+            'title': {'text': 'Fr (%)', 'x': 0.5, 'xanchor': 'center', 'font': {'size': 12}, 'y': 0.95},
             'xaxis': {
-                'title': None,  # Removed x-axis title
-                'dtick': 3,
+                'title': None,
+                'dtick': 2,
+                'range': [0, 10],
+                'tickfont': {'size': 10},
                 **base_layout
             },
-            'yaxis': {
-                'title': 'Depth (m)',
-                'autorange': 'reversed',
-                'range': [0, 100],
-                'dtick': 25,
-                **base_layout
-            },
-            'plot_bgcolor': 'white',
-            'margin': {'l': 80, 'r': 30, 't': 40, 'b': 50},
-            'font': {'size': 12}
+            **common_layout
         }
     }
     
@@ -167,22 +171,15 @@ def create_cpt_graphs(data, water_table=None):
             )
         ],
         'layout': {
-            'title': {'text': 'Ic', 'x': 0.5, 'xanchor': 'center', 'font': {'size': 14}},
+            'title': {'text': 'Ic', 'x': 0.5, 'xanchor': 'center', 'font': {'size': 12}, 'y': 0.95},
             'xaxis': {
-                'title': None,  # Removed x-axis title
+                'title': None,
                 'dtick': 1,
+                'range': [1, 4],
+                'tickfont': {'size': 10},
                 **base_layout
             },
-            'yaxis': {
-                'title': 'Depth (m)',
-                'autorange': 'reversed',
-                'range': [0, 100],
-                'dtick': 25,
-                **base_layout
-            },
-            'plot_bgcolor': 'white',
-            'margin': {'l': 80, 'r': 30, 't': 40, 'b': 50},
-            'font': {'size': 12}
+            **common_layout
         }
     }
     
@@ -197,24 +194,15 @@ def create_cpt_graphs(data, water_table=None):
             )
         ],
         'layout': {
-            'title': {'text': 'Iz', 'x': 0.5, 'xanchor': 'center', 'font': {'size': 14}},
+            'title': {'text': 'Iz', 'x': 0.5, 'xanchor': 'center', 'font': {'size': 12}, 'y': 0.95},
             'xaxis': {
-                'title': None,  # Removed x-axis title
-                'range': [0, 8],
-                'dtick': 2,
+                'title': None,
+                'range': [0, 4],
+                'dtick': 1,
+                'tickfont': {'size': 10},
                 **base_layout
             },
-            'yaxis': {
-                'title': 'Depth (m)',
-                'autorange': 'reversed',
-                'range': [0, 100],
-                'dtick': 25,
-                **base_layout
-            },
-            'plot_bgcolor': 'white',
-            'height': 800,
-            'margin': {'l': 80, 'r': 30, 't': 40, 'b': 50},
-            'font': {'size': 12}
+            **common_layout
         }
     }
 
