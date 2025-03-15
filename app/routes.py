@@ -115,18 +115,23 @@ def calculator_step(type, step):
                 
                 # Calculate results
                 try:
+                    # Convert all numeric arrays in processed_cpt to lists
+                    for key in processed_cpt:
+                        if isinstance(processed_cpt[key], np.ndarray):
+                            processed_cpt[key] = processed_cpt[key].tolist()
+                    
                     results = calculate_helical_pile_results(processed_cpt, pile_params)
                     
-                    # DON'T store entire results in session - just store a reference ID
+                    # Store results in file and keep ID in session
                     results_id = save_calculation_results(results)
                     session['results_id'] = results_id
                     
-                    # Only store basic summary data in session
+                    # Store basic summary data in session for quick access
                     session['summary_data'] = {
-                        'tipdepth': results['summary']['tipdepth'],
-                        'qshaft': results['summary']['qshaft'],
-                        'qult_tension': results['summary']['qult_tension'],
-                        'qult_compression': results['summary']['qult_compression']
+                        'tipdepth': results['summary'][0]['tipdepth'],
+                        'qshaft': results['summary'][0]['qshaft'],
+                        'qult_tension': results['summary'][0]['qult_tension'],
+                        'qult_compression': results['summary'][0]['qult_compression']
                     }
                     
                     # Redirect to step 4
@@ -157,12 +162,12 @@ def calculator_step(type, step):
             flash('Results not found. Please recalculate.', 'error')
             return redirect(url_for('main.calculator_step', type='helical', step=3))
         
-        # Render the results page
+        # Render the results page with the first summary result
         return render_template(
             'helical/steps.html',
             step=step,
             type=type,
-            results=results['summary'],
+            results=results['summary'][0],  # Pass the first summary result directly
             detailed_results=results['detailed']
         )
     
@@ -504,316 +509,200 @@ def calculator_step(type, step):
 @bp.route('/download_debug_params')
 def download_debug_params():
     """Download debug parameters and calculation data as CSV"""
-    if 'cpt_data_id' not in session:
-        flash('No CPT data available')
-        return redirect(url_for('main.index'))
-    
     try:
-        # Add debug logging
-        print("Session contents:", dict(session))
-        print("Pile type:", session.get('type'))
-        print("Pile params:", session.get('pile_params'))
-        
-        data = load_cpt_data(session['cpt_data_id'])
-        if not data:
-            flash('CPT data not found')
+        if 'results_id' not in session:
+            flash('No calculation data available')
             return redirect(url_for('main.index'))
         
-        # Get pile parameters from session
-        pile_params = session.get('pile_params', {})
-        print("Retrieved pile_params:", pile_params)
+        # Load results from file storage
+        results = load_calculation_results(session['results_id'])
+        if not results:
+            flash('Results not found')
+            return redirect(url_for('main.index'))
         
-        # Process the CPT data
-        water_table = float(pile_params.get('water_table', 0))
-        processed = pre_input_calc(data, water_table)
-        
-        # Create a string buffer
-        buffer = io.StringIO()
-        
-        pile_type = session.get('type')
-        
-        if pile_type == 'bored' and 'debug_id' in session:
-            debug_id = session['debug_id']
-            debug_details = load_debug_details(debug_id)
-            if debug_details and len(debug_details) > 0:
+        # For helical piles, use the pre-formatted download data
+        if session.get('type') == 'helical':
+            if 'download_data' in results and results['download_data']:
+                # Create a buffer to store CSV data
+                buffer = StringIO()
+                writer = csv.writer(buffer)
                 
-                for tip_index, tip_detail in enumerate(debug_details):
-                    if tip_index > 0:
-                        # Add separator between different tip depth data
-                        buffer.write('\n\n' + '='*50 + '\n\n')
-                    
-                    # Create constants list with tip depth included
-                    constants = [
-                        ['Tip Depth (m)', tip_detail['tip_depth']],
-                        ['Water table depth (m)', float(pile_params['water_table'])]
-                    ]
-                    
-                    # Add pile type specific parameters
-                    constants.extend([
-                        ['Pile type', 'Bored'],
-                        ['Shaft diameter (m)', pile_params.get('shaft_diameter', 'N/A')],
-                        ['Base diameter (m)', pile_params.get('base_diameter', 'N/A')],
-                        ['Cased depth (m)', pile_params.get('cased_depth', 'N/A')]
+                # Write the pre-formatted data
+                for row in results['download_data']:
+                    writer.writerow(row)
+                
+                # Set buffer position to start
+                buffer.seek(0)
+                
+                # Return the CSV file
+                return Response(
+                    buffer.getvalue(),
+                    mimetype='text/csv',
+                    headers={
+                        'Content-Disposition': f'attachment; filename=helical_pile_detailed_output_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv'
+                    }
+                )
+            else:
+                flash('Detailed output data not available')
+                return redirect(url_for('main.calculator_step', type='helical', step=4))
+        
+        # For other pile types, use the existing logic
+        else:
+            # Create a buffer to store CSV data
+            buffer = StringIO()
+            writer = csv.writer(buffer)
+            
+            # Write pile type
+            writer.writerow([f"PILE TYPE: {session.get('type', 'driven').upper()}"])
+            writer.writerow([])  # Empty row for spacing
+            
+            # Write input parameters
+            writer.writerow(["INPUT PARAMETERS"])
+            params = session.get('pile_params', {})
+            for key, value in params.items():
+                writer.writerow([key, value])
+            
+            writer.writerow([])  # Empty row for spacing
+            
+            # Write CPT data if available
+            if 'cpt_data_id' in session:
+                cpt_data = load_cpt_data(session['cpt_data_id'])
+                if cpt_data:
+                    writer.writerow(["CPT DATA"])
+                    writer.writerow(["Depth (m)", "qc (MPa)", "fs (kPa)", "u2 (kPa)"])
+                    for i in range(len(cpt_data['depth'])):
+                        writer.writerow([
+                            cpt_data['depth'][i],
+                            cpt_data['qc'][i],
+                            cpt_data['fs'][i],
+                            cpt_data.get('u2', [0]*len(cpt_data['depth']))[i]
+                        ])
+                    writer.writerow([])  # Empty row for spacing
+            
+            # Write calculation results
+            if 'detailed' in results:
+                for tip_result in results['detailed']:
+                    writer.writerow([f"CALCULATIONS FOR TIP DEPTH: {tip_result['tip_depth']} m"])
+                    writer.writerow([
+                        "Depth (m)",
+                        "qt (MPa)",
+                        "Ic",
+                        "Fr (%)",
+                        "Casing Coefficient",
+                        "qb0.1 (MPa)",
+                        "tf Tension (kPa)",
+                        "tf Compression (kPa)",
+                        "Delta Z (m)",
+                        "Tension Segment (kN)",
+                        "Compression Segment (kN)",
+                        "Tension Cumulative (kN)",
+                        "Compression Cumulative (kN)"
                     ])
                     
-                    # Write constants
-                    df_constants = pd.DataFrame(constants, columns=['Parameter', 'Value'])
-                    buffer.write(f'INPUT PARAMETERS FOR TIP DEPTH {tip_detail["tip_depth"]}m\n')
-                    df_constants.to_csv(buffer, index=False)
-                    
-                    # Process calculations for this tip depth
-                    calcs = tip_detail['calculations']
-                    calc_dict = {calc['depth']: calc for calc in calcs}
-                    
-                    # Create and populate DataFrame
-                    df_data = create_data_dataframe(processed, calc_dict)
-                    
-                    # Add a blank line between constants and data
-                    buffer.write('\nCPT DATA AND CALCULATIONS\n')
-                    df_data.to_csv(buffer, index=False)
-        elif pile_type == 'driven':
-            # For driven piles, create a simplified output format
-            results = session.get('results', [])
+                    for calc in tip_result['calculations']:
+                        writer.writerow([
+                            calc['depth'],
+                            calc['qt'],
+                            calc['lc'],
+                            calc['fr'],
+                            calc['coe_casing'],
+                            calc['qb01_adop'],
+                            calc['tf_tension'],
+                            calc['tf_compression'],
+                            calc['delta_z'],
+                            calc['qs_tension_segment'],
+                            calc['qs_compression_segment'],
+                            calc['qs_tension_cumulative'],
+                            calc['qs_compression_cumulative']
+                        ])
+                    writer.writerow([])  # Empty row for spacing
             
-            for result_index, result in enumerate(results):
-                if result_index > 0:
-                    buffer.write('\n\n' + '='*50 + '\n\n')
-                
-                tip_depth = result['tipdepth']
-                
-                # Create parameters list
-                constants = [
-                    ['Tip Depth (m)', tip_depth],
-                    ['Water table depth (m)', float(pile_params['water_table'])],
-                    ['Pile type', 'Driven'],
-                    ['Pile end condition', pile_params.get('pile_end_condition', 'N/A')],
-                    ['Pile shape', pile_params.get('pile_shape', 'N/A')],
-                    ['Pile diameter/width (m)', pile_params.get('pile_diameter', 'N/A')],
-                    ['Wall thickness (mm)', pile_params.get('wall_thickness', 'N/A')],
-                    ['Borehole depth (m)', pile_params.get('borehole_depth', 'N/A')]
-                ]
-                
-                # Write parameters
-                df_constants = pd.DataFrame(constants, columns=['Parameter', 'Value'])
-                buffer.write(f'INPUT PARAMETERS FOR TIP DEPTH {tip_depth}m\n')
-                df_constants.to_csv(buffer, index=False)
-                
-                # Write results for this tip depth
-                buffer.write('\nRESULTS\n')
-                df_result = pd.DataFrame([{
-                    'Tip Depth (m)': result['tipdepth'],
-                    'q1 (MPa)': result.get('q1', 'N/A'),  # Use get() to handle missing keys
-                    'q10 (MPa)': result.get('q10', 'N/A'),  # Use get() to handle missing keys
-                    'Tension Capacity (kN)': result['tension_capacity'],
-                    'Compression Capacity (kN)': result['compression_capacity']
-                }])
-                df_result.to_csv(buffer, index=False)
-                
-                # Write CPT data
-                buffer.write('\nCPT DATA\n')
-                df_cpt = pd.DataFrame({
-                    'depth': processed['depth'],
-                    'qc (MPa)': processed['qc'],
-                    'qt (MPa)': processed['qt'],
-                    'fs (kPa)': processed['fs'],
-                    'Unit Weight (kN/m³)': processed['gtot'],
-                    'Water Pressure u0 (kPa)': processed['u0_kpa'],
-                    'Total Vertical Stress σv0 (kPa)': processed['sig_v0'],
-                    'Effective Vertical Stress σv0\' (kPa)': processed['sig_v0_prime'],
-                    'Fr (%)': processed['fr_percent'],
-                    'Normalized Tip Resistance Qtn': processed['qtn'],
-                    'Stress Exponent n': processed['n'],
-                    'Soil Behavior Type Index Ic': processed['lc'],
-                    'Pore Pressure Ratio Bq': processed['bq'],
-                    'Correction Factor Kc': processed['kc'],
-                    'Corrected Tip Resistance qtc (MPa)': processed['qtc'],
-                    'Soil Behavior Index Iz': processed['iz1']
-                })
-                df_cpt = pd.DataFrame({
-                    'depth': processed['depth'],
-                    'qc (MPa)': processed['qc'],
-                    'qt (MPa)': processed['qt'],
-                    'fs (kPa)': processed['fs'],
-                    'Unit Weight (kN/m³)': processed['gtot'],
-                    'Water Pressure u0 (kPa)': processed['u0_kpa'],
-                    'Total Vertical Stress σv0 (kPa)': processed['sig_v0'],
-                    'Effective Vertical Stress σv0\' (kPa)': processed['sig_v0_prime'],
-                    'Fr (%)': processed['fr_percent'],
-                    'Normalized Tip Resistance Qtn': processed['qtn'],
-                    'Stress Exponent n': processed['n'],
-                    'Soil Behavior Type Index Ic': processed['lc'],
-                    'Pore Pressure Ratio Bq': processed['bq'],
-                    'Correction Factor Kc': processed['kc'],
-                    'Corrected Tip Resistance qtc (MPa)': processed['qtc'],
-                    'Soil Behavior Index Iz': processed['iz1']
-                })
-                df_cpt.to_csv(buffer, index=False)
-        elif pile_type == 'helical':
-            # For helical piles, create a detailed output format
-            results = session.get('results', [])
-            detailed_results = session.get('detailed_results', {})
+            # Set buffer position to start
+            buffer.seek(0)
             
-            # Get pile parameters from session
-            session_pile_params = session.get('pile_params', {})
-            
-            for result_index, result in enumerate(results):
-                if result_index > 0:
-                    buffer.write('\n\n' + '='*50 + '\n\n')
-                
-                tip_depth = result['tipdepth']
-                
-                # Create parameters table
-                constants = [
-                    ['Tip Depth (m)', tip_depth],
-                    ['Water table depth (m)', session_pile_params.get('water_table', 0)],
-                    ['Pile type', 'Helical'],
-                    ['Shaft diameter (m)', session_pile_params.get('shaft_diameter', 'N/A')],
-                    ['Helix diameter (m)', session_pile_params.get('helix_diameter', 'N/A')],
-                    ['Helix depth (m)', session_pile_params.get('helix_depth', 'N/A')],
-                    ['Borehole depth (m)', session_pile_params.get('borehole_depth', 'N/A')],
-                    ['Site name', session_pile_params.get('site_name', 'N/A')]
-                ]
-                
-                # Write constants
-                df_constants = pd.DataFrame(constants, columns=['Parameter', 'Value'])
-                buffer.write(f'INPUT PARAMETERS\n')
-                df_constants.to_csv(buffer, index=False)
-                
-                # Write results
-                buffer.write('\nRESULTS\n')
-                df_result = pd.DataFrame([{
-                    'Depth (m)': result['tipdepth'],
-                    'Tension Capacity (kN)': result['tension_capacity'],
-                    'Compression Capacity (kN)': result['compression_capacity']
-                }])
-                df_result.to_csv(buffer, index=False)
-                
-                # Add intermediate calculations if available
-                if detailed_results and 'depth' in detailed_results:
-                    buffer.write('\nINTERMEDIATE CALCULATIONS\n')
-                    
-                    # Create DataFrame from detailed results
-                    calc_data = {
-                        'Depth (m)': detailed_results['depth'],
-                        'qt (MPa)': detailed_results['qt'],
-                        'qc (MPa)': detailed_results['qc'],
-                        'fs (kPa)': detailed_results['fs'],
-                        'Fr (%)': detailed_results['fr_percent'],
-                        'Soil Behavior Type Index Ic': detailed_results['lc'],
-                        'Soil Type': detailed_results['soil_type'],
-                        'q1 (MPa)': detailed_results['q1'],
-                        'q10 (MPa)': detailed_results['q10'],
-                        'Casing Coefficient': detailed_results['coe_casing'],
-                        'Delta Z (m)': detailed_results['delta_z'],
-                        'Shaft Capacity Segment (kN)': detailed_results['qshaft_segment'],
-                        'Shaft Capacity Cumulative (kN)': detailed_results['qshaft_kn']
-                    }
-                    
-                    # Add capacity columns if available
-                    if 'tension_capacity' in detailed_results:
-                        calc_data['Tension Capacity (kN)'] = detailed_results['tension_capacity']
-                    if 'compression_capacity' in detailed_results:
-                        calc_data['Compression Capacity (kN)'] = detailed_results['compression_capacity']
-                        
-                    df_calculations = pd.DataFrame(calc_data)
-                    df_calculations.to_csv(buffer, index=False)
-                    
-                    # Add helix-specific calculations
-                    buffer.write('\nHELIX CALCULATIONS\n')
-                    helix_data = [
-                        ['Perimeter (m)', detailed_results.get('perimeter', 'N/A')],
-                        ['Helix Area (m²)', detailed_results.get('helix_area', 'N/A')],
-                        ['Helix Index (depth point)', detailed_results.get('helix_index', 'N/A')],
-                        ['q1 at Helix (MPa)', detailed_results.get('q1_helix', 'N/A')],
-                        ['q10 at Helix (MPa)', detailed_results.get('q10_helix', 'N/A')],
-                        ['Helix Tension Component (kN)', detailed_results.get('qhelix_tension', 'N/A')],
-                        ['Helix Compression Component (kN)', detailed_results.get('qhelix_compression', 'N/A')]
-                    ]
-                    df_helix = pd.DataFrame(helix_data, columns=['Parameter', 'Value'])
-                    df_helix.to_csv(buffer, index=False)
-        
-        # Get the buffer value
-        buffer_value = buffer.getvalue()
-        
-        # Create a response with the CSV data
-        user_filename = session.get('original_filename', 'output')
-        download_name = f"detailed_output_{user_filename}_{datetime.now().strftime('%d%m%Y')}.csv"
-        print("Using original filename:", user_filename)
-        print("Final user_filename:", user_filename)
-        print("Final download_name:", download_name)
-        
-        return Response(
-            buffer_value,
-            mimetype="text/csv",
-            headers={"Content-disposition": f"attachment; filename={download_name}"}
-        )
-    
+            # Return the CSV file
+            return Response(
+                buffer.getvalue(),
+                mimetype='text/csv',
+                headers={
+                    'Content-Disposition': f'attachment; filename=calculation_details_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv'
+                }
+            )
     except Exception as e:
-        print(f"Debug download error: {str(e)}")
-        flash(f"Error generating download: {str(e)}")
-        return redirect(url_for('main.calculator_step', type=session.get('type', 'helical'), step=4))
-
-def create_data_dataframe(processed, calc_dict):
-    """Helper function to create the data DataFrame with calculations"""
-    df_data = pd.DataFrame({
-        'depth': processed['depth'],
-        'h': processed['h'],
-        'qc': processed['qc'],
-        'qt': processed['qt'],
-        'gtot': processed['gtot'],
-        'u0_kpa': processed['u0_kpa'],
-        'sig_v0': processed['sig_v0'],
-        'sig_v0_prime': processed['sig_v0_prime'],
-        'fs': processed['fs'],
-        'fr_percent': processed['fr_percent'],
-        'qtn': processed['qtn'],
-        'n': processed['n'],
-        'lc': processed['lc'],
-        'bq': processed['bq'],
-        'kc': processed['kc'],
-        'iz1': processed['iz1'],
-        'qtc': processed['qtc']
-    })
-    
-    # Add calculation columns
-    df_data['coe_casing'] = float('nan')
-    df_data['qb01_adop'] = float('nan')
-    df_data['tf_tension'] = float('nan')
-    df_data['tf_compression'] = float('nan')
-    df_data['qs_tension_segment'] = float('nan')
-    df_data['qs_compression_segment'] = float('nan')
-    df_data['qs_tension_cumulative'] = float('nan')
-    df_data['qs_compression_cumulative'] = float('nan')
-    
-    # Fill in calculations where they exist
-    for idx, row in df_data.iterrows():
-        depth = row['depth']
-        if depth in calc_dict:
-            calc = calc_dict[depth]
-            for col in ['coe_casing', 'qb01_adop', 'tf_tension', 'tf_compression', 
-                       'qs_tension_segment', 'qs_compression_segment', 
-                       'qs_tension_cumulative', 'qs_compression_cumulative']:
-                df_data.at[idx, col] = calc[col]
-    
-    return df_data
+        logger.error(f"Error in download_debug_params: {str(e)}")
+        flash(f'Error generating detailed output: {str(e)}')
+        return redirect(url_for('main.calculator_step', type=session.get('type', 'driven'), step=4))
 
 @bp.route('/download_results')
 def download_results():
     """Download calculation results as CSV"""
-    if 'results' not in session:
+    if 'results_id' not in session:
         flash('No results available')
         return redirect(url_for('main.index'))
     
     try:
-        res_list = session['results']
-        df = pd.DataFrame(res_list)
-        return generate_csv_download(
-            df,
-            f"calculation_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+        # Load results from file storage
+        results = load_calculation_results(session['results_id'])
+        if not results:
+            flash('Results not found')
+            return redirect(url_for('main.index'))
+        
+        # Create a buffer for CSV data
+        buffer = StringIO()
+        writer = csv.writer(buffer)
+        
+        # For helical piles, create a simplified summary
+        if session.get('type') == 'helical':
+            # Write header
+            writer.writerow(['HELICAL PILE CALCULATION RESULTS'])
+            writer.writerow([])
+            
+            # Get the summary data
+            summary = results['summary'][0]
+            
+            # Write pile parameters
+            writer.writerow(['PILE PARAMETERS'])
+            pile_params = results['detailed']['input_parameters']
+            for key, value in pile_params.items():
+                writer.writerow([key, value])
+            writer.writerow([])
+            
+            # Write capacity results
+            writer.writerow(['CAPACITY RESULTS'])
+            writer.writerow(['Parameter', 'Tension', 'Compression'])
+            writer.writerow(['Shaft Capacity (kN)', summary['qshaft'], summary['qshaft']])
+            writer.writerow(['Capacity at 10mm (kN)', summary['q_delta_10mm_tension'], summary['q_delta_10mm_compression']])
+            writer.writerow(['Ultimate Capacity (kN)', summary['qult_tension'], summary['qult_compression']])
+            writer.writerow([])
+            
+            # Write additional parameters
+            writer.writerow(['ADDITIONAL PARAMETERS'])
+            writer.writerow(['Parameter', 'Value'])
+            writer.writerow(['Tip Depth (m)', summary['tipdepth']])
+            writer.writerow(['Effective Depth (m)', summary['effective_depth']])
+            writer.writerow(['qb0.1 Compression (MPa)', summary['qb01_comp']])
+            writer.writerow(['qb0.1 Tension (MPa)', summary['qb01_tension']])
+            writer.writerow(['Installation Torque (kNm)', summary['installation_torque']])
+        else:
+            # For other pile types, use existing logic
+            df = pd.DataFrame(results)
+            buffer.write(df.to_csv(index=False))
+        
+        # Set buffer position to start
+        buffer.seek(0)
+        
+        # Return the CSV file
+        return Response(
+            buffer.getvalue(),
+            mimetype='text/csv',
+            headers={
+                'Content-Disposition': f'attachment; filename=calculation_results_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv'
+            }
         )
     except Exception as e:
+        logger.error(f"Error in download_results: {str(e)}")
         flash(f'Error generating results: {str(e)}')
-        return redirect(url_for('main.calculator_step', type='driven', step=4))
+        return redirect(url_for('main.calculator_step', type=session.get('type', 'driven'), step=4))
 
 @bp.route('/register', methods=['POST'])
 def register():
@@ -1001,72 +890,35 @@ def download_helical_calculations():
             flash('Calculation results not found', 'error')
             return redirect(url_for('main.index'))
         
-        # Debug logging - print the keys in the results dictionary
-        current_app.logger.info(f"Results keys: {list(results.keys())}")
-        
-        # Get pile parameters
-        pile_params = {}
-        if 'pile_params' in results:
-            pile_params = results['pile_params']
-        elif 'detailed' in results and 'input_parameters' in results['detailed']:
-            pile_params = results['detailed']['input_parameters']
-        elif 'summary' in results and isinstance(results['summary'], dict) and 'tipdepth' in results['summary']:
-            # Try to extract from session if not in results
-            pile_params = session.get('pile_params', {})
-        
-        # Debug logging
-        current_app.logger.info(f"Downloading helical pile calculations")
-        current_app.logger.info(f"Pile params: {pile_params}")
-        
-        # Get the detailed results
-        detailed_results = {}
-        if 'detailed' in results:
-            detailed_results = results['detailed']
-        elif 'detailed_results' in results:
-            detailed_results = results['detailed_results']
-        
-        # Debug logging - print the keys in the detailed_results dictionary
-        if detailed_results:
-            current_app.logger.info(f"Detailed results keys: {list(detailed_results.keys())}")
-        else:
-            current_app.logger.warning("No detailed results found")
-        
-        # Get the user's filename or use a default
-        user_filename = pile_params.get('site_name', '')
-        if not user_filename:
-            user_filename = "helical_pile_calculations"
-        current_app.logger.info(f"Using original filename: {user_filename}")
-        
-        # Clean the filename
-        user_filename = ''.join(c for c in user_filename if c.isalnum() or c in '._- ')
-        user_filename = user_filename.strip()
-        if not user_filename:
-            user_filename = "helical_pile_calculations"
-        current_app.logger.info(f"Final user_filename: {user_filename}")
-        
-        # Create a timestamp for the filename
-        from datetime import datetime
-        timestamp = datetime.now().strftime("%d%m%Y")
-        download_name = f"{user_filename}_detailed_{timestamp}.csv"
-        current_app.logger.info(f"Final download_name: {download_name}")
-        
-        # Create a CSV from the data
-        import csv
-        import io
-        
-        output = io.StringIO()
-        writer = csv.writer(output)
+        # Create a buffer for CSV data
+        buffer = StringIO()
+        writer = csv.writer(buffer)
         
         # If we have pre-formatted download data, use it
         if 'download_data' in results and results['download_data']:
-            current_app.logger.info("Using pre-formatted download data")
             for row in results['download_data']:
                 writer.writerow(row)
         else:
-            # Otherwise, build the CSV from detailed results
-            current_app.logger.info("Building CSV from detailed results")
+            # Get detailed results
+            detailed = results.get('detailed', {})
             
-            # Create header row
+            # Write header
+            writer.writerow(["HELICAL PILE CALCULATION RESULTS"])
+            writer.writerow([])
+            
+            # Write input parameters
+            writer.writerow(["INPUT PARAMETERS"])
+            if 'input_parameters' in detailed:
+                for key, value in detailed['input_parameters'].items():
+                    writer.writerow([key, value])
+            
+            writer.writerow([])
+            writer.writerow(["GEOMETRIC CONSTANTS"])
+            writer.writerow(["Perimeter (m)", detailed.get('perimeter', '')])
+            writer.writerow(["Helix Area (m²)", detailed.get('helix_area', '')])
+            
+            writer.writerow([])
+            writer.writerow(["DETAILED CALCULATIONS"])
             header = [
                 "Depth (m)",
                 "qt (MPa)",
@@ -1086,109 +938,38 @@ def download_helical_calculations():
             ]
             writer.writerow(header)
             
-            # Check if we have depth data
-            if not detailed_results or 'depth' not in detailed_results or not detailed_results['depth']:
-                current_app.logger.error("No depth data found in detailed results")
-                writer.writerow(["No detailed calculation data available"])
-            else:
-                # Add data rows
-                for i in range(len(detailed_results['depth'])):
-                    try:
-                        row = [
-                            detailed_results['depth'][i],
-                            detailed_results.get('qt', [0] * len(detailed_results['depth']))[i],
-                            detailed_results.get('qc', [0] * len(detailed_results['depth']))[i],
-                            detailed_results.get('fs', [0] * len(detailed_results['depth']))[i],
-                            detailed_results.get('fr_percent', [0] * len(detailed_results['depth']))[i],
-                            detailed_results.get('lc', [0] * len(detailed_results['depth']))[i],
-                            detailed_results.get('soil_type', ['Unknown'] * len(detailed_results['depth']))[i],
-                            detailed_results.get('q1', [0] * len(detailed_results['depth']))[i],
-                            detailed_results.get('q10', [0] * len(detailed_results['depth']))[i],
-                            detailed_results.get('coe_casing', [0] * len(detailed_results['depth']))[i],
-                            detailed_results.get('delta_z', [0] * len(detailed_results['depth']))[i],
-                            detailed_results.get('qshaft_segment', [0] * len(detailed_results['depth']))[i],
-                            detailed_results.get('qshaft_kn', [0] * len(detailed_results['depth']))[i],
-                            detailed_results.get('tension_capacity', [0] * len(detailed_results['depth']))[i],
-                            detailed_results.get('compression_capacity', [0] * len(detailed_results['depth']))[i]
-                        ]
-                        writer.writerow(row)
-                    except (IndexError, KeyError) as e:
-                        current_app.logger.error(f"Error writing row {i}: {str(e)}")
-                        continue
-            
-            # Add empty row for spacing
-            writer.writerow([])
-            
-            # Add summary information
-            writer.writerow(["SUMMARY INFORMATION"])
-            writer.writerow(["Input Parameters"])
-            for key, value in pile_params.items():
-                writer.writerow([key, value])
-            
-            # Add geometric constants if available
-            writer.writerow([])  # Empty row for spacing
-            writer.writerow(["Geometric Constants"])
-            writer.writerow(["Perimeter (m)", detailed_results.get('perimeter', 'N/A')])
-            writer.writerow(["Helix Area (m²)", detailed_results.get('helix_area', 'N/A')])
-            
-            # Add helix information if available
-            writer.writerow([])  # Empty row for spacing
-            writer.writerow(["Helix Information"])
-            writer.writerow(["Helix Depth (m)", pile_params.get('helix_depth', 'N/A')])
-            writer.writerow(["q1 at Helix", detailed_results.get('q1_helix', 'N/A')])
-            writer.writerow(["q10 at Helix", detailed_results.get('q10_helix', 'N/A')])
-            writer.writerow(["Helix Tension Capacity (kN)", detailed_results.get('qhelix_tension', 'N/A')])
-            writer.writerow(["Helix Compression Capacity (kN)", detailed_results.get('qhelix_compression', 'N/A')])
-            
-            # Add effective depth calculations if available
-            writer.writerow([])  # Empty row for spacing
-            writer.writerow(["Effective Depth Calculations"])
-            writer.writerow(["Tension Effective Depth (m)", detailed_results.get('tension_effective_depth', 'N/A')])
-            writer.writerow(["Tension Min q10", detailed_results.get('tension_min_q10', 'N/A')])
-            writer.writerow(["q(10mm) Tension", detailed_results.get('q_10mm_tens', 'N/A')])
-            writer.writerow(["Compression Effective Depth (m)", detailed_results.get('compression_effective_depth', 'N/A')])
-            writer.writerow(["Compression Min q10", detailed_results.get('compression_min_q10', 'N/A')])
-            writer.writerow(["q(10mm) Compression", detailed_results.get('q_10mm_comp', 'N/A')])
-            
-            # Add final results
-            writer.writerow([])  # Empty row for spacing
-            writer.writerow(["Final Results"])
-            
-            # Get summary data from different possible locations
-            summary_data = {}
-            if 'summary' in results:
-                summary_data = results['summary']
-            elif 'summary_data' in results:
-                summary_data = results['summary_data']
-            elif 'summary_data' in session:
-                summary_data = session['summary_data']
-            
-            # Write final results
-            writer.writerow(["Ultimate Tension Capacity (kN)", summary_data.get('qult_tension', detailed_results.get('qult_tension', 'N/A'))])
-            writer.writerow(["Ultimate Compression Capacity (kN)", summary_data.get('qult_compression', detailed_results.get('qult_compression', 'N/A'))])
-            writer.writerow(["Tension Capacity at 10mm (kN)", detailed_results.get('q_delta_10mm_tension', 'N/A')])
-            writer.writerow(["Compression Capacity at 10mm (kN)", detailed_results.get('q_delta_10mm_compression', 'N/A')])
-            writer.writerow(["Installation Torque (kNm)", detailed_results.get('installation_torque', 'N/A')])
+            for i in range(len(detailed['depth'])):
+                row = [
+                    detailed['depth'][i],
+                    detailed['qt'][i],
+                    detailed['qc'][i],
+                    detailed['fs'][i],
+                    detailed['fr_percent'][i],
+                    detailed['lc'][i],
+                    detailed['soil_type'][i],
+                    detailed['q1'][i],
+                    detailed['q10'][i],
+                    detailed['coe_casing'][i],
+                    detailed['delta_z'][i],
+                    detailed['qshaft_segment'][i],
+                    detailed['qshaft_kn'][i],
+                    detailed['tension_capacity'][i],
+                    detailed['compression_capacity'][i]
+                ]
+                writer.writerow(row)
         
-        # Prepare the file for download
-        output.seek(0)
+        # Set buffer position to start
+        buffer.seek(0)
         
-        # Add more debug logging right before sending the file
-        current_app.logger.info(f"Sending file with size: {len(output.getvalue())} bytes")
-        
-        return send_file(
-            io.BytesIO(output.getvalue().encode('utf-8')),
+        # Return the CSV file
+        return Response(
+            buffer.getvalue(),
             mimetype='text/csv',
-            as_attachment=True,
-            download_name=download_name
+            headers={
+                'Content-Disposition': f'attachment; filename=helical_calculations_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv'
+            }
         )
-    
     except Exception as e:
-        # Log the full exception with traceback
-        import traceback
-        current_app.logger.error(f"Error in download_helical_calculations: {str(e)}")
-        current_app.logger.error(traceback.format_exc())
-        
-        # Flash a more helpful error message
-        flash(f"Error generating download: {str(e)}", 'error')
-        return redirect(url_for('main.index'))
+        logger.error(f"Error in download_helical_calculations: {str(e)}")
+        flash(f'Error generating helical calculations: {str(e)}')
+        return redirect(url_for('main.calculator_step', type='helical', step=4))

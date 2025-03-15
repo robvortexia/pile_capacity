@@ -112,20 +112,23 @@
         },
         plot_bgcolor: '#ffffff',
         paper_bgcolor: '#ffffff',
-        margin: { t: 40, r: 30, l: 60, b: 50 },
+        margin: { t: 40, r: 30, l: 60, b: 30 },
         xaxis: {
             showgrid: true,
             gridcolor: 'rgba(0,0,0,0.05)',
             linecolor: 'rgba(0,0,0,0.1)',
             tickfont: { size: 11 },
-            title: { standoff: 15 }
+            title: { standoff: 15 },
+            side: 'top'
         },
         yaxis: {
             showgrid: true,
             gridcolor: 'rgba(0,0,0,0.05)',
             linecolor: 'rgba(0,0,0,0.1)',
             tickfont: { size: 11 },
-            title: { standoff: 15 }
+            title: { standoff: 15 },
+            autorange: 'reversed',
+            side: 'left'
         }
     };
     

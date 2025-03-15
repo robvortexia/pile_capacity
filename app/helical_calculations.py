@@ -578,39 +578,44 @@ def calculate_helical_pile_results(processed_cpt, params):
         q_10mm_tension_tipdepth = detailed_results.get('q_10mm_tension_tipdepth', 0)
         
         # Summary results
-        summary = {
+        summary = [{
             'tipdepth': helix_depth,
-            'effective_depth': effective_depth,  # Add effective depth to summary
-            'qshaft': detailed_results['qshaft_kn'][effective_index],  # Use effective_index instead of helix_index
+            'effective_depth': effective_depth,
+            'qshaft': detailed_results['qshaft_kn'][effective_index],
             'qult_tension': qult_tension,
             'qult_compression': qult_compression,
             'q_delta_10mm_tension': q_delta_10mm_tension,
             'q_delta_10mm_compression': q_delta_10mm_compression,
             'installation_torque': installation_torque,
-            # Add values at original tipdepth to summary
             'qb01_comp': qb01_comp,
             'qb01_tension': qb01_tension,
             'qult_comp_tipdepth': qult_comp_tipdepth,
             'qult_tension_tipdepth': qult_tension_tipdepth,
             'q_10mm_comp_tipdepth': q_10mm_comp_tipdepth,
             'q_10mm_tension_tipdepth': q_10mm_tension_tipdepth
-        }
+        }]
         
-        # Add input parameters to the detailed results for completeness
-        detailed_results['input_parameters'] = params
+        # Add input parameters and constants to detailed results
+        detailed_results.update({
+            'input_parameters': params,
+            'perimeter': perimeter,
+            'helix_area': helix_area,
+            'effective_depth': effective_depth,
+            'helix_index': effective_index
+        })
         
-        # Create a tabular format for download that can be easily converted to CSV
+        # Create a tabular format for download
         download_rows = []
         
         # Add header row with title
         download_rows.append(["HELICAL PILE CALCULATION RESULTS"])
-        download_rows.append([])  # Empty row for spacing
+        download_rows.append([])
         
-        # Add input parameters first
+        # Add input parameters
         download_rows.append(["INPUT PARAMETERS"])
         for key, value in params.items():
             download_rows.append([key, value])
-            
+        
         download_rows.append([])  # Empty row for spacing
         download_rows.append(["GEOMETRIC CONSTANTS"])
         download_rows.append(["Perimeter (m)", perimeter])
@@ -619,10 +624,11 @@ def calculate_helical_pile_results(processed_cpt, params):
         download_rows.append([])  # Empty row for spacing
         download_rows.append(["HELIX PROPERTIES"])
         download_rows.append(["Helix Depth (m)", helix_depth])
+        download_rows.append(["Effective Depth (m)", effective_depth])
         download_rows.append(["q1 at Helix", detailed_results['q1_helix']])
         download_rows.append(["q10 at Helix", detailed_results['q10_helix']])
-        download_rows.append(["qb0.1 Compression (MPa)", detailed_results['qb01_comp']])
-        download_rows.append(["qb0.1 Tension (MPa)", detailed_results['qb01_tension']])
+        download_rows.append(["qb0.1 Compression (MPa)", qb01_comp])
+        download_rows.append(["qb0.1 Tension (MPa)", qb01_tension])
         
         download_rows.append([])  # Empty row for spacing
         download_rows.append(["FINAL RESULTS"])
@@ -640,7 +646,7 @@ def calculate_helical_pile_results(processed_cpt, params):
         download_rows.append(["Ultimate Tension Capacity at Tipdepth (kN)", qult_tension_tipdepth])
         download_rows.append(["Compression Capacity at 10mm at Tipdepth (kN)", q_10mm_comp_tipdepth])
         download_rows.append(["Tension Capacity at 10mm at Tipdepth (kN)", q_10mm_tension_tipdepth])
-
+        
         download_rows.append([])  # Empty row for spacing
         download_rows.append(["DETAILED CALCULATION TABLE"])
         download_rows.append([])  # Empty row for spacing
@@ -692,7 +698,7 @@ def calculate_helical_pile_results(processed_cpt, params):
             'detailed': detailed_results,
             'download_data': download_rows
         }
-    
+        
     except Exception as e:
-        logger.error(f"Error in helical pile calculations: {str(e)}")
+        logger.error(f"Error in calculate_helical_pile_results: {str(e)}")
         raise

@@ -521,7 +521,10 @@ def create_cpt_graphs(data, water_table=0):
         yaxis_title='Depth (m)',
         yaxis_autorange='reversed',
         xaxis_range=[1, 5],
-        height=800
+        height=800,
+        xaxis={'side': 'top'},  # Place x-axis at the top
+        yaxis={'side': 'left'},  # Keep y-axis on the left
+        margin={'l': 60, 'r': 30, 't': 40, 'b': 30}  # Adjust margins for top x-axis
     )
 
     graphs = {}
