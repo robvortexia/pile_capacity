@@ -23,18 +23,18 @@
         <div class="step active">
             <h2>Step 2: View CPT Data</h2>
             {% if graphs %}
-            <div class="graphs-grid">
-                <div class="graph-container">
-                    <div id="qt_graph"></div>
+            <div class="graphs-container">
+                <div class="graph-wrapper">
+                    <div id="qt_graph" class="graph"></div>
                 </div>
-                <div class="graph-container">
-                    <div id="fr_graph"></div>
+                <div class="graph-wrapper">
+                    <div id="fr_graph" class="graph"></div>
                 </div>
-                <div class="graph-container">
-                    <div id="ic_graph"></div>
+                <div class="graph-wrapper">
+                    <div id="ic_graph" class="graph"></div>
                 </div>
-                <div class="graph-container">
-                    <div id="iz_graph"></div>
+                <div class="graph-wrapper">
+                    <div id="iz_graph" class="graph"></div>
                 </div>
             </div>
             <div class="debug-section">
@@ -120,29 +120,54 @@
     var icGraph = JSON.parse('{{ graphs.ic | safe }}');
     var izGraph = JSON.parse('{{ graphs.iz | safe }}');
     
-    // Extend layout for all graphs
+    // Modern styling for all graphs
+    const modernStyle = {
+        font: {
+            family: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+            size: 12
+        },
+        plot_bgcolor: '#ffffff',
+        paper_bgcolor: '#ffffff',
+        margin: { t: 40, r: 30, l: 60, b: 50 },
+        xaxis: {
+            showgrid: true,
+            gridcolor: 'rgba(0,0,0,0.05)',
+            linecolor: 'rgba(0,0,0,0.1)',
+            tickfont: { size: 11 },
+            title: { standoff: 15 }
+        },
+        yaxis: {
+            showgrid: true,
+            gridcolor: 'rgba(0,0,0,0.05)',
+            linecolor: 'rgba(0,0,0,0.1)',
+            tickfont: { size: 11 },
+            title: { standoff: 15 }
+        }
+    };
+    
+    // Apply modern styling to all graphs
     [qtGraph, frGraph, icGraph, izGraph].forEach(graph => {
         graph.layout = {
             ...graph.layout,
-            autosize: true,
-            height: null,  // Let Plotly calculate height
-            margin: { l: 50, r: 20, t: 30, b: 30 },
-            plot_bgcolor: 'white',
-            paper_bgcolor: 'white'
+            ...modernStyle,
+            title: {
+                text: graph.layout.title.text,
+                font: {
+                    size: 16,
+                    weight: 500
+                }
+            }
         };
+        
+        // Update trace styling
+        if (graph.data && graph.data.length > 0) {
+            graph.data[0].line = {
+                ...graph.data[0].line,
+                width: 2,
+                shape: 'spline'
+            };
+        }
     });
-    
-    // Function to handle window resize
-    function resizeGraphs() {
-        const graphDivs = ['qt_graph', 'fr_graph', 'ic_graph', 'iz_graph'];
-        graphDivs.forEach(div => {
-            const container = document.getElementById(div).parentElement;
-            const height = container.clientHeight;
-            Plotly.relayout(div, {
-                height: height
-            });
-        });
-    }
     
     // Create the plots
     Plotly.newPlot('qt_graph', qtGraph.data, qtGraph.layout, config);
@@ -150,7 +175,14 @@
     Plotly.newPlot('ic_graph', icGraph.data, icGraph.layout, config);
     Plotly.newPlot('iz_graph', izGraph.data, izGraph.layout, config);
     
-    // Add window resize listener
+    // Handle window resize
+    function resizeGraphs() {
+        const graphDivs = ['qt_graph', 'fr_graph', 'ic_graph', 'iz_graph'];
+        graphDivs.forEach(div => {
+            Plotly.Plots.resize(document.getElementById(div));
+        });
+    }
+    
     window.addEventListener('resize', resizeGraphs);
     
     // Initial resize
@@ -164,96 +196,98 @@
     padding: 1rem;
     margin: 0 auto;
     box-sizing: border-box;
-    overflow: hidden;
 }
 
 .step {
     background: white;
-    padding: 1rem;
+    padding: 1.5rem;
     border-radius: 8px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
 }
 
-.graphs-grid {
+.graphs-container {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 0.5rem;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1.5rem;
     width: 100%;
-    margin: 0;
-    height: calc(100vh - 100px);
-    min-height: 900px;
+    margin: 0 auto;
+    padding: 1rem 0;
 }
 
-.graph-container {
-    width: 100%;
-    height: 100%;
+.graph-wrapper {
     background: white;
-    border-radius: 8px;
-    padding: 0;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-    display: flex;
-    flex-direction: column;
+    border-radius: 12px;
+    padding: 1rem;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+    transition: transform 0.2s ease;
+    height: 500px;
 }
 
-.graph-container > div {
+.graph-wrapper:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 12px rgba(0,0,0,0.1);
+}
+
+.graph {
     width: 100% !important;
     height: 100% !important;
-    flex: 1;
 }
 
 .button-group {
-    margin-top: 1rem;
+    margin-top: 1.5rem;
     display: flex;
-    gap: 0.5rem;
+    gap: 1rem;
+    flex-wrap: wrap;
 }
 
-h2 {
-    margin: 0 0 1rem 0;
-    font-size: 1.25rem;
-    color: #333;
-}
-
-.debug-section {
-    margin: 0.25rem 0;
-}
-
-/* Form styling */
-.form-group {
-    margin-bottom: 1.5rem;
-}
-
-.form-group label {
-    display: block;
-    margin-bottom: 0.5rem;
+.btn {
+    padding: 0.75rem 1.5rem;
+    border-radius: 6px;
     font-weight: 500;
+    transition: all 0.2s ease;
 }
 
-.form-group input {
-    width: 100%;
-    padding: 0.75rem;
-    border: 1px solid #ddd;
-    border-radius: 4px;
+.btn-primary {
+    background: #1a73e8;
+    color: white;
+    border: none;
 }
 
-.form-text {
-    margin-top: 0.5rem;
-    color: #666;
-    font-size: 0.875rem;
+.btn-primary:hover {
+    background: #1557b0;
+    transform: translateY(-1px);
+}
+
+.btn-secondary {
+    background: #f1f3f4;
+    color: #3c4043;
+    border: 1px solid #dadce0;
+}
+
+.btn-secondary:hover {
+    background: #e8eaed;
+    transform: translateY(-1px);
 }
 
 .btn-info {
-    background-color: #17a2b8;
+    background: #17a2b8;
     color: white;
-    padding: 0.5rem 1rem;
-    border-radius: 4px;
-    text-decoration: none;
     border: none;
-    transition: background-color 0.2s;
 }
 
 .btn-info:hover {
-    background-color: #138496;
-    color: white;
+    background: #138496;
+    transform: translateY(-1px);
+}
+
+@media (max-width: 768px) {
+    .graphs-container {
+        grid-template-columns: 1fr;
+    }
+    
+    .graph-wrapper {
+        height: 400px;
+    }
 }
 </style>
 {% endblock %} 

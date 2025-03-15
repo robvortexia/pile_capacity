@@ -41,12 +41,16 @@ def get_dstar(pile_end_condition, nominal_size_don, diameter):
         return math.sqrt(val)
 
 def get_coe_casing(depth, borehole_depth, tip_depth):
-    """Calculate coefficient of casing based on depth position"""
-    if depth < borehole_depth:
+    """Calculate casing coefficient with smoother transitions"""
+    if depth <= borehole_depth:
         return 0
-    elif borehole_depth <= depth <= tip_depth:
+    elif depth <= tip_depth:
         return 1
     else:
+        # Gradual reduction beyond tip depth
+        transition_zone = 0.5  # 0.5m transition zone
+        if depth <= (tip_depth + transition_zone):
+            return max(0, 1 - (depth - tip_depth)/transition_zone)
         return 0
 
 def get_kc(lc_value):
