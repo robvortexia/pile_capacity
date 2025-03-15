@@ -9,12 +9,23 @@
     --border-radius: 8px;
 }
 
+html {
+    /* Force 100% zoom level as baseline */
+    zoom: 100%;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+}
+
 body {
     margin: 0;
     padding: 0;
-    font-family: Arial, sans-serif;
+    font-family: 'Roboto', sans-serif;
+    line-height: 1.6;
     background-color: var(--background-color);
     color: var(--text-color);
+    font-size: 16px;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
 }
 
 /* Navigation */
@@ -739,4 +750,12 @@ input[type="text"] {
 .analytics-table {
     max-height: 300px;
     overflow-y: auto;
+}
+
+/* Use rem units for responsive scaling */
+.container {
+    width: 100%;
+    max-width: 75rem; /* instead of pixels */
+    margin: 0 auto;
+    padding: 1rem;
 }
