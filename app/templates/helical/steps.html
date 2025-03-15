@@ -2,447 +2,275 @@
 
 {% block content %}
 <div class="container">
-    <h1>Helical Pile Analysis - Step {{ step }}</h1>
+    <h1>{{ type|title }} Pile Analysis - Step {{ step }}</h1>
     
-    <div class="step-indicator">
-        <div class="step {% if step >= 1 %}active{% endif %}">
-            <span class="step-number">1</span>
-            <span class="step-label">Upload CPT</span>
-        </div>
-        <div class="step {% if step >= 2 %}active{% endif %}">
-            <span class="step-number">2</span>
-            <span class="step-label">View CPT</span>
-        </div>
-        <div class="step {% if step >= 3 %}active{% endif %}">
-            <span class="step-number">3</span>
-            <span class="step-label">Parameters</span>
-        </div>
-        <div class="step {% if step >= 4 %}active{% endif %}">
-            <span class="step-number">4</span>
-            <span class="step-label">Results</span>
-        </div>
-    </div>
+    {% include 'components/step_indicator.html' %}
     
-    {% if step == 1 %}
-    <div class="step-content">
-        <h2>Step 1: CPT Data</h2>
-        {% include 'components/upload_form.html' %}
-        <div class="button-group">
-            <a href="{{ url_for('main.index') }}" class="btn btn-secondary">Back to Home</a>
-        </div>
-    </div>
-    {% endif %}
-    
-    {% if step == 2 %}
-    <div class="step-content">
-        <h2>Step 2: View CPT Data</h2>
-        <div class="graphs-grid">
-            <div class="graph-container">
-                <div id="qt_graph"></div>
-            </div>
-            <div class="graph-container">
-                <div id="fr_graph"></div>
-            </div>
-            <div class="graph-container">
-                <div id="ic_graph"></div>
-            </div>
-        </div>
-        <div class="debug-section">
+    <div class="stepper">
+        {% if step == 1 %}
+        <div class="step active">
+            <h2>Step 1: CPT Data</h2>
+            {% include 'components/upload_form.html' %}
             <div class="button-group">
-                <a href="{{ url_for('main.download_intermediary_calcs') }}" class="btn btn-info">
-                    <i class="fas fa-download"></i> Download Intermediary Calculations
-                </a>
+                <a href="{{ url_for('main.index') }}" class="btn btn-secondary">Back to Home</a>
             </div>
         </div>
-        <div class="button-group">
-            <form method="POST" action="{{ url_for('main.calculator_step', type=type, step=2) }}">
-                <button type="submit" class="btn btn-primary">Continue to Step 3</button>
-            </form>
-            <a href="{{ url_for('main.calculator_step', type=type, step=1) }}" class="btn btn-secondary">Back to Step 1</a>
-        </div>
-    </div>
-    {% endif %}
-    
-    {% if step == 3 %}
-    <div class="step-content">
-        <h2>Step 3: Pile Parameters</h2>
-        {% include 'components/helical_pile_parameters.html' %}
-    </div>
-    {% endif %}
-    
-    {% if step == 4 %}
-    <div class="step-content">
-        <h2>Step 4: Helical Pile Results</h2>
-        
-        <div class="results-summary">
-            <!-- Pile Parameters Card -->
-            <div class="card mb-5">
-                <div class="card-header bg-blue text-dark d-flex justify-content-between align-items-center">
-                    <h3 class="mb-0">Pile Parameters</h3>
-                    <span class="badge bg-white text-blue">Input Values</span>
-                </div>
-                <div class="card-body">
-                    <div class="row">
-                        <div class="col-md-6">
-                            <table class="table table-sm parameter-table">
-                                <tbody>
-                                    <tr>
-                                        <th>Site Name</th>
-                                        <td>{{ session.get('pile_params', {}).get('site_name', 'N/A') }}</td>
-                                    </tr>
-                                    <tr>
-                                        <th>Shaft Diameter</th>
-                                        <td>{{ session.get('pile_params', {}).get('shaft_diameter', 'N/A') }} m</td>
-                                    </tr>
-                                    <tr>
-                                        <th>Helix Diameter</th>
-                                        <td>{{ session.get('pile_params', {}).get('helix_diameter', 'N/A') }} m</td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-                        <div class="col-md-6">
-                            <table class="table table-sm parameter-table">
-                                <tbody>
-                                    <tr>
-                                        <th>Helix Depth</th>
-                                        <td>{{ session.get('pile_params', {}).get('helix_depth', 'N/A') }} m</td>
-                                    </tr>
-                                    <tr>
-                                        <th>Borehole Depth</th>
-                                        <td>{{ session.get('pile_params', {}).get('borehole_depth', 'N/A') }} m</td>
-                                    </tr>
-                                    <tr>
-                                        <th>Water Table</th>
-                                        <td>{{ session.get('pile_params', {}).get('water_table', 'N/A') }} m</td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-            </div>
+        {% endif %}
 
-            <!-- Capacity Results Card -->
-            <div class="card mb-4">
-                <div class="card-header bg-green text-dark d-flex justify-content-between align-items-center">
-                    <h3 class="mb-0">Capacity Results</h3>
-                    <span class="badge bg-white text-green">Calculated Values</span>
+        {% if step == 2 %}
+        <div class="step active">
+            <h2>Step 2: View CPT Data</h2>
+            {% if graphs %}
+            <div class="graphs-container">
+                <div class="graph-wrapper">
+                    <div id="qt_graph" class="graph"></div>
                 </div>
-                <div class="card-body">
-                    <div class="table-responsive">
-                        <table class="table table-hover results-table">
-                            <thead class="table-light">
-                                <tr>
-                                    <th class="text-center" style="width: 15%">CAPACITY</th>
-                                    <th class="text-center" style="width: 20%">Qshaft (kN)</th>
-                                    <th class="text-center" style="width: 25%">Q at δ=10mm (kN)</th>
-                                    <th class="text-center" style="width: 25%">Qult (kN)</th>
-                                    <th class="text-center" style="width: 15%">Installation torque (kNm)</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr class="tension-row table-warning">
-                                    <td class="text-center fw-bold">Tension</td>
-                                    <td class="text-center">{{ "%.1f"|format(results.qshaft) }}</td>
-                                    <td class="text-center">{{ "%.1f"|format(detailed_results.q_delta_10mm_tension) }}</td>
-                                    <td class="text-center">{{ "%.1f"|format(results.qult_tension) }}</td>
-                                    <td class="text-center align-middle" rowspan="2">{{ "%.1f"|format(detailed_results.installation_torque) }}</td>
-                                </tr>
-                                <tr class="compression-row table-info">
-                                    <td class="text-center fw-bold">Compression</td>
-                                    <td class="text-center">{{ "%.1f"|format(results.qshaft) }}</td>
-                                    <td class="text-center">{{ "%.1f"|format(detailed_results.q_delta_10mm_compression) }}</td>
-                                    <td class="text-center">{{ "%.1f"|format(results.qult_compression) }}</td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                    
-                    <!-- Legend -->
-                    <div class="mt-3 px-3">
-                        <div class="row">
-                            <div class="col-md-6">
-                                <small class="text-muted">
-                                    <i class="fas fa-info-circle"></i> <strong>Qshaft:</strong> Shaft resistance
-                                </small>
-                            </div>
-                            <div class="col-md-6">
-                                <small class="text-muted">
-                                    <i class="fas fa-info-circle"></i> <strong>Qult:</strong> Ultimate capacity
-                                </small>
-                            </div>
-                        </div>
-                    </div>
+                <div class="graph-wrapper">
+                    <div id="fr_graph" class="graph"></div>
+                </div>
+                <div class="graph-wrapper">
+                    <div id="ic_graph" class="graph"></div>
                 </div>
             </div>
+            <div class="debug-section">
+                <div class="button-group">
+                    <a href="{{ url_for('main.download_intermediary_calcs') }}" class="btn btn-info">
+                        <i class="fas fa-download"></i> Download Intermediary Calculations
+                    </a>
+                </div>
+            </div>
+            <div class="button-group">
+                <form method="POST" action="{{ url_for('main.calculator_step', type=type, step=2) }}">
+                    <button type="submit" class="btn btn-primary">Continue to Step 3</button>
+                </form>
+                <a href="{{ url_for('main.calculator_step', type=type, step=1) }}" class="btn btn-secondary">Back to Step 1</a>
+            </div>
+            {% else %}
+            <p>No CPT data available. Please go back to step 1 and upload your data.</p>
+            <div class="button-group">
+                <a href="{{ url_for('main.calculator_step', type=type, step=1) }}" class="btn btn-secondary">Back to Step 1</a>
+            </div>
+            {% endif %}
         </div>
+        {% endif %}
 
-        <!-- Action Buttons -->
-        <div class="button-group mt-4">
-            <a href="{{ url_for('main.download_helical_calculations') }}" class="btn btn-info">
-                <i class="fas fa-download"></i> Download All Calculations
-            </a>
-            <a href="{{ url_for('main.calculator_step', type=type, step=3) }}" class="btn btn-secondary">
-                <i class="fas fa-arrow-left"></i> Back to Parameters
-            </a>
-            <a href="{{ url_for('main.index') }}" class="btn btn-primary">
-                <i class="fas fa-home"></i> Return to Home
-            </a>
+        {% if step == 3 %}
+        <div class="step active">
+            <h2>Step 3: Pile Parameters</h2>
+            {% include 'components/helical_pile_parameters.html' %}
+            <div class="button-group">
+                <a href="{{ url_for('main.calculator_step', type=type, step=2) }}" class="btn btn-secondary">Back to Step 2</a>
+            </div>
         </div>
+        {% endif %}
+
+        {% if step == 4 %}
+        <div class="step active">
+            <h2>Step 4: Results</h2>
+            <div class="debug-section">
+                <div class="button-group mb-3">
+                    <a href="{{ url_for('main.download_debug_params') }}" class="btn btn-info">
+                        <i class="fas fa-download"></i> Download Detailed Output
+                    </a>
+                    <a href="{{ url_for('main.download_results') }}" class="btn btn-info ml-2">
+                        <i class="fas fa-download"></i> Download Results
+                    </a>
+                </div>
+            </div>
+            {% include 'components/results.html' %}
+            <div class="button-group">
+                <a href="{{ url_for('main.calculator_step', type=type, step=3) }}" class="btn btn-secondary">Back to Step 3</a>
+                <a href="{{ url_for('main.index') }}" class="btn btn-primary">Return to Home</a>
+            </div>
+        </div>
+        {% endif %}
     </div>
-    {% endif %}
 </div>
 
-{% if step == 2 and graphs %}
+{% if step == 2 or step == 4 %}
 <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+{% endif %}
+
+{% if step == 2 and graphs %}
 <script>
     var config = {
         responsive: true,
-        displayModeBar: false
+        displayModeBar: false,
+        displaylogo: false,
+        modeBarButtonsToRemove: ['zoom2d', 'pan2d', 'select2d', 'lasso2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d', 'resetScale2d']
     };
     
     var qtGraph = JSON.parse('{{ graphs.qt | safe }}');
     var frGraph = JSON.parse('{{ graphs.fr | safe }}');
     var icGraph = JSON.parse('{{ graphs.ic | safe }}');
     
+    // Modern styling for all graphs
+    const modernStyle = {
+        font: {
+            family: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+            size: 12
+        },
+        plot_bgcolor: '#ffffff',
+        paper_bgcolor: '#ffffff',
+        margin: { t: 40, r: 30, l: 60, b: 50 },
+        xaxis: {
+            showgrid: true,
+            gridcolor: 'rgba(0,0,0,0.05)',
+            linecolor: 'rgba(0,0,0,0.1)',
+            tickfont: { size: 11 },
+            title: { standoff: 15 }
+        },
+        yaxis: {
+            showgrid: true,
+            gridcolor: 'rgba(0,0,0,0.05)',
+            linecolor: 'rgba(0,0,0,0.1)',
+            tickfont: { size: 11 },
+            title: { standoff: 15 }
+        }
+    };
+    
+    // Apply modern styling to all graphs
+    [qtGraph, frGraph, icGraph].forEach(graph => {
+        graph.layout = {
+            ...graph.layout,
+            ...modernStyle,
+            title: {
+                text: graph.layout.title.text,
+                font: {
+                    size: 16,
+                    weight: 500
+                }
+            }
+        };
+        
+        // Update trace styling
+        if (graph.data && graph.data.length > 0) {
+            graph.data[0].line = {
+                ...graph.data[0].line,
+                width: 2,
+                shape: 'spline'
+            };
+        }
+    });
+    
+    // Create the plots
     Plotly.newPlot('qt_graph', qtGraph.data, qtGraph.layout, config);
     Plotly.newPlot('fr_graph', frGraph.data, frGraph.layout, config);
     Plotly.newPlot('ic_graph', icGraph.data, icGraph.layout, config);
+    
+    // Handle window resize
+    function resizeGraphs() {
+        const graphDivs = ['qt_graph', 'fr_graph', 'ic_graph'];
+        graphDivs.forEach(div => {
+            Plotly.Plots.resize(document.getElementById(div));
+        });
+    }
+    
+    window.addEventListener('resize', resizeGraphs);
+    
+    // Initial resize
+    setTimeout(resizeGraphs, 100);
 </script>
 {% endif %}
 
 <style>
 .container {
-    max-width: 1200px;
-    margin: 0 auto;
+    max-width: 100%;
     padding: 1rem;
+    margin: 0 auto;
+    box-sizing: border-box;
 }
 
-.step-indicator {
-    display: flex;
-    justify-content: space-between;
-    margin-bottom: 2rem;
-    position: relative;
-}
-
-.step-indicator::before {
-    content: '';
-    position: absolute;
-    top: 15px;
-    left: 0;
-    right: 0;
-    height: 2px;
-    background: #e5e7eb;
-    z-index: 1;
-}
-
-.step-indicator .step {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    position: relative;
-    z-index: 2;
-}
-
-.step-number {
-    width: 30px;
-    height: 30px;
-    border-radius: 50%;
-    background: #e5e7eb;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-weight: bold;
-    margin-bottom: 0.5rem;
-}
-
-.step.active .step-number {
-    background: #3b82f6;
-    color: white;
-}
-
-.step-label {
-    font-size: 0.8rem;
-    color: #6b7280;
-}
-
-.step.active .step-label {
-    color: #1f2937;
-    font-weight: 500;
-}
-
-.step-content {
+.step {
     background: white;
+    padding: 1.5rem;
     border-radius: 8px;
-    padding: 2rem;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    margin-bottom: 2rem;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
 }
 
-.graphs-grid {
+.graphs-container {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    gap: 1rem;
-    margin: 1rem 0;
+    gap: 1.5rem;
+    width: 100%;
+    margin: 0 auto;
+    padding: 1rem 0;
 }
 
-.graph-container {
+.graph-wrapper {
     background: white;
-    border-radius: 8px;
+    border-radius: 12px;
     padding: 1rem;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+    transition: transform 0.2s ease;
+    height: 500px;
+}
+
+.graph-wrapper:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 12px rgba(0,0,0,0.1);
+}
+
+.graph {
+    width: 100% !important;
+    height: 100% !important;
 }
 
 .button-group {
-    display: flex;
-    gap: 0.5rem;
-    margin-top: 1rem;
-}
-
-.table-responsive {
-    overflow-x: auto;
-}
-
-@media (max-width: 768px) {
-    .step-label {
-        display: none;
-    }
-}
-
-.parameter-table th {
-    width: 40%;
-    background-color: #f8f9fa;
-    font-weight: 600;
-}
-
-.parameter-table td {
-    width: 60%;
-}
-
-.results-table {
-    border-collapse: separate;
-    border-spacing: 0;
-}
-
-.results-table th {
-    background-color: #f8f9fa;
-    border-bottom: 2px solid #dee2e6;
-    font-weight: 600;
-    padding: 12px;
-}
-
-.results-table td {
-    padding: 12px;
-    border: 1px solid #dee2e6;
-}
-
-.tension-row {
-    background-color: #fff3e6;
-}
-
-.compression-row {
-    background-color: #e6f3ff;
-}
-
-.card-header h3 {
-    font-size: 1.25rem;
-    margin: 0;
-    font-weight: 600;
-    color: #2c3e50;
-}
-
-.fw-bold {
-    font-weight: 600;
-}
-
-.text-center {
-    text-align: center;
-}
-
-.bg-primary {
-    background-color: #3b82f6 !important;
-}
-
-.bg-success {
-    background-color: #10b981 !important;
-}
-
-.card {
-    border: none;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-}
-
-.card-header {
-    border-bottom: none;
-    padding: 1rem 1.25rem;
-}
-
-.parameter-table th {
-    font-weight: 500;
-    color: #6c757d;
-    width: 40%;
-}
-
-.results-table th {
-    font-size: 0.9rem;
-    font-weight: 600;
-}
-
-.tension-row, .compression-row {
-    transition: background-color 0.2s;
-}
-
-.tension-row:hover {
-    background-color: #fff3cd !important;
-}
-
-.compression-row:hover {
-    background-color: #cff4fc !important;
-}
-
-.badge {
-    font-size: 0.8rem;
-    padding: 0.4em 0.8em;
-}
-
-.button-group {
+    margin-top: 1.5rem;
     display: flex;
     gap: 1rem;
-    justify-content: center;
+    flex-wrap: wrap;
 }
 
-.button-group .btn {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
+.btn {
+    padding: 0.75rem 1.5rem;
+    border-radius: 6px;
+    font-weight: 500;
+    transition: all 0.2s ease;
+}
+
+.btn-primary {
+    background: #1a73e8;
+    color: white;
+    border: none;
+}
+
+.btn-primary:hover {
+    background: #1557b0;
+    transform: translateY(-1px);
+}
+
+.btn-secondary {
+    background: #f1f3f4;
+    color: #3c4043;
+    border: 1px solid #dadce0;
+}
+
+.btn-secondary:hover {
+    background: #e8eaed;
+    transform: translateY(-1px);
+}
+
+.btn-info {
+    background: #17a2b8;
+    color: white;
+    border: none;
+}
+
+.btn-info:hover {
+    background: #138496;
+    transform: translateY(-1px);
 }
 
 @media (max-width: 768px) {
-    .button-group {
-        flex-direction: column;
+    .graphs-container {
+        grid-template-columns: 1fr;
     }
     
-    .button-group .btn {
-        width: 100%;
-        justify-content: center;
+    .graph-wrapper {
+        height: 400px;
     }
-}
-
-.bg-blue {
-    background-color: #e3f2fd !important;
-}
-
-.bg-green {
-    background-color: #e8f5e9 !important;
-}
-
-.text-blue {
-    color: #1976d2 !important;
-}
-
-.text-green {
-    color: #2e7d32 !important;
 }
 </style>
 {% endblock %} 

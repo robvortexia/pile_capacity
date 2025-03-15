@@ -2,7 +2,7 @@
 
 {% block content %}
 <div class="container">
-    <h1>Bored Pile Analysis - Step {{ step }}</h1>
+    <h1>{{ type|title }} Pile Analysis - Step {{ step }}</h1>
     
     {% include 'components/step_indicator.html' %}
     
@@ -12,320 +12,265 @@
             <h2>Step 1: CPT Data</h2>
             {% include 'components/upload_form.html' %}
             <div class="button-group">
-                <a href="{{ url_for('main.index') }}" class="btn btn-secondary">
-                    Back to Home
-                </a>
+                <a href="{{ url_for('main.index') }}" class="btn btn-secondary">Back to Home</a>
             </div>
         </div>
         {% endif %}
 
-        <div class="step {% if step >= 2 %}active{% endif %}">
+        {% if step == 2 %}
+        <div class="step active">
             <h2>Step 2: View CPT Data</h2>
-            {% if step == 2 %}
-                <div class="graphs-grid">
-                    <div class="graph-container">
-                        <div id="qt_graph"></div>
-                    </div>
-                    <div class="graph-container">
-                        <div id="fr_graph"></div>
-                    </div>
-                    <div class="graph-container">
-                        <div id="ic_graph"></div>
-                    </div>
+            {% if graphs %}
+            <div class="graphs-container">
+                <div class="graph-wrapper">
+                    <div id="qt_graph" class="graph"></div>
                 </div>
-                <div class="debug-section">
-                    <div class="button-group">
-                        <a href="{{ url_for('main.download_intermediary_calcs') }}" class="btn btn-info">
-                            <i class="fas fa-download"></i> Download Intermediary Calculations
-                        </a>
-                    </div>
+                <div class="graph-wrapper">
+                    <div id="fr_graph" class="graph"></div>
                 </div>
+                <div class="graph-wrapper">
+                    <div id="ic_graph" class="graph"></div>
+                </div>
+            </div>
+            <div class="debug-section">
                 <div class="button-group">
-                    <form method="POST" action="{{ url_for('main.calculator_step', type=type, step=2) }}">
-                        <button type="submit" class="btn btn-primary">Continue to Step 3</button>
-                    </form>
-                    <a href="{{ url_for('main.calculator_step', type=type, step=1) }}" class="btn btn-secondary">
-                        Back to Step 1
+                    <a href="{{ url_for('main.download_intermediary_calcs') }}" class="btn btn-info">
+                        <i class="fas fa-download"></i> Download Intermediary Calculations
                     </a>
                 </div>
+            </div>
+            <div class="button-group">
+                <form method="POST" action="{{ url_for('main.calculator_step', type=type, step=2) }}">
+                    <button type="submit" class="btn btn-primary">Continue to Step 3</button>
+                </form>
+                <a href="{{ url_for('main.calculator_step', type=type, step=1) }}" class="btn btn-secondary">Back to Step 1</a>
+            </div>
+            {% else %}
+            <p>No CPT data available. Please go back to step 1 and upload your data.</p>
+            <div class="button-group">
+                <a href="{{ url_for('main.calculator_step', type=type, step=1) }}" class="btn btn-secondary">Back to Step 1</a>
+            </div>
             {% endif %}
         </div>
+        {% endif %}
 
         {% if step == 3 %}
         <div class="step active">
             <h2>Step 3: Pile Parameters</h2>
             {% include 'components/bored_pile_parameters.html' %}
+            <div class="button-group">
+                <a href="{{ url_for('main.calculator_step', type=type, step=2) }}" class="btn btn-secondary">Back to Step 2</a>
+            </div>
         </div>
         {% endif %}
 
         {% if step == 4 %}
         <div class="step active">
             <h2>Step 4: Results</h2>
-            {% if results %}
-                <div class="results-section">
-                    <div class="card mb-4">
-                        <div class="card-header bg-primary text-white">
-                            <h3 class="mb-0">Pile Parameters</h3>
-                        </div>
-                        <div class="card-body">
-                            <table class="table table-hover parameter-table">
-                                <tbody>
-                                    <tr>
-                                        <th class="w-40">Site Name</th>
-                                        <td>{{ session.get('pile_params', {}).get('site_name', 'N/A') }}</td>
-                                    </tr>
-                                    <tr>
-                                        <th>Shaft Diameter</th>
-                                        <td>{{ session.get('pile_params', {}).get('shaft_diameter', 'N/A') }} m</td>
-                                    </tr>
-                                    <tr>
-                                        <th>Base Diameter</th>
-                                        <td>{{ session.get('pile_params', {}).get('base_diameter', 'N/A') }} m</td>
-                                    </tr>
-                                    <tr>
-                                        <th>Cased Depth</th>
-                                        <td>{{ session.get('pile_params', {}).get('cased_depth', 'N/A') }} m</td>
-                                    </tr>
-                                    <tr>
-                                        <th>Water Table</th>
-                                        <td>{{ session.get('pile_params', {}).get('water_table', 'N/A') }} m</td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-
-                    <div class="card mb-4">
-                        <div class="card-header bg-primary text-white">
-                            <h3 class="mb-0">Capacity Results</h3>
-                        </div>
-                        <div class="card-body">
-                            <div class="row">
-                                <div class="col-md-6">
-                                    <div id="capacity_graph" style="height: 400px;"></div>
-                                </div>
-                                <div class="col-md-6">
-                                    <table class="table table-hover">
-                                        <thead>
-                                            <tr>
-                                                <th>Tip Depth (m)</th>
-                                                <th>Tension (kN)</th>
-                                                <th>Compression (kN)</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {% for result in results %}
-                                            <tr>
-                                                <td>{{ "%.1f"|format(result.tipdepth) }}</td>
-                                                <td>{{ "%.0f"|format(result.tension_capacity) }}</td>
-                                                <td>{{ "%.0f"|format(result.compression_capacity) }}</td>
-                                            </tr>
-                                            {% endfor %}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+            <div class="debug-section">
+                <div class="button-group mb-3">
+                    <a href="{{ url_for('main.download_debug_params') }}" class="btn btn-info">
+                        <i class="fas fa-download"></i> Download Detailed Output
+                    </a>
+                    <a href="{{ url_for('main.download_results') }}" class="btn btn-info ml-2">
+                        <i class="fas fa-download"></i> Download Results
+                    </a>
                 </div>
-
-                <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
-                <script>
-                    document.addEventListener('DOMContentLoaded', function() {
-                        var depths = {{ results|map(attribute='tipdepth')|list|tojson }};
-                        var tension = {{ results|map(attribute='tension_capacity')|list|tojson }};
-                        var compression = {{ results|map(attribute='compression_capacity')|list|tojson }};
-
-                        var trace1 = {
-                            x: tension,
-                            y: depths,
-                            name: 'Tension Capacity',
-                            type: 'scatter',
-                            mode: 'lines+markers'
-                        };
-
-                        var trace2 = {
-                            x: compression,
-                            y: depths,
-                            name: 'Compression Capacity',
-                            type: 'scatter',
-                            mode: 'lines+markers'
-                        };
-
-                        var layout = {
-                            title: 'Pile Capacity vs Depth',
-                            xaxis: {
-                                title: 'Capacity (kN)',
-                                gridcolor: 'rgba(128, 128, 128, 0.2)',
-                            },
-                            yaxis: {
-                                title: 'Depth (m)',
-                                autorange: 'reversed',
-                                gridcolor: 'rgba(128, 128, 128, 0.2)',
-                            },
-                            plot_bgcolor: 'rgba(240, 240, 240, 0.8)',
-                            paper_bgcolor: 'white',
-                            showlegend: true,
-                            legend: {
-                                orientation: 'h',
-                                y: -0.2,
-                                x: 0.5,
-                                xanchor: 'center'
-                            },
-                            margin: { 
-                                t: 40,
-                                r: 30,
-                                l: 60,
-                                b: 80
-                            }
-                        };
-
-                        Plotly.newPlot('capacity_graph', [trace1, trace2], layout);
-                    });
-                </script>
-            {% else %}
-                <p>No results available. Please complete the analysis first.</p>
-            {% endif %}
+            </div>
+            {% include 'components/results.html' %}
             <div class="button-group">
-                <a href="{{ url_for('main.calculator_step', type=type, step=3) }}" class="btn btn-secondary">
-                    Back to Parameters
-                </a>
+                <a href="{{ url_for('main.calculator_step', type=type, step=3) }}" class="btn btn-secondary">Back to Step 3</a>
+                <a href="{{ url_for('main.index') }}" class="btn btn-primary">Return to Home</a>
             </div>
         </div>
         {% endif %}
     </div>
 </div>
 
-{% if step == 2 and graphs %}
+{% if step == 2 or step == 4 %}
 <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+{% endif %}
+
+{% if step == 2 and graphs %}
 <script>
     var config = {
         responsive: true,
-        displayModeBar: false
+        displayModeBar: false,
+        displaylogo: false,
+        modeBarButtonsToRemove: ['zoom2d', 'pan2d', 'select2d', 'lasso2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d', 'resetScale2d']
     };
     
     var qtGraph = JSON.parse('{{ graphs.qt | safe }}');
     var frGraph = JSON.parse('{{ graphs.fr | safe }}');
     var icGraph = JSON.parse('{{ graphs.ic | safe }}');
     
+    // Modern styling for all graphs
+    const modernStyle = {
+        font: {
+            family: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+            size: 12
+        },
+        plot_bgcolor: '#ffffff',
+        paper_bgcolor: '#ffffff',
+        margin: { t: 40, r: 30, l: 60, b: 50 },
+        xaxis: {
+            showgrid: true,
+            gridcolor: 'rgba(0,0,0,0.05)',
+            linecolor: 'rgba(0,0,0,0.1)',
+            tickfont: { size: 11 },
+            title: { standoff: 15 }
+        },
+        yaxis: {
+            showgrid: true,
+            gridcolor: 'rgba(0,0,0,0.05)',
+            linecolor: 'rgba(0,0,0,0.1)',
+            tickfont: { size: 11 },
+            title: { standoff: 15 }
+        }
+    };
+    
+    // Apply modern styling to all graphs
+    [qtGraph, frGraph, icGraph].forEach(graph => {
+        graph.layout = {
+            ...graph.layout,
+            ...modernStyle,
+            title: {
+                text: graph.layout.title.text,
+                font: {
+                    size: 16,
+                    weight: 500
+                }
+            }
+        };
+        
+        // Update trace styling
+        if (graph.data && graph.data.length > 0) {
+            graph.data[0].line = {
+                ...graph.data[0].line,
+                width: 2,
+                shape: 'spline'
+            };
+        }
+    });
+    
+    // Create the plots
     Plotly.newPlot('qt_graph', qtGraph.data, qtGraph.layout, config);
     Plotly.newPlot('fr_graph', frGraph.data, frGraph.layout, config);
     Plotly.newPlot('ic_graph', icGraph.data, icGraph.layout, config);
+    
+    // Handle window resize
+    function resizeGraphs() {
+        const graphDivs = ['qt_graph', 'fr_graph', 'ic_graph'];
+        graphDivs.forEach(div => {
+            Plotly.Plots.resize(document.getElementById(div));
+        });
+    }
+    
+    window.addEventListener('resize', resizeGraphs);
+    
+    // Initial resize
+    setTimeout(resizeGraphs, 100);
 </script>
 {% endif %}
 
 <style>
 .container {
     max-width: 100%;
-    padding: 0.5rem;
+    padding: 1rem;
     margin: 0 auto;
     box-sizing: border-box;
 }
 
 .step {
     background: white;
-    padding: 0.5rem;
+    padding: 1.5rem;
     border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
 }
 
-.graphs-grid {
+.graphs-container {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 0.25rem;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1.5rem;
     width: 100%;
-    margin: 0.5rem 0;
-    height: calc(100vh - 300px);
+    margin: 0 auto;
+    padding: 1rem 0;
 }
 
-.graph-container {
-    width: 100%;
-    min-width: 0;
-    max-width: 100%;
-    height: 100%;
-    aspect-ratio: 1;
+.graph-wrapper {
     background: white;
-    border: none;
-    padding: 0.15rem;
-    overflow: hidden;
+    border-radius: 12px;
+    padding: 1rem;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+    transition: transform 0.2s ease;
+    height: 500px;
 }
 
-.graph-container > div {
-    height: 100% !important;
+.graph-wrapper:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 12px rgba(0,0,0,0.1);
+}
+
+.graph {
     width: 100% !important;
-    max-width: 100% !important;
+    height: 100% !important;
 }
 
 .button-group {
-    margin-top: 0.5rem;
+    margin-top: 1.5rem;
     display: flex;
-    gap: 0.25rem;
+    gap: 1rem;
+    flex-wrap: wrap;
 }
 
-h2 {
-    margin: 0 0 0.25rem 0;
-    font-size: 1.15rem;
-    color: #333;
-}
-
-/* Form styling */
-.form-group {
-    margin-bottom: 1.5rem;
-}
-
-.form-group label {
-    display: block;
-    margin-bottom: 0.5rem;
+.btn {
+    padding: 0.75rem 1.5rem;
+    border-radius: 6px;
     font-weight: 500;
+    transition: all 0.2s ease;
 }
 
-.form-group input {
-    width: 100%;
-    padding: 0.75rem;
-    border: 1px solid #ddd;
-    border-radius: 4px;
+.btn-primary {
+    background: #1a73e8;
+    color: white;
+    border: none;
 }
 
-.form-text {
-    margin-top: 0.5rem;
-    color: #666;
-    font-size: 0.875rem;
+.btn-primary:hover {
+    background: #1557b0;
+    transform: translateY(-1px);
 }
 
-/* Results styling */
-.card {
-    margin-bottom: 1rem;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+.btn-secondary {
+    background: #f1f3f4;
+    color: #3c4043;
+    border: 1px solid #dadce0;
 }
 
-.card-header {
-    padding: 0.75rem 1rem;
-    border-bottom: none;
+.btn-secondary:hover {
+    background: #e8eaed;
+    transform: translateY(-1px);
 }
 
-.card-body {
-    padding: 1rem;
+.btn-info {
+    background: #17a2b8;
+    color: white;
+    border: none;
 }
 
-.parameter-table th {
-    width: 40%;
-    background-color: #f8f9fa;
+.btn-info:hover {
+    background: #138496;
+    transform: translateY(-1px);
 }
 
-.table {
-    margin-bottom: 0;
-}
-
-.table th {
-    font-weight: 600;
-    background-color: #f8f9fa;
-}
-
-#capacity_graph {
-    width: 100%;
-    height: 400px;
-    background: white;
-    border-radius: 4px;
-    padding: 0.5rem;
+@media (max-width: 768px) {
+    .graphs-container {
+        grid-template-columns: 1fr;
+    }
+    
+    .graph-wrapper {
+        height: 400px;
+    }
 }
 </style>
 {% endblock %} 

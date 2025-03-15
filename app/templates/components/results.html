@@ -1,87 +1,233 @@
 <div class="results-container">
-    {% if results %}
+    {% if type == 'helical' %}
+        {# Helical pile results #}
         <div class="results-section">
-            <div class="graph-section">
-                <div id="capacity_graph" style="height: 500px;"></div>
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h3>Pile Parameters</h3>
+                </div>
+                <div class="card-body">
+                    <table class="results-table">
+                        <tbody>
+                            <tr>
+                                <th>Site Name</th>
+                                <td>{{ session.get('pile_params', {}).get('site_name', 'N/A') }}</td>
+                            </tr>
+                            <tr>
+                                <th>Shaft Diameter</th>
+                                <td>{{ session.get('pile_params', {}).get('shaft_diameter', 'N/A') }} m</td>
+                            </tr>
+                            <tr>
+                                <th>Helix Diameter</th>
+                                <td>{{ session.get('pile_params', {}).get('helix_diameter', 'N/A') }} m</td>
+                            </tr>
+                            <tr>
+                                <th>Helix Depth</th>
+                                <td>{{ session.get('pile_params', {}).get('helix_depth', 'N/A') }} m</td>
+                            </tr>
+                            <tr>
+                                <th>Borehole Depth</th>
+                                <td>{{ session.get('pile_params', {}).get('borehole_depth', 'N/A') }} m</td>
+                            </tr>
+                            <tr>
+                                <th>Water Table</th>
+                                <td>{{ session.get('pile_params', {}).get('water_table', 'N/A') }} m</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
 
-            <div class="table-section">
-                <h3>Pile Capacity Results</h3>
-                <table class="results-table">
-                    <thead>
-                        <tr>
-                            <th>Depth (m)</th>
-                            <th>Tension (kN)</th>
-                            <th>Comp. (kN)</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for result in results %}
-                        <tr>
-                            <td>{{ "%.1f"|format(result.tipdepth) }}</td>
-                            <td>{{ "%.0f"|format(result.tension_capacity) }}</td>
-                            <td>{{ "%.0f"|format(result.compression_capacity) }}</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+            <div class="card">
+                <div class="card-header">
+                    <h3>Capacity Results</h3>
+                </div>
+                <div class="card-body">
+                    <div class="results-tables">
+                        <h4>Calculated Values</h4>
+                        <table class="results-table capacity-table">
+                            <thead>
+                                <tr>
+                                    <th>CAPACITY</th>
+                                    <th>Qshaft (kN)</th>
+                                    <th>Q at δ=10mm (kN)</th>
+                                    <th>Qult (kN)</th>
+                                    {% if type == 'helical' %}
+                                    <th>Installation torque (kNm)</th>
+                                    {% endif %}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <th>Tension</th>
+                                    <td>{{ "%.1f"|format(results.qshaft) }}</td>
+                                    <td>{{ "%.1f"|format(results.q_delta_10mm_tension) }}</td>
+                                    <td>{{ "%.1f"|format(results.qult_tension) }}</td>
+                                    {% if type == 'helical' %}
+                                    <td>{{ "%.1f"|format(results.installation_torque) }}</td>
+                                    {% endif %}
+                                </tr>
+                                <tr>
+                                    <th>Compression</th>
+                                    <td>{{ "%.1f"|format(results.qshaft) }}</td>
+                                    <td>{{ "%.1f"|format(results.q_delta_10mm_compression) }}</td>
+                                    <td>{{ "%.1f"|format(results.qult_compression) }}</td>
+                                    {% if type == 'helical' %}
+                                    <td>-</td>
+                                    {% endif %}
+                                </tr>
+                            </tbody>
+                        </table>
+
+                        <h4 class="mt-4">Additional Parameters</h4>
+                        <table class="results-table">
+                            <tbody>
+                                <tr>
+                                    <th>Tip Depth (m)</th>
+                                    <td>{{ "%.1f"|format(results.tipdepth) }}</td>
+                                </tr>
+                                <tr>
+                                    <th>Effective Depth (m)</th>
+                                    <td>{{ "%.1f"|format(results.effective_depth) }}</td>
+                                </tr>
+                                <tr>
+                                    <th>qb0.1 Compression (MPa)</th>
+                                    <td>{{ "%.2f"|format(results.qb01_comp) }}</td>
+                                </tr>
+                                <tr>
+                                    <th>qb0.1 Tension (MPa)</th>
+                                    <td>{{ "%.2f"|format(results.qb01_tension) }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
         </div>
+    {% else %}
+        {# Driven and Bored pile results #}
+        <div class="results-section">
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h3>Pile Parameters</h3>
+                </div>
+                <div class="card-body">
+                    <table class="results-table">
+                        <tbody>
+                            {% if type == 'driven' %}
+                            <tr>
+                                <th>Site Name</th>
+                                <td>{{ session.get('pile_params', {}).get('site_name', 'N/A') }}</td>
+                            </tr>
+                            <tr>
+                                <th>Pile End Condition</th>
+                                <td>{{ session.get('pile_params', {}).get('pile_end_condition', 'N/A') }}</td>
+                            </tr>
+                            <tr>
+                                <th>Pile Shape</th>
+                                <td>{{ session.get('pile_params', {}).get('pile_shape', 'N/A') }}</td>
+                            </tr>
+                            <tr>
+                                <th>Pile Diameter</th>
+                                <td>{{ session.get('pile_params', {}).get('pile_diameter', 'N/A') }} m</td>
+                            </tr>
+                            <tr>
+                                <th>Wall Thickness</th>
+                                <td>{{ session.get('pile_params', {}).get('wall_thickness', 'N/A') }} mm</td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <th>Site Name</th>
+                                <td>{{ session.get('pile_params', {}).get('site_name', 'N/A') }}</td>
+                            </tr>
+                            <tr>
+                                <th>Shaft Diameter</th>
+                                <td>{{ session.get('pile_params', {}).get('shaft_diameter', 'N/A') }} m</td>
+                            </tr>
+                            <tr>
+                                <th>Base Diameter</th>
+                                <td>{{ session.get('pile_params', {}).get('base_diameter', 'N/A') }} m</td>
+                            </tr>
+                            {% endif %}
+                            <tr>
+                                <th>Borehole Depth</th>
+                                <td>{{ session.get('pile_params', {}).get('borehole_depth', 'N/A') }} m</td>
+                            </tr>
+                            <tr>
+                                <th>Water Table</th>
+                                <td>{{ session.get('pile_params', {}).get('water_table', 'N/A') }} m</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
 
-        <script>
-            document.addEventListener('DOMContentLoaded', function() {
-                // Create the capacity vs depth graph
-                var depths = {{ results|map(attribute='tipdepth')|list|tojson }};
-                var tension = {{ results|map(attribute='tension_capacity')|list|tojson }};
-                var compression = {{ results|map(attribute='compression_capacity')|list|tojson }};
+            <div class="card">
+                <div class="card-header">
+                    <h3>Capacity Results</h3>
+                </div>
+                <div class="card-body">
+                    <div class="results-tables">
+                        <h4>Calculated Values</h4>
+                        <table class="results-table capacity-table">
+                            <thead>
+                                <tr>
+                                    <th>CAPACITY</th>
+                                    <th>Qshaft (kN)</th>
+                                    <th>Q at δ=10mm (kN)</th>
+                                    <th>Qult (kN)</th>
+                                    {% if type == 'helical' %}
+                                    <th>Installation torque (kNm)</th>
+                                    {% endif %}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <th>Tension</th>
+                                    <td>{{ "%.1f"|format(results.qshaft) }}</td>
+                                    <td>{{ "%.1f"|format(results.q_delta_10mm_tension) }}</td>
+                                    <td>{{ "%.1f"|format(results.qult_tension) }}</td>
+                                    {% if type == 'helical' %}
+                                    <td>{{ "%.1f"|format(results.installation_torque) }}</td>
+                                    {% endif %}
+                                </tr>
+                                <tr>
+                                    <th>Compression</th>
+                                    <td>{{ "%.1f"|format(results.qshaft) }}</td>
+                                    <td>{{ "%.1f"|format(results.q_delta_10mm_compression) }}</td>
+                                    <td>{{ "%.1f"|format(results.qult_compression) }}</td>
+                                    {% if type == 'helical' %}
+                                    <td>-</td>
+                                    {% endif %}
+                                </tr>
+                            </tbody>
+                        </table>
 
-                var trace1 = {
-                    x: tension,
-                    y: depths,
-                    name: 'Tension Capacity',
-                    type: 'scatter',
-                    mode: 'lines+markers'
-                };
-
-                var trace2 = {
-                    x: compression,
-                    y: depths,
-                    name: 'Compression Capacity',
-                    type: 'scatter',
-                    mode: 'lines+markers'
-                };
-
-                var layout = {
-                    title: 'Pile Capacity vs Depth',
-                    xaxis: {
-                        title: 'Capacity (kN)',
-                        gridcolor: 'rgba(128, 128, 128, 0.2)',
-                    },
-                    yaxis: {
-                        title: 'Depth (m)',
-                        autorange: 'reversed',
-                        gridcolor: 'rgba(128, 128, 128, 0.2)',
-                    },
-                    plot_bgcolor: 'rgba(240, 240, 240, 0.8)',
-                    paper_bgcolor: 'white',
-                    showlegend: true,
-                    legend: {
-                        orientation: 'h',
-                        y: -0.2,
-                        x: 0.5,
-                        xanchor: 'center'
-                    },
-                    margin: { 
-                        t: 40,
-                        r: 30,
-                        l: 60,
-                        b: 80
-                    }
-                };
-
-                Plotly.newPlot('capacity_graph', [trace1, trace2], layout);
-            });
-        </script>
+                        <h4 class="mt-4">Additional Parameters</h4>
+                        <table class="results-table">
+                            <tbody>
+                                <tr>
+                                    <th>Tip Depth (m)</th>
+                                    <td>{{ "%.1f"|format(results.tipdepth) }}</td>
+                                </tr>
+                                <tr>
+                                    <th>Effective Depth (m)</th>
+                                    <td>{{ "%.1f"|format(results.effective_depth) }}</td>
+                                </tr>
+                                <tr>
+                                    <th>qb0.1 Compression (MPa)</th>
+                                    <td>{{ "%.2f"|format(results.qb01_comp) }}</td>
+                                </tr>
+                                <tr>
+                                    <th>qb0.1 Tension (MPa)</th>
+                                    <td>{{ "%.2f"|format(results.qb01_tension) }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
     {% endif %}
 </div>
 
@@ -92,57 +238,91 @@
 
 .results-section {
     display: flex;
-    gap: 1rem;
-    align-items: flex-start;
+    flex-direction: column;
+    gap: 1.5rem;
 }
 
-.graph-section {
-    width: 50%;
-    min-width: 0;
+.card {
     background: white;
-    padding: 15px;
-    border-radius: 8px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    border-radius: 12px;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+    overflow: hidden;
 }
 
-.table-section {
-    width: 50%;
-    background: white;
-    padding: 15px;
-    border-radius: 8px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+.card-header {
+    background: #f8f9fa;
+    padding: 1rem 1.5rem;
+    border-bottom: 1px solid rgba(0,0,0,0.05);
 }
 
-#capacity_graph {
-    height: 500px;
-    width: 100%;
+.card-header h3 {
+    margin: 0;
+    font-size: 1.25rem;
+    color: #1f2937;
+    font-weight: 500;
+}
+
+.card-body {
+    padding: 1.5rem;
 }
 
 .results-table {
     width: 100%;
-    border-collapse: collapse;
+    border-collapse: separate;
+    border-spacing: 0;
+    margin-bottom: 0;
 }
 
 .results-table th,
 .results-table td {
-    padding: 0.5rem;
-    border: 1px solid #ddd;
-    text-align: center;
-    font-size: 0.875rem;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid rgba(0,0,0,0.05);
 }
 
 .results-table th {
-    background-color: #f5f5f5;
+    font-weight: 500;
+    color: #4b5563;
+    background: #f9fafb;
+    text-align: left;
+    width: 40%;
 }
 
-@media (max-width: 768px) {
-    .results-section {
-        flex-direction: column;
-    }
-    
-    .graph-section,
-    .table-section {
-        width: 100%;
-    }
+.results-table td {
+    color: #1f2937;
+}
+
+.capacity-table {
+    margin-bottom: 2rem;
+}
+
+.capacity-table th,
+.capacity-table td {
+    text-align: right;
+    width: auto;
+}
+
+.capacity-table th:first-child {
+    text-align: left;
+}
+
+.capacity-table thead th {
+    background: #f1f5f9;
+    font-weight: 600;
+    color: #1f2937;
+}
+
+h4 {
+    margin: 0 0 1rem 0;
+    font-size: 1.1rem;
+    color: #1f2937;
+    font-weight: 500;
+}
+
+.mt-4 {
+    margin-top: 1.5rem;
+}
+
+.results-tables {
+    width: 100%;
 }
 </style> 
