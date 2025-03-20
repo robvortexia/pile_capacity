@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, request, jsonify, flash, redirect, url_for, session, Response, send_file, current_app
+from flask import Blueprint, render_template, request, jsonify, flash, redirect, url_for, session, Response, send_file, current_app, make_response
 from werkzeug.utils import secure_filename
 import pandas as pd
 import os
@@ -11,7 +11,7 @@ from .utils import (
     save_cpt_data, load_cpt_data, create_cpt_graphs, 
     save_graphs_data, load_graphs_data, generate_csv_download, 
     save_debug_details, load_debug_details, create_bored_pile_graphs,
-    save_calculation_results, load_calculation_results
+    save_calculation_results, load_calculation_results, create_helical_pile_graphs
 )
 from .calculations import calculate_pile_capacity, process_cpt_data, pre_input_calc, get_iterative_values, calculate_bored_pile_results, calculate_helical_pile_results
 from datetime import datetime, timedelta
@@ -68,8 +68,13 @@ def create_data_dataframe(processed_cpt, calc_dict):
 @bp.route('/')
 @bp.route('/index')
 def index():
+    # Add debug logging
+    logger.debug(f"Session contents: {dict(session)}")
+    logger.debug(f"Session registered flag: {session.get('registered')}")
+    
     show_modal = True
-    if 'registered' in session:
+    # Check for session data first
+    if 'registered' in session and session['registered']:
         show_modal = False
         # Log visit if user is registered
         email = session.get('user_email')
@@ -80,38 +85,42 @@ def index():
             )
             db.session.add(visit)
             db.session.commit()
-    return render_template('index.html', show_modal=show_modal)
+    # If session doesn't have registration info, check cookies as fallback
+    elif request.cookies.get('user_registered') == 'true':
+        show_modal = False
+        session['registered'] = True
+        session.modified = True
+    
+    # Ensure session is saved and make it permanent
+    session.permanent = True
+    session.modified = True
+    
+    # Force cookie parameters for better persistence
+    response = make_response(render_template('index.html', show_modal=show_modal))
+    if 'registered' in session and session['registered']:
+        # Set a non-session cookie as backup
+        response.set_cookie(
+            'user_registered', 
+            'true',
+            max_age=31536000,  # 365 days in seconds
+            httponly=True,
+            samesite='Lax',
+            path='/'
+        )
+    return response
 
 @bp.route('/<type>/calculator/<int:step>', methods=['GET', 'POST'])
 def calculator_step(type, step):
     # Check if we're switching pile types
     if 'type' in session and session['type'] != type:
-        # Store registration data
-        registered = session.get('registered')
-        user_email = session.get('user_email')
-        
-        # Store CPT data
-        cpt_data_id = session.get('cpt_data_id')
-        original_filename = session.get('original_filename')
-        water_table = session.get('water_table')
-        
-        # Clear the session
+        # Clear session data except for user info
+        session_data = {}
+        for key in ['user_id', 'email', 'name', 'institution', 'registered', 'user_email', 'affiliation']:
+            if key in session:
+                session_data[key] = session[key]
         session.clear()
-        
-        # Restore registration data
-        if registered:
-            session['registered'] = registered
-            session['user_email'] = user_email
-        
-        # Restore CPT data
-        if cpt_data_id:
-            session['cpt_data_id'] = cpt_data_id
-        if original_filename:
-            session['original_filename'] = original_filename
-        if water_table:
-            session['water_table'] = water_table
+        session.update(session_data)
     
-    # Set the current pile type
     session['type'] = type
     
     if type not in ['driven', 'bored', 'helical']:
@@ -126,8 +135,8 @@ def calculator_step(type, step):
                 'shaft_diameter': float(request.form.get('shaft_diameter', 0)),
                 'helix_diameter': float(request.form.get('helix_diameter', 0)),
                 'helix_depth': float(request.form.get('helix_depth', 0)),
-                'borehole_depth': float(request.form.get('borehole_depth', 0)),
-                'water_table': float(request.form.get('water_table', 0))
+                'borehole_depth': 0.0,  # Always set to zero as requested
+                'water_table': float(session.get('water_table', 0))  # Use water table from session instead of form
             }
             
             # Store parameters in session
@@ -141,7 +150,7 @@ def calculator_step(type, step):
                     return redirect(url_for('main.calculator_step', type='helical', step=1))
                 
                 # Process the CPT data
-                water_table = float(pile_params['water_table'])
+                water_table = float(session.get('water_table', 0))  # Consistent use of session water table
                 processed_cpt = pre_input_calc(cpt_data, water_table)
                 
                 # Calculate results
@@ -361,7 +370,7 @@ def calculator_step(type, step):
                     'shaft_diameter': float(request.form['shaft_diameter']),
                     'base_diameter': float(request.form['base_diameter']),
                     'cased_depth': float(request.form['cased_depth']),
-                    'water_table': float(request.form['water_table']),
+                    'water_table': float(session.get('water_table', 0)),  # Use water table from session instead of form
                     'site_name': request.form.get('file_name', ''),
                     'pile_tip_depths': pile_tip_depths
                 }
@@ -377,7 +386,7 @@ def calculator_step(type, step):
                     return redirect(url_for('main.calculator_step', type=type, step=1))
                 
                 # Process the CPT data
-                processed_cpt = pre_input_calc(cpt_data, float(session['pile_params']['water_table']))
+                processed_cpt = pre_input_calc(cpt_data, float(session.get('water_table', 0)))  # Consistent use of session water table
                 
                 try:
                     # Calculate results using the bored pile specific function
@@ -567,7 +576,7 @@ def calculator_step(type, step):
         if type == 'bored':
             graphs = create_bored_pile_graphs(data)
         elif type == 'helical':
-            graphs = create_cpt_graphs(data, data['water_table'])
+            graphs = create_helical_pile_graphs(data)
         else:
             water_table = float(session.get('water_table', 0))
             graphs = create_cpt_graphs(data, water_table)
@@ -665,6 +674,10 @@ def download_debug_params():
                     # Create and populate DataFrame
                     df_data = create_data_dataframe(processed, calc_dict)
                     
+                    # Format numeric columns to 2 significant figures
+                    for column in df_data.select_dtypes(include=['float64', 'int64']).columns:
+                        df_data[column] = df_data[column].apply(lambda x: float('{:.2g}'.format(x)))
+                    
                     # Add a blank line between constants and data
                     buffer.write('\nCPT DATA AND CALCULATIONS\n')
                     df_data.to_csv(buffer, index=False)
@@ -704,6 +717,11 @@ def download_debug_params():
                     'Tension Capacity (kN)': result['tension_capacity'],
                     'Compression Capacity (kN)': result['compression_capacity']
                 }])
+                
+                # Format numeric columns to 2 significant figures
+                for column in df_result.select_dtypes(include=['float64', 'int64']).columns:
+                    df_result[column] = df_result[column].apply(lambda x: float('{:.2g}'.format(x)))
+                    
                 df_result.to_csv(buffer, index=False)
                 
                 # Write CPT data
@@ -726,24 +744,11 @@ def download_debug_params():
                     'Corrected Tip Resistance qtc (MPa)': processed['qtc'],
                     'Soil Behavior Index Iz': processed['iz1']
                 })
-                df_cpt = pd.DataFrame({
-                    'depth': processed['depth'],
-                    'qc (MPa)': processed['qc'],
-                    'qt (MPa)': processed['qt'],
-                    'fs (kPa)': processed['fs'],
-                    'Unit Weight (kN/m³)': processed['gtot'],
-                    'Water Pressure u0 (kPa)': processed['u0_kpa'],
-                    'Total Vertical Stress σv0 (kPa)': processed['sig_v0'],
-                    'Effective Vertical Stress σv0\' (kPa)': processed['sig_v0_prime'],
-                    'Fr (%)': processed['fr_percent'],
-                    'Normalized Tip Resistance Qtn': processed['qtn'],
-                    'Stress Exponent n': processed['n'],
-                    'Soil Behavior Type Index Ic': processed['lc'],
-                    'Pore Pressure Ratio Bq': processed['bq'],
-                    'Correction Factor Kc': processed['kc'],
-                    'Corrected Tip Resistance qtc (MPa)': processed['qtc'],
-                    'Soil Behavior Index Iz': processed['iz1']
-                })
+                
+                # Format numeric columns to 2 significant figures
+                for column in df_cpt.select_dtypes(include=['float64', 'int64']).columns:
+                    df_cpt[column] = df_cpt[column].apply(lambda x: float('{:.2g}'.format(x)))
+                    
                 df_cpt.to_csv(buffer, index=False)
         elif pile_type == 'helical':
             # For helical piles, use debug_id like bored piles
@@ -891,8 +896,20 @@ def register():
     session.permanent = True
     session['registered'] = True
     session['user_email'] = email
+    session['affiliation'] = affiliation
+    session.modified = True
     
-    return redirect(url_for('main.index'))
+    # Set a more persistent cookie
+    response = make_response(redirect(url_for('main.index')))
+    response.set_cookie(
+        'user_registered', 
+        'true',
+        max_age=31536000,  # 365 days in seconds
+        httponly=True,
+        samesite='Lax',
+        path='/'
+    )
+    return response
 
 def admin_required(f):
     @wraps(f)
@@ -1016,6 +1033,10 @@ def download_intermediary_calcs():
             'Corrected Tip Resistance qtc (MPa)': processed['qtc'],
             'Soil Behavior Index Iz': processed['iz1']
         })
+        
+        # Format all numeric columns to 2 significant figures
+        for column in df.select_dtypes(include=['float64', 'int64']).columns:
+            df[column] = df[column].apply(lambda x: float('{:.2g}'.format(x)))
         
         # Get the current date in DDMMYYYY format
         current_date = datetime.now().strftime('%d%m%Y')

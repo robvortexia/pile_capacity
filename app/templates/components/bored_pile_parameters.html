@@ -1,4 +1,4 @@
-<div class="parameters-container"></div>
+<div class="parameters-container">
     <form method="POST" action="{{ url_for('main.calculator_step', type=type, step=3) }}">
         <div class="form-section">
             <div class="form-field">
@@ -24,12 +24,8 @@
 
             <div class="form-field">
                 <label>Water Table Depth (m)</label>
-                <input type="number" 
-                       name="water_table" 
-                       value="{{ session['water_table'] }}"
-                       step="0.1" 
-                       class="form-control" 
-                       required>
+                <div class="form-control-static">{{ session.get('water_table', 0.0) }}</div>
+                <input type="hidden" name="water_table" value="{{ session.get('water_table', 0.0) }}">
                 <span class="help-text">Depth to water table from ground surface</span>
             </div>
 
@@ -57,57 +53,66 @@
     margin: 0 auto;
     background: white;
     border-radius: 8px;
-    padding: 1.25rem;
+    padding: 1rem;
     box-shadow: 0 2px 8px rgba(0,0,0,0.05);
 }
 
 .form-section {
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
+    gap: 0.5rem;
 }
 
 .form-field {
     display: flex;
     flex-direction: column;
-    gap: 0.2rem;
+    gap: 0.15rem;
 }
 
 .form-field label {
     font-weight: 500;
     color: #374151;
     font-size: 0.85rem;
-    margin-bottom: -0.1rem;
+    margin-bottom: -0.15rem;
 }
 
 .form-control {
     width: 100%;
-    padding: 0.4rem 0.5rem;
+    padding: 0.35rem 0.5rem;
     border: 1px solid #e5e7eb;
     border-radius: 4px;
     font-size: 0.85rem;
 }
 
+.form-control-static {
+    padding: 0.35rem 0.5rem;
+    background-color: #f8f9fa;
+    border: 1px solid #e5e7eb;
+    border-radius: 4px;
+    font-size: 0.85rem;
+    color: #6c757d;
+}
+
 .help-text {
     font-size: 0.75rem;
     color: #6b7280;
-    margin-top: -0.1rem;
+    margin-top: -0.15rem;
 }
 
 .button-group {
     display: flex;
     gap: 0.5rem;
-    margin-top: 1rem;
+    margin-top: 0.75rem;
 }
 
 .btn {
-    padding: 0.4rem 1rem;
+    padding: 0.35rem 1rem;
     font-size: 0.85rem;
 }
 
 @media (max-width: 768px) {
     .parameters-container {
-        padding: 1rem;
+        padding: 0.75rem;
     }
 }
 </style>

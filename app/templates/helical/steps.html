@@ -1,89 +1,93 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="container">
-    <h1>{{ type|title }} Pile Analysis - Step {{ step }}</h1>
-    
-    {% include 'components/step_indicator.html' %}
-    
-    <div class="stepper">
-        {% if step == 1 %}
-        <div class="step active">
-            <h2>Step 1: CPT Data</h2>
-            {% include 'components/upload_form.html' %}
-            <div class="button-group">
-                <a href="{{ url_for('main.index') }}" class="btn btn-secondary">Back to Home</a>
-            </div>
-        </div>
-        {% endif %}
+<div class="page-container">
+    <!-- Side Stepper -->
+    <div class="side-stepper">
+        {% include 'components/step_indicator.html' %}
+    </div>
 
-        {% if step == 2 %}
-        <div class="step active">
-            <h2>Step 2: View CPT Data</h2>
-            {% if graphs %}
-            <div class="graphs-container">
-                <div class="graph-wrapper">
-                    <div id="qt_graph" class="graph"></div>
-                </div>
-                <div class="graph-wrapper">
-                    <div id="fr_graph" class="graph"></div>
-                </div>
-                <div class="graph-wrapper">
-                    <div id="ic_graph" class="graph"></div>
-                </div>
-            </div>
-            <div class="debug-section">
+    <!-- Main Content -->
+    <div class="main-content-with-stepper">
+        <div class="stepper">
+            {% if step == 1 %}
+            <div class="step active">
+                <h2>Step 1: CPT Data</h2>
+                {% include 'components/upload_form.html' %}
                 <div class="button-group">
-                    <a href="{{ url_for('main.download_intermediary_calcs') }}" class="btn btn-info">
-                        <i class="fas fa-download"></i> Download Intermediary Calculations
-                    </a>
+                    <a href="{{ url_for('main.index') }}" class="btn btn-secondary">Back to Home</a>
                 </div>
             </div>
-            <div class="button-group">
-                <form method="POST" action="{{ url_for('main.calculator_step', type=type, step=2) }}">
-                    <button type="submit" class="btn btn-primary">Continue to Step 3</button>
-                </form>
-                <a href="{{ url_for('main.calculator_step', type=type, step=1) }}" class="btn btn-secondary">Back to Step 1</a>
+            {% endif %}
+
+            {% if step == 2 %}
+            <div class="step active">
+                <h2>Step 2: View CPT Data</h2>
+                {% if graphs %}
+                <div class="graphs-container">
+                    <div class="graph-wrapper">
+                        <div id="qt_graph" class="graph"></div>
+                    </div>
+                    <div class="graph-wrapper">
+                        <div id="fr_graph" class="graph"></div>
+                    </div>
+                    <div class="graph-wrapper">
+                        <div id="ic_graph" class="graph"></div>
+                    </div>
+                </div>
+                <div class="debug-section">
+                    <div class="button-group">
+                        <a href="{{ url_for('main.download_intermediary_calcs') }}" class="btn btn-info">
+                            <i class="fas fa-download"></i> Download Intermediary Calculations
+                        </a>
+                    </div>
+                </div>
+                <div class="button-group">
+                    <form method="POST" action="{{ url_for('main.calculator_step', type=type, step=2) }}">
+                        <button type="submit" class="btn btn-primary">Continue to Step 3</button>
+                    </form>
+                    <a href="{{ url_for('main.calculator_step', type=type, step=1) }}" class="btn btn-secondary">Back to Step 1</a>
+                </div>
+                {% else %}
+                <p>No CPT data available. Please go back to step 1 and upload your data.</p>
+                <div class="button-group">
+                    <a href="{{ url_for('main.calculator_step', type=type, step=1) }}" class="btn btn-secondary">Back to Step 1</a>
+                </div>
+                {% endif %}
             </div>
-            {% else %}
-            <p>No CPT data available. Please go back to step 1 and upload your data.</p>
-            <div class="button-group">
-                <a href="{{ url_for('main.calculator_step', type=type, step=1) }}" class="btn btn-secondary">Back to Step 1</a>
+            {% endif %}
+
+            {% if step == 3 %}
+            <div class="step active">
+                <h2>Step 3: Pile Parameters</h2>
+                {% include 'components/helical_pile_parameters.html' %}
+                <div class="button-group">
+                    <a href="{{ url_for('main.calculator_step', type=type, step=2) }}" class="btn btn-secondary">Back to Step 2</a>
+                </div>
+            </div>
+            {% endif %}
+
+            {% if step == 4 %}
+            <div class="step active">
+                <h2>Step 4: Results</h2>
+                <div class="debug-section">
+                    <div class="button-group mb-3">
+                        <a href="{{ url_for('main.download_debug_params') }}" class="btn btn-info">
+                            <i class="fas fa-download"></i> Download Detailed Output
+                        </a>
+                        <a href="{{ url_for('main.download_results') }}" class="btn btn-info ml-2">
+                            <i class="fas fa-download"></i> Download Results
+                        </a>
+                    </div>
+                </div>
+                {% include 'components/results.html' %}
+                <div class="button-group">
+                    <a href="{{ url_for('main.calculator_step', type=type, step=3) }}" class="btn btn-secondary">Back to Step 3</a>
+                    <a href="{{ url_for('main.index') }}" class="btn btn-primary">Return to Home</a>
+                </div>
             </div>
             {% endif %}
         </div>
-        {% endif %}
-
-        {% if step == 3 %}
-        <div class="step active">
-            <h2>Step 3: Pile Parameters</h2>
-            {% include 'components/helical_pile_parameters.html' %}
-            <div class="button-group">
-                <a href="{{ url_for('main.calculator_step', type=type, step=2) }}" class="btn btn-secondary">Back to Step 2</a>
-            </div>
-        </div>
-        {% endif %}
-
-        {% if step == 4 %}
-        <div class="step active">
-            <h2>Step 4: Results</h2>
-            <div class="debug-section">
-                <div class="button-group mb-3">
-                    <a href="{{ url_for('main.download_debug_params') }}" class="btn btn-info">
-                        <i class="fas fa-download"></i> Download Detailed Output
-                    </a>
-                    <a href="{{ url_for('main.download_results') }}" class="btn btn-info ml-2">
-                        <i class="fas fa-download"></i> Download Results
-                    </a>
-                </div>
-            </div>
-            {% include 'components/results.html' %}
-            <div class="button-group">
-                <a href="{{ url_for('main.calculator_step', type=type, step=3) }}" class="btn btn-secondary">Back to Step 3</a>
-                <a href="{{ url_for('main.index') }}" class="btn btn-primary">Return to Home</a>
-            </div>
-        </div>
-        {% endif %}
     </div>
 </div>
 
@@ -112,37 +116,57 @@
         },
         plot_bgcolor: '#ffffff',
         paper_bgcolor: '#ffffff',
-        margin: { t: 40, r: 30, l: 60, b: 30 },
-        xaxis: {
-            showgrid: true,
-            gridcolor: 'rgba(0,0,0,0.05)',
-            linecolor: 'rgba(0,0,0,0.1)',
-            tickfont: { size: 11 },
-            title: { standoff: 15 },
-            side: 'top'
-        },
-        yaxis: {
-            showgrid: true,
-            gridcolor: 'rgba(0,0,0,0.05)',
-            linecolor: 'rgba(0,0,0,0.1)',
-            tickfont: { size: 11 },
-            title: { standoff: 15 },
-            autorange: 'reversed',
-            side: 'left'
-        }
+        margin: { t: 40, r: 30, l: 60, b: 30 }
     };
     
-    // Apply modern styling to all graphs
-    [qtGraph, frGraph, icGraph].forEach(graph => {
+    // Apply modern styling and set explicit ranges for each graph
+    function configureGraph(graph, xRange, xDtick) {
+        // Calculate min and max depths for this graph
+        let depths = [];
+        if (graph.data && graph.data.length > 0 && graph.data[0].y) {
+            depths = graph.data[0].y;
+        }
+        
+        // Apply styling and explicit ranges
         graph.layout = {
             ...graph.layout,
             ...modernStyle,
             title: {
-                text: graph.layout.title.text,
+                text: '',
                 font: {
                     size: 16,
                     weight: 500
                 }
+            },
+            xaxis: {
+                showgrid: true,
+                gridcolor: 'rgba(0,0,0,0.05)',
+                linecolor: 'rgba(0,0,0,0.1)',
+                tickfont: { size: 11 },
+                title: { 
+                    text: graph === qtGraph ? 'qt (MPa)' : graph === frGraph ? 'Fr (%)' : 'Ic',
+                    standoff: 15 
+                },
+                side: 'top',
+                zeroline: false,
+                showline: true,
+                range: xRange,
+                dtick: xDtick
+            },
+            yaxis: {
+                showgrid: true,
+                gridcolor: 'rgba(0,0,0,0.05)',
+                linecolor: 'rgba(0,0,0,0.1)',
+                tickfont: { size: 11 },
+                title: { 
+                    text: 'Depth (m)',
+                    standoff: 15 
+                },
+                autorange: false,
+                range: depths.length > 0 ? [Math.max(...depths) + 0.5, 0] : [90, 0],
+                zeroline: false,
+                showline: true,
+                side: 'left'
             }
         };
         
@@ -154,14 +178,18 @@
                 shape: 'spline'
             };
         }
-    });
+    }
+    
+    // Configure each graph with its specific ranges
+    configureGraph(qtGraph, [0, 40], 10);
+    configureGraph(frGraph, [0, 10], 2);
+    configureGraph(icGraph, [0, 4], 1);
     
     // Create the plots
     Plotly.newPlot('qt_graph', qtGraph.data, qtGraph.layout, config);
     Plotly.newPlot('fr_graph', frGraph.data, frGraph.layout, config);
     Plotly.newPlot('ic_graph', icGraph.data, icGraph.layout, config);
     
-    // Handle window resize
     function resizeGraphs() {
         const graphDivs = ['qt_graph', 'fr_graph', 'ic_graph'];
         graphDivs.forEach(div => {
@@ -177,18 +205,23 @@
 {% endif %}
 
 <style>
-.container {
+.page-container {
+    margin-top: -8px;  /* Compensate for the UWA banner */
+}
+
+.main-content-with-stepper {
     max-width: 100%;
-    padding: 1rem;
-    margin: 0 auto;
+    padding: 0;
+    margin-left: calc(var(--side-nav-width) - 1px);  /* Reduce margin by 1px to account for border */
     box-sizing: border-box;
 }
 
 .step {
     background: white;
-    padding: 1.5rem;
-    border-radius: 8px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    padding: 1rem;
+    border-radius: 0;  /* Remove border radius */
+    box-shadow: none;  /* Remove shadow */
+    margin: 0;  /* Remove margin */
 }
 
 .graphs-container {
@@ -267,6 +300,11 @@
 }
 
 @media (max-width: 768px) {
+    .main-content-with-stepper {
+        margin-left: 0;
+        padding: 1rem;
+    }
+    
     .graphs-container {
         grid-template-columns: 1fr;
     }

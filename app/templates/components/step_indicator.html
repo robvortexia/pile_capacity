@@ -1,38 +1,42 @@
-<div class="step-indicator">
-    <div class="step-progress">
-        <div class="progress-bar" style="width: {{ (step / 4) * 100 }}%"></div>
+<!-- Vertical Stepper -->
+<div class="vertical-stepper">
+    <div class="vertical-step {% if step >= 1 %}active{% endif %} {% if step > 1 %}completed{% endif %}">
+        <div class="vertical-step-icon">
+            <i class="fas fa-file-upload"></i>
+        </div>
+        <div class="vertical-step-content">
+            <div class="vertical-step-number">Step 1</div>
+            <div class="vertical-step-text">Input CPT Data</div>
+        </div>
     </div>
-    <div class="step-blocks">
-        <div class="step-block {% if step >= 1 %}active{% endif %} {% if step > 1 %}completed{% endif %}">
-            <div class="step-icon">
-                <i class="fas fa-file-upload"></i>
-            </div>
-            <div class="step-label">Input CPT Data</div>
-            <div class="step-number">1</div>
+    
+    <div class="vertical-step {% if step >= 2 %}active{% endif %} {% if step > 2 %}completed{% endif %}">
+        <div class="vertical-step-icon">
+            <i class="fas fa-chart-line"></i>
         </div>
-        
-        <div class="step-block {% if step >= 2 %}active{% endif %} {% if step > 2 %}completed{% endif %}">
-            <div class="step-icon">
-                <i class="fas fa-chart-line"></i>
-            </div>
-            <div class="step-label">View CPT Data</div>
-            <div class="step-number">2</div>
+        <div class="vertical-step-content">
+            <div class="vertical-step-number">Step 2</div>
+            <div class="vertical-step-text">View CPT Data</div>
         </div>
-        
-        <div class="step-block {% if step >= 3 %}active{% endif %} {% if step > 3 %}completed{% endif %}">
-            <div class="step-icon">
-                <i class="fas fa-ruler-vertical"></i>
-            </div>
-            <div class="step-label">Enter Pile Info</div>
-            <div class="step-number">3</div>
+    </div>
+    
+    <div class="vertical-step {% if step >= 3 %}active{% endif %} {% if step > 3 %}completed{% endif %}">
+        <div class="vertical-step-icon">
+            <i class="fas fa-ruler-vertical"></i>
         </div>
-        
-        <div class="step-block {% if step >= 4 %}active{% endif %}">
-            <div class="step-icon">
-                <i class="fas fa-calculator"></i>
-            </div>
-            <div class="step-label">Calculate Results</div>
-            <div class="step-number">4</div>
+        <div class="vertical-step-content">
+            <div class="vertical-step-number">Step 3</div>
+            <div class="vertical-step-text">Enter Pile Info</div>
+        </div>
+    </div>
+    
+    <div class="vertical-step {% if step >= 4 %}active{% endif %}">
+        <div class="vertical-step-icon">
+            <i class="fas fa-calculator"></i>
+        </div>
+        <div class="vertical-step-content">
+            <div class="vertical-step-number">Step 4</div>
+            <div class="vertical-step-text">Calculate Results</div>
         </div>
     </div>
 </div>

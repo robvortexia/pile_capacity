@@ -84,6 +84,11 @@ def create_cpt_graphs(data, water_table=None):
     if not processed_data:
         return None
     
+    # Format data to 2 significant figures for plotting
+    for key in processed_data:
+        if isinstance(processed_data[key], list) and all(isinstance(x, (int, float)) for x in processed_data[key]):
+            processed_data[key] = [float('{:.2g}'.format(x)) for x in processed_data[key]]
+    
     # Common layout settings
     base_layout = {
         'showline': True,
@@ -95,8 +100,13 @@ def create_cpt_graphs(data, water_table=None):
         'gridwidth': 1,
         'side': 'top',
         'zeroline': False,
-        'automargin': True
+        'automargin': True,
+        'showspikes': False
     }
+    
+    # Get max depth for y-axis range
+    max_depth = max(processed_data['depth'])
+    min_depth = min(processed_data['depth'])
     
     # Common graph settings
     common_layout = {
@@ -107,10 +117,16 @@ def create_cpt_graphs(data, water_table=None):
         'showlegend': False,
         'yaxis': {
             'title': {'text': 'Depth (m)', 'standoff': 5},
-            'autorange': 'reversed',
-            'range': [max(processed_data['depth']), 0],
-            'dtick': 10,
+            'range': [max_depth + 0.5, 0],  # Start from 0 at top
+            'dtick': 5,
             'tickfont': {'size': 10},
+            'zeroline': False,
+            'rangemode': 'tozero',
+            **base_layout
+        },
+        'xaxis': {
+            'zeroline': False,
+            'rangemode': 'tozero',
             **base_layout
         }
     }
@@ -175,7 +191,7 @@ def create_cpt_graphs(data, water_table=None):
             'xaxis': {
                 'title': None,
                 'dtick': 1,
-                'range': [1, 4],
+                'range': [0, 4],
                 'tickfont': {'size': 10},
                 **base_layout
             },
@@ -197,8 +213,8 @@ def create_cpt_graphs(data, water_table=None):
             'title': {'text': 'Iz', 'x': 0.5, 'xanchor': 'center', 'font': {'size': 12}, 'y': 0.95},
             'xaxis': {
                 'title': None,
-                'range': [0, 4],
-                'dtick': 1,
+                'range': [None, 100],
+                'dtick': 20,
                 'tickfont': {'size': 10},
                 **base_layout
             },
@@ -233,6 +249,144 @@ def create_bored_pile_graphs(data):
         'side': 'top'
     }
 
+    # Get max depth for y-axis range
+    max_depth = max(processed_data['depth'])
+
+    # Common graph settings
+    common_layout = {
+        'plot_bgcolor': 'white',
+        'margin': {'l': 50, 'r': 20, 't': 30, 'b': 30},
+        'font': {'size': 10},
+        'autosize': True,
+        'showlegend': False,
+        'yaxis': {
+            'title': {'text': 'Depth (m)', 'standoff': 5},
+            'range': [max_depth, 0],  # Set range from max_depth to 0 to show only positive depths
+            'dtick': 5,
+            'tickfont': {'size': 10},
+            **base_layout
+        }
+    }
+
+    qt_graph = {
+        'data': [
+            {
+                'x': processed_data['qt'],
+                'y': processed_data['depth'],
+                'mode': 'lines',
+                'name': 'qt',
+                'line': {'color': 'blue', 'width': 1.5}
+            }
+        ],
+        'layout': {
+            'title': {'text': 'qt (MPa)'},
+            'xaxis': {
+                'title': {'text': 'qt (MPa)'},
+                'autorange': True,
+                'side': 'top'
+            },
+            'yaxis': {
+                'title': {'text': 'Depth (m)'},
+                'autorange': 'reversed'
+            }
+        }
+    }
+    
+    fr_graph = {
+        'data': [
+            {
+                'x': processed_data['fr_percent'],
+                'y': processed_data['depth'],
+                'mode': 'lines',
+                'name': 'Fr',
+                'line': {'color': 'green', 'width': 1.5}
+            }
+        ],
+        'layout': {
+            'title': {'text': 'Fr (%)'},
+            'xaxis': {
+                'title': {'text': 'Fr (%)'},
+                'range': [0, 10],
+                'dtick': 2,
+                'side': 'top'
+            },
+            'yaxis': {
+                'title': {'text': 'Depth (m)'},
+                'autorange': 'reversed'
+            }
+        }
+    }
+    
+    ic_graph = {
+        'data': [
+            {
+                'x': processed_data['lc'],
+                'y': processed_data['depth'],
+                'mode': 'lines',
+                'name': 'Ic',
+                'line': {'color': 'purple', 'width': 1.5}
+            }
+        ],
+        'layout': {
+            'title': {'text': 'Ic'},
+            'xaxis': {
+                'title': {'text': 'Ic'},
+                'range': [0, 4],
+                'dtick': 1,
+                'side': 'top'
+            },
+            'yaxis': {
+                'title': {'text': 'Depth (m)'},
+                'autorange': 'reversed'
+            }
+        }
+    }
+
+    return {
+        'qt': json.dumps(qt_graph, cls=plotly.utils.PlotlyJSONEncoder),
+        'fr': json.dumps(fr_graph, cls=plotly.utils.PlotlyJSONEncoder),
+        'ic': json.dumps(ic_graph, cls=plotly.utils.PlotlyJSONEncoder)
+    }
+
+def create_helical_pile_graphs(data):
+    # Get water table from data
+    water_table = data.get('water_table', 0)
+    processed_data = pre_input_calc(data, water_table)
+    
+    if not processed_data:
+        return None
+
+    # Common layout settings
+    base_layout = {
+        'showline': True,
+        'linewidth': 1,
+        'linecolor': 'lightgrey',
+        'mirror': True,
+        'showgrid': True,
+        'gridcolor': 'lightgrey',
+        'gridwidth': 1,
+        'side': 'top'
+    }
+
+    # Get max depth for y-axis range
+    max_depth = max(processed_data['depth'])
+
+    # Common graph settings
+    common_layout = {
+        'plot_bgcolor': 'white',
+        'margin': {'l': 50, 'r': 20, 't': 30, 'b': 30},
+        'font': {'size': 10},
+        'autosize': True,
+        'showlegend': False,
+        'yaxis': {
+            'title': {'text': 'Depth (m)', 'standoff': 5},
+            'range': [max_depth, 0],  # Set range from max_depth to 0 to show only positive depths
+            'dtick': 5,
+            'tickfont': {'size': 10},
+            **base_layout
+        }
+    }
+
     qt_graph = {
         'data': [
             go.Scatter(
@@ -244,22 +398,14 @@ def create_bored_pile_graphs(data):
             )
         ],
         'layout': {
-            'title': {'text': 'qt', 'x': 0.5, 'xanchor': 'center', 'font': {'size': 14}},
+            'title': {'text': 'qt (MPa)', 'x': 0.5, 'xanchor': 'center', 'font': {'size': 12}, 'y': 0.95},
             'xaxis': {
-                'title': None,  # Removed x-axis title
-                'dtick': 7,
+                'title': None,
+                'dtick': 5,
+                'tickfont': {'size': 10},
                 **base_layout
             },
-            'yaxis': {
-                'title': 'Depth (m)',
-                'autorange': 'reversed',
-                'range': [0, 100],
-                'dtick': 25,
-                **base_layout
-            },
-            'plot_bgcolor': 'white',
-            'margin': {'l': 80, 'r': 30, 't': 40, 'b': 50},
-            'font': {'size': 12}
+            **common_layout
         }
     }
     
@@ -274,22 +420,15 @@ def create_bored_pile_graphs(data):
             )
         ],
         'layout': {
-            'title': {'text': 'Fr (%)', 'x': 0.5, 'xanchor': 'center', 'font': {'size': 14}},
+            'title': {'text': 'Fr (%)', 'x': 0.5, 'xanchor': 'center', 'font': {'size': 12}, 'y': 0.95},
             'xaxis': {
-                'title': None,  # Removed x-axis title
-                'dtick': 3,
+                'title': None,
+                'dtick': 2,
+                'range': [0, 10],
+                'tickfont': {'size': 10},
                 **base_layout
             },
-            'yaxis': {
-                'title': 'Depth (m)',
-                'autorange': 'reversed',
-                'range': [0, 100],
-                'dtick': 25,
-                **base_layout
-            },
-            'plot_bgcolor': 'white',
-            'margin': {'l': 80, 'r': 30, 't': 40, 'b': 50},
-            'font': {'size': 12}
+            **common_layout
         }
     }
     
@@ -304,22 +443,15 @@ def create_bored_pile_graphs(data):
             )
         ],
         'layout': {
-            'title': {'text': 'Ic', 'x': 0.5, 'xanchor': 'center', 'font': {'size': 14}},
+            'title': {'text': 'Ic', 'x': 0.5, 'xanchor': 'center', 'font': {'size': 12}, 'y': 0.95},
             'xaxis': {
-                'title': None,  # Removed x-axis title
+                'title': None,
                 'dtick': 1,
+                'range': [0, 4],
+                'tickfont': {'size': 10},
                 **base_layout
             },
-            'yaxis': {
-                'title': 'Depth (m)',
-                'autorange': 'reversed',
-                'range': [0, 100],
-                'dtick': 25,
-                **base_layout
-            },
-            'plot_bgcolor': 'white',
-            'margin': {'l': 80, 'r': 30, 't': 40, 'b': 50},
-            'font': {'size': 12}
+            **common_layout
         }
     }
 

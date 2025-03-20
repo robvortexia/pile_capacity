@@ -4,7 +4,7 @@
         
         <div class="data-requirements">
             <p class="requirement-note">The first unit weight entry will be used throughout if not other unit weights are entered.</p>
-            <p class="requirement-note">The depth increment from this CSV file controls the accuracy of the calculations (suggested increment ≤ 0.1 m).</p>
+            <p class="requirement-note no-margin">The depth increment from this CSV file controls the accuracy of the calculations (suggested increment ≤ 0.1 m).</p>
         </div>
 
         <div class="data-format">
@@ -24,7 +24,13 @@
     <form method="POST" action="{{ url_for('main.calculator_step', type=type, step=1) }}" enctype="multipart/form-data" id="uploadForm">
         <div class="form-group">
             <label for="cpt_file">Upload CPT Data (CSV or TXT format)</label>
-            <input type="file" id="cpt_file" name="cpt_file" accept=".csv,.txt" required onchange="handleFileSelect(this)">
+            <div class="custom-file-input">
+                <input type="file" id="cpt_file" name="cpt_file" accept=".csv,.txt" required onchange="handleFileSelect(this)">
+                <label for="cpt_file" class="file-label">
+                    <span class="file-button">Choose File</span>
+                    <span class="file-name">No file chosen</span>
+                </label>
+            </div>
         </div>
 
         <div class="form-group">
@@ -96,9 +102,16 @@ function handleFileSelect(input) {
             if (line) {
                 const values = line.split(/[\s,]+/);  // Split by whitespace or comma
                 const row = document.createElement('tr');
-                values.forEach(value => {
+                values.forEach((value, index) => {
                     const cell = document.createElement('td');
-                    cell.textContent = value;
+                    // Try to format numeric values with 2 significant figures
+                    if (index > 0 && !isNaN(parseFloat(value))) {
+                        const num = parseFloat(value);
+                        // Format to 2 significant figures
+                        cell.textContent = num.toPrecision(2);
+                    } else {
+                        cell.textContent = value;
+                    }
                     row.appendChild(cell);
                 });
                 previewBody.appendChild(row);
@@ -117,32 +130,45 @@ function handleFileSelect(input) {
     };
     reader.readAsText(file);
 }
+
+document.addEventListener('DOMContentLoaded', function() {
+    const fileInput = document.getElementById('cpt_file');
+    const fileLabel = document.querySelector('.file-name');
+    
+    fileInput.addEventListener('change', function() {
+        if (this.files.length > 0) {
+            fileLabel.textContent = this.files[0].name;
+        } else {
+            fileLabel.textContent = 'No file chosen';
+        }
+    });
+});
 </script>
 
 <style>
 .upload-container {
     max-width: 800px;
-    margin: 2rem auto;
-    padding: 2rem;
+    margin: 0 auto;
+    padding: 1.5rem;
     background: white;
     border-radius: 8px;
     box-shadow: 0 2px 8px rgba(0,0,0,0.1);
 }
 
 .instructions {
-    margin-bottom: 2rem;
+    margin-bottom: 1.5rem;
 }
 
 .main-instruction {
     font-size: 1rem;
     color: #333;
-    margin-bottom: 1.5rem;
+    margin-bottom: 0.75rem;
     line-height: 1.5;
 }
 
 .data-requirements {
     background: #f8f9fa;
-    padding: 1rem;
+    padding: 0.5rem 0.75rem;
     border-radius: 6px;
     margin-bottom: 1.5rem;
 }
@@ -150,28 +176,49 @@ function handleFileSelect(input) {
 .requirement-note {
     color: #666;
     font-size: 0.9rem;
-    margin-bottom: 0.5rem;
+    margin: 0;
+    line-height: 1.4;
 }
 
-.data-format {
-    margin-bottom: 2rem;
-    overflow-x: auto;
+.requirement-note.no-margin {
+    margin-bottom: 0;
 }
 
-.format-table {
+/* Modern File Input */
+.custom-file-input {
+    position: relative;
+    display: inline-block;
     width: 100%;
-    border-collapse: collapse;
-    margin-bottom: 1rem;
 }
 
-.format-table th {
-    background: #f8f9fa;
-    padding: 0.75rem;
-    text-align: left;
-    border: 1px solid #dee2e6;
+.custom-file-input input[type="file"] {
+    position: absolute;
+    left: -9999px;
+}
+
+.custom-file-input .file-label {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    cursor: pointer;
+}
+
+.custom-file-input .file-button {
+    background: var(--uwa-blue);
+    color: white;
+    padding: 0.5rem 1rem;
+    border-radius: 4px;
     font-weight: 500;
+    transition: background-color 0.2s;
+}
+
+.custom-file-input .file-name {
+    color: #666;
     font-size: 0.9rem;
-    color: #495057;
+}
+
+.custom-file-input:hover .file-button {
+    background: #002670;
 }
 
 .form-group {
