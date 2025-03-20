@@ -4,7 +4,7 @@
         <div class="results-section">
             <div class="card mb-4">
                 <div class="card-header">
-                    <h3>Parameters</h3>
+                    <h3>Pile Parameters</h3>
                 </div>
                 <div class="card-body">
                     <table class="results-table">
@@ -97,126 +97,63 @@
                                     <td>{{ "%.2f"|format(results.get('qcavg_tension', 0)) }}</td>
                                 </tr>
                                 <tr>
-                                    <th>Initial δ/Dh ratio</th>
-                                    <td>{{ "%.4f"|format(0.01*results.get('shaft_diameter', 0)/results.get('helix_diameter', 1)) }}</td>
+                                    <th>δ/Dh (Diameter of helix)</th>
+                                    <td>{{ "%.3f"|format(0.01*results.get('shaft_diameter', 0)/results.get('helix_diameter', 1)) }}</td>
                                 </tr>
                             </tbody>
                         </table>
-                        
-                        <!-- Hide the helical deflection table from display but keep the data for downloads -->
-                        <div style="display: none;">
-                            <h4 class="mt-4">Helical Deflection Table</h4>
-                            <div class="table-responsive">
-                                <table class="results-table">
-                                    <thead>
-                                        <tr>
-                                            <th>δ/Dh</th>
-                                            <th>Q_compression (kN)</th>
-                                            <th>Q_tension (kN)</th>
-                                            <th>δ_compression (mm)</th>
-                                            <th>δ_tension (mm)</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {% for row in results.get('helical_deflection_table', []) %}
-                                        <tr>
-                                            <td>{{ "%.4f"|format(row.delta_dh_ratio) }}</td>
-                                            <td>{{ "%.2f"|format(row.q_compression) if row.q_compression is not none else "-" }}</td>
-                                            <td>{{ "%.2f"|format(row.q_tension) if row.q_tension is not none else "-" }}</td>
-                                            <td>{{ "%.2f"|format(row.delta_mm_compression) }}</td>
-                                            <td>{{ "%.2f"|format(row.delta_mm_tension) }}</td>
-                                        </tr>
-                                        {% endfor %}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                        
-                        <h4 class="mt-4">Deflection vs Load Curves</h4>
-                        
-                        <div class="graph-wrapper">
-                            <div id="helical_deflection_graph" class="graph" style="height: 500px;"></div>
-                        </div>
                     </div>
                 </div>
             </div>
             
             <div class="card mt-4">
+                <div class="card-header">
+                    <h3>Displacement vs. Capacity Graph</h3>
+                </div>
                 <div class="card-body">
-                    <div class="text-center">
-                        <a href="{{ url_for('main.download_results') }}" class="btn" style="background-color: #dc2626; color: white; font-weight: bold; padding: 12px 25px; font-size: 16px; border-radius: 6px; display: inline-block; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                            <i class="fas fa-file-download" style="margin-right: 8px;"></i> Download Table Data
-                        </a>
+                    <div class="graph-wrapper">
+                        <div id="displacement_vs_capacity" class="graph"></div>
                     </div>
                 </div>
             </div>
-        </div>
-        
-        <script>
-            // Create direct arrays of data from the table rows
-            var deltaCompression = [];
-            var qCompression = [];
-            var deltaTension = [];
-            var qTension = [];
             
-            {% for row in results.get('helical_deflection_table', []) %}
-                {% if row.q_compression is not none %}
-                    deltaCompression.push({{ row.delta_mm_compression }});
-                    qCompression.push({{ row.q_compression }});
-                {% endif %}
+            {% if graphs and 'displacement' in graphs %}
+            <script>
+                var graphData = {{ graphs.displacement|safe }};
                 
-                {% if row.q_tension is not none %}
-                    deltaTension.push({{ row.delta_mm_tension }});
-                    qTension.push({{ row.q_tension }});
-                {% endif %}
-            {% endfor %}
-            
-            // Wait for Plotly to be available
-            function checkForPlotly() {
-                if (typeof Plotly !== 'undefined') {
-                    // Plot the data
-                    var trace1 = {
-                        x: deltaCompression,
-                        y: qCompression,
-                        name: 'Compression',
-                        type: 'scatter',
-                        mode: 'lines+markers',
-                        line: { color: '#dc2626', width: 2 },
-                        marker: { size: 6 }
-                    };
+                var config = {
+                    responsive: true,
+                    displayModeBar: false,
+                    displaylogo: false,
+                    scrollZoom: false
+                };
+                
+                Plotly.newPlot('displacement_vs_capacity', graphData.data, graphData.layout, config).then(function() {
+                    var gd = document.getElementById('displacement_vs_capacity');
+                    function resizeGraph() {
+                        var wrapper = gd.closest('.graph-wrapper');
+                        var rect = wrapper.getBoundingClientRect();
+                        
+                        Plotly.relayout(gd, {
+                            width: rect.width,
+                            height: rect.height
+                        });
+                    }
                     
-                    var trace2 = {
-                        x: deltaTension,
-                        y: qTension,
-                        name: 'Tension',
-                        type: 'scatter',
-                        mode: 'lines+markers',
-                        line: { color: '#1a73e8', width: 2 },
-                        marker: { size: 6 }
-                    };
+                    resizeGraph();
                     
-                    var layout = {
-                        title: 'Deflection vs Load',
-                        xaxis: { title: 'Deflection (mm)' },
-                        yaxis: { title: 'Load (kN)' }
-                    };
-                    
-                    Plotly.newPlot('helical_deflection_graph', [trace1, trace2], layout);
-                } else {
-                    // Try again in 100ms
-                    setTimeout(checkForPlotly, 100);
-                }
-            }
-            
-            // Start checking for Plotly
-            checkForPlotly();
-        </script>
+                    var ro = new ResizeObserver(resizeGraph);
+                    ro.observe(gd.closest('.graph-wrapper'));
+                });
+            </script>
+            {% endif %}
+        </div>
     {%- else -%}
         {# Driven and Bored pile results #}
         <div class="results-section">
             <div class="card mb-4">
                 <div class="card-header">
-                    <h3>Parameters</h3>
+                    <h3>Pile Parameters</h3>
                 </div>
                 <div class="card-body">
                     <table class="results-table">

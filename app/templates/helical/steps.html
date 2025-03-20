@@ -80,6 +80,8 @@
                         </a>
                     </div>
                 </div>
+                <!-- Ensure Plotly is loaded before rendering results -->
+                <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
                 {% include 'components/results.html' %}
                 <div class="button-group">
                     <a href="{{ url_for('main.calculator_step', type=type, step=3) }}" class="btn btn-secondary">Back to Step 3</a>

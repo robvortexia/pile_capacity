@@ -3,6 +3,9 @@
 import math
 import numpy as np
 import logging
+import matplotlib.pyplot as plt
+import io
+import base64
 
 logger = logging.getLogger(__name__)
 
@@ -478,6 +481,82 @@ def calculate_helical_intermediate_values(processed_cpt, params):
     # Calculate installation torque using new formula
     installation_torque = 0.4 * qult_tension * (shaft_diameter ** 0.92)
     
+    # Calculate qcavg values
+    qcavg_compression = qb01_comp / 0.2  # qb0.1-comp/0.2
+    qcavg_tension = qb01_tension / 0.15  # qb0.1-tension/0.15
+
+    # Create helical deflection table
+    helical_deflection_table = []
+    delta_dh_ratio = 0.01 * params['shaft_diameter'] / params['helix_diameter']  # Initial δ/Dh
+    dh = params['helix_diameter']
+
+    delta_dh_ratios = []
+    q_compression_values = []
+    q_tension_values = []
+    delta_mm_values = []
+    
+    for i in range(100):  # Generate 100 rows
+        if i > 0:
+            delta_dh_ratio = 1.1 * delta_dh_ratio  # Increase by 10%
+            
+        q_default_compression = 1000 * 0.25 * math.pi * dh * dh * (0.8 *qcavg_compression * (delta_dh_ratio**0.6))
+        q_default_tension = 1000 * 0.25 * math.pi * dh * dh * (0.6 * qcavg_tension * (delta_dh_ratio**0.6))
+        
+        q_compression = q_default_compression if delta_dh_ratio < 0.1 else None
+        q_tension = q_default_tension if delta_dh_ratio < 0.1 else None
+        
+        delta_mm_compression = dh * delta_dh_ratio * 1000
+        delta_mm_tension = dh * delta_dh_ratio * 1000
+        
+        # Store values for plotting
+        if q_compression is not None and q_tension is not None:
+            delta_dh_ratios.append(delta_dh_ratio)
+            q_compression_values.append(q_compression)
+            q_tension_values.append(q_tension)
+            delta_mm_values.append(delta_mm_compression)
+        
+        helical_deflection_table.append({
+            'delta_dh_ratio': delta_dh_ratio,
+            'q_default_compression': q_default_compression,
+            'q_default_tension': q_default_tension,
+            'q_compression': q_compression,
+            'q_tension': q_tension,
+            'delta_mm_compression': delta_mm_compression,
+            'delta_mm_tension': delta_mm_tension
+        })
+    
+    # Create graph of compression and tension capacities
+    plt.figure(figsize=(10, 6))
+    
+    # Plot Q vs delta/Dh
+    plt.subplot(1, 2, 1)
+    plt.plot(delta_dh_ratios, q_compression_values, 'b-', label='Compression')
+    plt.plot(delta_dh_ratios, q_tension_values, 'r-', label='Tension')
+    plt.xlabel('δ/Dh')
+    plt.ylabel('Capacity (kN)')
+    plt.title('Capacity vs δ/Dh')
+    plt.legend()
+    plt.grid(True)
+    
+    # Plot Q vs displacement in mm
+    plt.subplot(1, 2, 2)
+    plt.plot(delta_mm_values, q_compression_values, 'b-', label='Compression')
+    plt.plot(delta_mm_values, q_tension_values, 'r-', label='Tension')
+    plt.xlabel('Displacement (mm)')
+    plt.ylabel('Capacity (kN)')
+    plt.title('Capacity vs Displacement')
+    plt.legend()
+    plt.grid(True)
+    
+    plt.tight_layout()
+    
+    # Save the figure to a base64 encoded string
+    buffer = io.BytesIO()
+    plt.savefig(buffer, format='png')
+    buffer.seek(0)
+    img_str = base64.b64encode(buffer.read()).decode('utf-8')
+    plt.close()
+    
     # Create output dictionary
     result = {
         'depth': depths,
@@ -517,7 +596,11 @@ def calculate_helical_intermediate_values(processed_cpt, params):
         'qult_comp_tipdepth': qult_comp_tipdepth,
         'qult_tension_tipdepth': qult_tension_tipdepth,
         'q_10mm_comp_tipdepth': q_10mm_comp_tipdepth,
-        'q_10mm_tension_tipdepth': q_10mm_tension_tipdepth
+        'q_10mm_tension_tipdepth': q_10mm_tension_tipdepth,
+        'qcavg_compression': qcavg_compression,
+        'qcavg_tension': qcavg_tension,
+        'helical_deflection_table': helical_deflection_table,
+        'capacity_graph': img_str  # Add the graph to the detailed results
     }
     
     return result
@@ -577,6 +660,82 @@ def calculate_helical_pile_results(processed_cpt, params):
         q_10mm_comp_tipdepth = detailed_results.get('q_10mm_comp_tipdepth', 0)
         q_10mm_tension_tipdepth = detailed_results.get('q_10mm_tension_tipdepth', 0)
         
+        # Calculate qcavg values
+        qcavg_compression = qb01_comp / 0.2  # qb0.1-comp/0.2
+        qcavg_tension = qb01_tension / 0.15  # qb0.1-tension/0.15
+        
+        # Create helical deflection table
+        helical_deflection_table = []
+        delta_dh_ratio = 0.01 * params['shaft_diameter'] / params['helix_diameter']  # Initial δ/Dh
+        dh = params['helix_diameter']
+        
+        delta_dh_ratios = []
+        q_compression_values = []
+        q_tension_values = []
+        delta_mm_values = []
+        
+        for i in range(100):  # Generate 100 rows
+            if i > 0:
+                delta_dh_ratio = 1.1 * delta_dh_ratio  # Increase by 10%
+                
+            q_default_compression = 1000 * 0.25 * math.pi * dh * dh * (0.8 *qcavg_compression * (delta_dh_ratio**0.6))
+            q_default_tension = 1000 * 0.25 * math.pi * dh * dh * (0.6 * qcavg_tension * (delta_dh_ratio**0.6))
+            
+            q_compression = q_default_compression if delta_dh_ratio < 0.1 else None
+            q_tension = q_default_tension if delta_dh_ratio < 0.1 else None
+            
+            delta_mm_compression = dh * delta_dh_ratio * 1000
+            delta_mm_tension = dh * delta_dh_ratio * 1000
+            
+            # Store values for plotting
+            if q_compression is not None and q_tension is not None:
+                delta_dh_ratios.append(delta_dh_ratio)
+                q_compression_values.append(q_compression)
+                q_tension_values.append(q_tension)
+                delta_mm_values.append(delta_mm_compression)
+            
+            helical_deflection_table.append({
+                'delta_dh_ratio': delta_dh_ratio,
+                'q_default_compression': q_default_compression,
+                'q_default_tension': q_default_tension,
+                'q_compression': q_compression,
+                'q_tension': q_tension,
+                'delta_mm_compression': delta_mm_compression,
+                'delta_mm_tension': delta_mm_tension
+            })
+            
+        # Create graph of compression and tension capacities
+        plt.figure(figsize=(10, 6))
+        
+        # Plot Q vs delta/Dh
+        plt.subplot(1, 2, 1)
+        plt.plot(delta_dh_ratios, q_compression_values, 'b-', label='Compression')
+        plt.plot(delta_dh_ratios, q_tension_values, 'r-', label='Tension')
+        plt.xlabel('δ/Dh')
+        plt.ylabel('Capacity (kN)')
+        plt.title('Capacity vs δ/Dh')
+        plt.legend()
+        plt.grid(True)
+        
+        # Plot Q vs displacement in mm
+        plt.subplot(1, 2, 2)
+        plt.plot(delta_mm_values, q_compression_values, 'b-', label='Compression')
+        plt.plot(delta_mm_values, q_tension_values, 'r-', label='Tension')
+        plt.xlabel('Displacement (mm)')
+        plt.ylabel('Capacity (kN)')
+        plt.title('Capacity vs Displacement')
+        plt.legend()
+        plt.grid(True)
+        
+        plt.tight_layout()
+        
+        # Save the figure to a base64 encoded string
+        buffer = io.BytesIO()
+        plt.savefig(buffer, format='png')
+        buffer.seek(0)
+        img_str = base64.b64encode(buffer.read()).decode('utf-8')
+        plt.close()
+        
         # Summary results
         summary = {
             'tipdepth': helix_depth,
@@ -593,11 +752,22 @@ def calculate_helical_pile_results(processed_cpt, params):
             'qult_comp_tipdepth': qult_comp_tipdepth,
             'qult_tension_tipdepth': qult_tension_tipdepth,
             'q_10mm_comp_tipdepth': q_10mm_comp_tipdepth,
-            'q_10mm_tension_tipdepth': q_10mm_tension_tipdepth
+            'q_10mm_tension_tipdepth': q_10mm_tension_tipdepth,
+            # Add the new calculated values
+            'qcavg_compression': qcavg_compression,
+            'qcavg_tension': qcavg_tension,
+            'shaft_diameter': params['shaft_diameter'],
+            'helix_diameter': params['helix_diameter'],
+            'helical_deflection_table': helical_deflection_table,
+            'capacity_graph': img_str  # Add the graph to the summary
         }
         
         # Add input parameters to the detailed results for completeness
         detailed_results['input_parameters'] = params
+        detailed_results['qcavg_compression'] = qcavg_compression
+        detailed_results['qcavg_tension'] = qcavg_tension
+        detailed_results['helical_deflection_table'] = helical_deflection_table
+        detailed_results['capacity_graph'] = img_str  # Add the graph to detailed results
         
         # Create a tabular format for download that can be easily converted to CSV
         download_rows = []
@@ -623,6 +793,8 @@ def calculate_helical_pile_results(processed_cpt, params):
         download_rows.append(["q10 at Helix", detailed_results['q10_helix']])
         download_rows.append(["qb0.1 Compression (MPa)", detailed_results['qb01_comp']])
         download_rows.append(["qb0.1 Tension (MPa)", detailed_results['qb01_tension']])
+        download_rows.append(["qcavg Compression", qcavg_compression])
+        download_rows.append(["qcavg Tension", qcavg_tension])
         
         download_rows.append([])  # Empty row for spacing
         download_rows.append(["FINAL RESULTS"])
@@ -641,6 +813,22 @@ def calculate_helical_pile_results(processed_cpt, params):
         download_rows.append(["Compression Capacity at 10mm at Tipdepth (kN)", q_10mm_comp_tipdepth])
         download_rows.append(["Tension Capacity at 10mm at Tipdepth (kN)", q_10mm_tension_tipdepth])
 
+        # Add helical deflection table to the download data
+        download_rows.append([])  # Empty row for spacing
+        download_rows.append(["HELICAL DEFLECTION TABLE"])
+        download_rows.append(["δ/Dh", "Q_default_compression (kN)", "Q_default_tension (kN)", "Q_compression (kN)", "Q_tension (kN)", "δ_compression (mm)", "δ_tension (mm)"])
+        
+        for row in helical_deflection_table:
+            download_rows.append([
+                row['delta_dh_ratio'],
+                row['q_default_compression'],
+                row['q_default_tension'],
+                row['q_compression'] if row['q_compression'] is not None else "",
+                row['q_tension'] if row['q_tension'] is not None else "",
+                row['delta_mm_compression'],
+                row['delta_mm_tension']
+            ])
+            
         download_rows.append([])  # Empty row for spacing
         download_rows.append(["DETAILED CALCULATION TABLE"])
         download_rows.append([])  # Empty row for spacing

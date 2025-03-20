@@ -858,21 +858,74 @@ def download_debug_params():
 
 @bp.route('/download_results')
 def download_results():
-    """Download calculation results as CSV"""
-    if 'results' not in session:
+    """Download helical deflection table as a simplified CSV"""
+    if 'results_id' not in session and 'results' not in session:
         flash('No results available')
         return redirect(url_for('main.index'))
     
     try:
-        res_list = session['results']
-        df = pd.DataFrame(res_list)
-        return generate_csv_download(
-            df,
-            f"calculation_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+        # Check if we have direct results in the session
+        if 'results' in session:
+            # Use the results directly from session
+            results = {'summary': session['results']}
+            deflection_data = results['summary'].get('helical_deflection_table', [])
+        else:
+            # Try to load results from results_id
+            results = load_calculation_results(session['results_id'])
+            if not results:
+                flash('Calculation results not found', 'error')
+                return redirect(url_for('main.index'))
+            
+            # Check if results has 'summary' key with helical_deflection_table
+            if 'summary' in results and 'helical_deflection_table' in results['summary']:
+                deflection_data = results['summary']['helical_deflection_table']
+            # Check if results has 'detailed' key with helical_deflection_table
+            elif 'detailed' in results and 'helical_deflection_table' in results['detailed']:
+                deflection_data = results['detailed']['helical_deflection_table']
+            # Otherwise check directly in results
+            elif 'helical_deflection_table' in results:
+                deflection_data = results['helical_deflection_table']
+            else:
+                flash('No deflection table data available', 'error')
+                return redirect(url_for('main.calculator_step', type='helical', step=4))
+        
+        # Create a simple CSV buffer
+        import io
+        import csv
+        
+        output = io.StringIO()
+        writer = csv.writer(output)
+        
+        # Write the header row with fixed column titles for Excel compatibility
+        writer.writerow(['Delta/Dh', 'Q_Compression_kN', 'Delta_Compression_mm', 'Q_Tension_kN', 'Delta_Tension_mm'])
+        
+        # Write the data rows
+        for row in deflection_data:
+            writer.writerow([
+                f"{row['delta_dh_ratio']:.4f}",
+                f"{row['q_compression'] if row['q_compression'] is not None else '-'}",
+                f"{row['delta_mm_compression']:.2f}",
+                f"{row['q_tension'] if row['q_tension'] is not None else '-'}",
+                f"{row['delta_mm_tension']:.2f}"
+            ])
+        
+        # Get the string value and return response
+        output.seek(0)
+        
+        # Use the site name from pile params if available, otherwise use a default name
+        site_name = ""
+        if 'summary' in results and 'shaft_diameter' in results['summary']:
+            site_name = f"_D{results['summary']['shaft_diameter']}_Dh{results['summary']['helix_diameter']}"
+        
+        return Response(
+            output.getvalue(),
+            mimetype="text/csv",
+            headers={"Content-disposition": f"attachment; filename=helical_deflection_table{site_name}_{datetime.now().strftime('%Y%m%d')}.csv"}
         )
     except Exception as e:
-        flash(f'Error generating results: {str(e)}')
-        return redirect(url_for('main.calculator_step', type='driven', step=4))
+        current_app.logger.error(f"Error generating deflection table: {str(e)}")
+        flash(f'Error generating deflection table: {str(e)}')
+        return redirect(url_for('main.calculator_step', type='helical', step=4))
 
 @bp.route('/register', methods=['POST'])
 def register():
