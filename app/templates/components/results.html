@@ -48,7 +48,6 @@
                                     <th>Qshaft (kN)</th>
                                     <th>Q at δ=10mm (kN)</th>
                                     <th>Qult (kN)</th>
-                                    <th>Installation torque (kNm)</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -57,14 +56,12 @@
                                     <td>{{ "%.1f"|format(results.get('qshaft', 0)) }}</td>
                                     <td>{{ "%.1f"|format(results.get('q_delta_10mm_tension', 0)) }}</td>
                                     <td>{{ "%.1f"|format(results.get('qult_tension', 0)) }}</td>
-                                    <td>{{ "%.1f"|format(results.get('installation_torque', 0)) }}</td>
                                 </tr>
                                 <tr>
                                     <th>Compression</th>
                                     <td>{{ "%.1f"|format(results.get('qshaft', 0)) }}</td>
                                     <td>{{ "%.1f"|format(results.get('q_delta_10mm_compression', 0)) }}</td>
                                     <td>{{ "%.1f"|format(results.get('qult_compression', 0)) }}</td>
-                                    <td>-</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -75,10 +72,6 @@
                                 <tr>
                                     <th>Tip Depth (m)</th>
                                     <td>{{ "%.1f"|format(results.get('tipdepth', 0)) }}</td>
-                                </tr>
-                                <tr>
-                                    <th>Effective Depth (m)</th>
-                                    <td>{{ "%.1f"|format(results.get('effective_depth', 0)) }}</td>
                                 </tr>
                                 <tr>
                                     <th>qb0.1 Compression (MPa)</th>
@@ -97,8 +90,8 @@
                                     <td>{{ "%.2f"|format(results.get('qcavg_tension', 0)) }}</td>
                                 </tr>
                                 <tr>
-                                    <th>Initial δ/Dh ratio</th>
-                                    <td>{{ "%.4f"|format(0.01*results.get('shaft_diameter', 0)/results.get('helix_diameter', 1)) }}</td>
+                                    <th>Installation torque (kNm)</th>
+                                    <td>{{ "%.1f"|format(results.get('installation_torque', 0)) }}</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -132,21 +125,9 @@
                             </div>
                         </div>
                         
-                        <h4 class="mt-4">Deflection vs Load Curves</h4>
-                        
                         <div class="graph-wrapper">
-                            <div id="helical_deflection_graph" class="graph" style="height: 500px;"></div>
+                            <div id="helical_deflection_graph" class="graph" style="height: 600px;"></div>
                         </div>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="card mt-4">
-                <div class="card-body">
-                    <div class="text-center">
-                        <a href="{{ url_for('main.download_results') }}" class="btn" style="background-color: #dc2626; color: white; font-weight: bold; padding: 12px 25px; font-size: 16px; border-radius: 6px; display: inline-block; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                            <i class="fas fa-file-download" style="margin-right: 8px;"></i> Download Table Data
-                        </a>
                     </div>
                 </div>
             </div>
@@ -154,10 +135,10 @@
         
         <script>
             // Create direct arrays of data from the table rows
-            var deltaCompression = [];
-            var qCompression = [];
-            var deltaTension = [];
-            var qTension = [];
+            var deltaCompression = [0];  // Start with 0
+            var qCompression = [0];      // Start with 0
+            var deltaTension = [0];      // Start with 0
+            var qTension = [0];          // Start with 0
             
             {% for row in results.get('helical_deflection_table', []) %}
                 {% if row.q_compression is not none %}
@@ -196,12 +177,38 @@
                     };
                     
                     var layout = {
-                        title: 'Deflection vs Load',
-                        xaxis: { title: 'Deflection (mm)' },
-                        yaxis: { title: 'Load (kN)' }
+                        xaxis: { 
+                            title: {
+                                text: 'Pile head displacement (mm)',
+                                standoff: 40
+                            },
+                            zeroline: true,
+                            rangemode: 'tozero'
+                        },
+                        yaxis: { 
+                            title: 'Load (kN)',
+                            zeroline: true,
+                            rangemode: 'tozero'
+                        },
+                        showlegend: true,
+                        legend: {
+                            x: 1,
+                            y: 1
+                        },
+                        margin: {
+                            l: 70,
+                            r: 50,
+                            t: 50,
+                            b: 100
+                        }
                     };
                     
-                    Plotly.newPlot('helical_deflection_graph', [trace1, trace2], layout);
+                    var config = {
+                        responsive: true,
+                        displayModeBar: false
+                    };
+                    
+                    Plotly.newPlot('helical_deflection_graph', [trace1, trace2], layout, config);
                 } else {
                     // Try again in 100ms
                     setTimeout(checkForPlotly, 100);
@@ -559,17 +566,11 @@ h4 {
     padding: 1rem;
     box-shadow: 0 4px 6px rgba(0,0,0,0.05);
     height: 600px;
-    min-height: 400px;
     width: 100%;
-    position: relative;
+    margin: 2rem 0;
 }
 
 .graph {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
     width: 100% !important;
     height: 100% !important;
 }
