@@ -84,11 +84,6 @@ def create_cpt_graphs(data, water_table=None):
     if not processed_data:
         return None
     
-    # Format data to 2 significant figures for plotting
-    for key in processed_data:
-        if isinstance(processed_data[key], list) and all(isinstance(x, (int, float)) for x in processed_data[key]):
-            processed_data[key] = [float('{:.2g}'.format(x)) for x in processed_data[key]]
-    
     # Common layout settings
     base_layout = {
         'showline': True,

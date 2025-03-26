@@ -290,7 +290,10 @@ def interpolate_at_depth(depths, values, target_depth):
     """
     # Create interpolation function
     f = interp1d(depths, values, kind='linear', bounds_error=False, fill_value='extrapolate')
-    return float(f(target_depth))
+    
+    # Get the interpolated value with full precision
+    # Using np.float64 to maintain maximum precision
+    return np.float64(f(target_depth))
 
 def calculate_pile_capacity(cpt_data, params, pile_type='driven'):
     print(f"Params received in calculate_pile_capacity: {params}")
@@ -363,7 +366,7 @@ def calculate_pile_capacity(cpt_data, params, pile_type='driven'):
             
             # Calculate base resistance using minimum qb01_adop in the zone
             min_qb01 = min(qb01_values) if qb01_values else 0
-            base_resistance = min_qb01 * Ab * 1000  # Convert to kN
+            base_resistance = np.float64(min_qb01 * Ab * 1000)  # Convert to kN with full precision
             
             results.append({
                 'tipdepth': tip_depth,
@@ -468,8 +471,8 @@ def calculate_pile_capacity(cpt_data, params, pile_type='driven'):
             
             results.append({
                 'tipdepth': tip_depth,
-                'tension_capacity': float(tension_capacity),
-                'compression_capacity': float(compression_capacity)
+                'tension_capacity': np.float64(tension_capacity),  # Ensure full precision
+                'compression_capacity': np.float64(compression_capacity)  # Ensure full precision
             })
         
         return results
@@ -613,24 +616,24 @@ def calculate_bored_pile_results(processed_cpt, params):
             
             # Store all calculations for this depth
             depth_calculations.append({
-                'depth': depths[i],
-                'qt': qt_val,
-                'lc': lc_val,
-                'fr': fr_val,
-                'coe_casing': coe_casing,
-                'qb01_adop': qb01_adop,
-                'tf_tension': tf_tension,
-                'tf_compression': tf_compression,
-                'delta_z': delta_z,
-                'qs_tension_segment': qs_tension_segment,
-                'qs_compression_segment': qs_compression_segment,
-                'qs_tension_cumulative': qs_tension_cumulative,
-                'qs_compression_cumulative': qs_compression_cumulative
+                'depth': np.float64(depths[i]),
+                'qt': np.float64(qt_val),
+                'lc': np.float64(lc_val),
+                'fr': np.float64(fr_val),
+                'coe_casing': np.float64(coe_casing),
+                'qb01_adop': np.float64(qb01_adop),
+                'tf_tension': np.float64(tf_tension),
+                'tf_compression': np.float64(tf_compression),
+                'delta_z': np.float64(delta_z),
+                'qs_tension_segment': np.float64(qs_tension_segment),
+                'qs_compression_segment': np.float64(qs_compression_segment),
+                'qs_tension_cumulative': np.float64(qs_tension_cumulative),
+                'qs_compression_cumulative': np.float64(qs_compression_cumulative)
             })
         
         # Calculate base resistance using minimum qb01_adop in the zone
         min_qb01 = min(qb01_values) if qb01_values else 0
-        base_resistance = min_qb01 * Ab * 1000  # Convert to kN
+        base_resistance = np.float64(min_qb01 * Ab * 1000)  # Convert to kN with full precision
         
         detailed_results.append({
             'tip_depth': chosen_tip,
@@ -639,8 +642,8 @@ def calculate_bored_pile_results(processed_cpt, params):
         
         summary_results.append({
             'tipdepth': chosen_tip,
-            'tension_capacity': qs_tension_cumulative,
-            'compression_capacity': qs_compression_cumulative + base_resistance  # Add base resistance
+            'tension_capacity': np.float64(qs_tension_cumulative),  # Use full precision
+            'compression_capacity': np.float64(qs_compression_cumulative + base_resistance)  # Use full precision
         })
     
     return {

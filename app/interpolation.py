@@ -92,8 +92,8 @@ def format_cpt_data_for_download(data):
     # Format data rows
     rows = []
     for row in data:
-        # Format each number to 2 significant figures instead of 3 decimal places
-        formatted_row = "\t".join(f"{float(x):.2g}" for x in row)
+        # Format with full precision instead of 2 significant figures
+        formatted_row = "\t".join(str(float(x)) for x in row)
         rows.append(formatted_row)
     
     return header + "\n".join(rows) 

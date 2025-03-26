@@ -24,6 +24,10 @@ import logging
 import io
 from .helical_calculations import calculate_helical_pile_results
 
+# Set pandas options for full precision 
+pd.set_option('display.precision', 15)  # Increase default precision
+pd.set_option('display.float_format', lambda x: '%.15g' % x)  # Use full precision in string conversions
+
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
@@ -674,10 +678,6 @@ def download_debug_params():
                     # Create and populate DataFrame
                     df_data = create_data_dataframe(processed, calc_dict)
                     
-                    # Format numeric columns to 2 significant figures
-                    for column in df_data.select_dtypes(include=['float64', 'int64']).columns:
-                        df_data[column] = df_data[column].apply(lambda x: float('{:.2g}'.format(x)))
-                    
                     # Add a blank line between constants and data
                     buffer.write('\nCPT DATA AND CALCULATIONS\n')
                     df_data.to_csv(buffer, index=False)
@@ -718,10 +718,6 @@ def download_debug_params():
                     'Compression Capacity (kN)': result['compression_capacity']
                 }])
                 
-                # Format numeric columns to 2 significant figures
-                for column in df_result.select_dtypes(include=['float64', 'int64']).columns:
-                    df_result[column] = df_result[column].apply(lambda x: float('{:.2g}'.format(x)))
-                    
                 df_result.to_csv(buffer, index=False)
                 
                 # Write CPT data
@@ -745,10 +741,6 @@ def download_debug_params():
                     'Soil Behavior Index Iz': processed['iz1']
                 })
                 
-                # Format numeric columns to 2 significant figures
-                for column in df_cpt.select_dtypes(include=['float64', 'int64']).columns:
-                    df_cpt[column] = df_cpt[column].apply(lambda x: float('{:.2g}'.format(x)))
-                    
                 df_cpt.to_csv(buffer, index=False)
         elif pile_type == 'helical':
             # For helical piles, use debug_id like bored piles
@@ -1245,10 +1237,6 @@ def download_intermediary_calcs():
             'Corrected Tip Resistance qtc (MPa)': processed['qtc'],
             'Soil Behavior Index Iz': processed['iz1']
         })
-        
-        # Format all numeric columns to 2 significant figures
-        for column in df.select_dtypes(include=['float64', 'int64']).columns:
-            df[column] = df[column].apply(lambda x: float('{:.2g}'.format(x)))
         
         # Get the current date in DDMMYYYY format
         current_date = datetime.now().strftime('%d%m%Y')
