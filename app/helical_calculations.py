@@ -495,9 +495,10 @@ def calculate_helical_intermediate_values(processed_cpt, params):
     q_tension_values = []
     delta_mm_values = []
     
-    for i in range(100):  # Generate 100 rows
+    # Create more data points for smoother curves
+    for i in range(200):  # Increased from 100 to 200 for smoother curves
         if i > 0:
-            delta_dh_ratio = 1.1 * delta_dh_ratio  # Increase by 10%
+            delta_dh_ratio = 1.05 * delta_dh_ratio  # Reduced from 1.1 to 1.05 for smaller steps
             
         q_default_compression = 1000 * 0.25 * math.pi * dh * dh * (0.8 *qcavg_compression * (delta_dh_ratio**0.6))
         q_default_tension = 1000 * 0.25 * math.pi * dh * dh * (0.6 * qcavg_tension * (delta_dh_ratio**0.6))
@@ -530,8 +531,8 @@ def calculate_helical_intermediate_values(processed_cpt, params):
     
     # Plot Q vs delta/Dh
     plt.subplot(1, 2, 1)
-    plt.plot(delta_dh_ratios, q_compression_values, 'b-', label='Compression')
-    plt.plot(delta_dh_ratios, q_tension_values, 'r-', label='Tension')
+    plt.plot(delta_dh_ratios, q_compression_values, color='red', label='Compression', linewidth=2, marker='')
+    plt.plot(delta_dh_ratios, q_tension_values, color='blue', label='Tension', linewidth=2, marker='')
     plt.xlabel('δ/Dh')
     plt.ylabel('Capacity (kN)')
     plt.title('Capacity vs δ/Dh')
@@ -540,8 +541,8 @@ def calculate_helical_intermediate_values(processed_cpt, params):
     
     # Plot Q vs displacement in mm
     plt.subplot(1, 2, 2)
-    plt.plot(delta_mm_values, q_compression_values, 'b-', label='Compression')
-    plt.plot(delta_mm_values, q_tension_values, 'r-', label='Tension')
+    plt.plot(delta_mm_values, q_compression_values, color='red', label='Compression', linewidth=2, marker='')
+    plt.plot(delta_mm_values, q_tension_values, color='blue', label='Tension', linewidth=2, marker='')
     plt.xlabel('Displacement (mm)')
     plt.ylabel('Capacity (kN)')
     plt.title('Capacity vs Displacement')
@@ -674,9 +675,10 @@ def calculate_helical_pile_results(processed_cpt, params):
         q_tension_values = []
         delta_mm_values = []
         
-        for i in range(100):  # Generate 100 rows
+        # Create more data points for smoother curves
+        for i in range(200):  # Increased from 100 to 200 for smoother curves
             if i > 0:
-                delta_dh_ratio = 1.1 * delta_dh_ratio  # Increase by 10%
+                delta_dh_ratio = 1.05 * delta_dh_ratio  # Reduced from 1.1 to 1.05 for smaller steps
                 
             q_default_compression = 1000 * 0.25 * math.pi * dh * dh * (0.8 *qcavg_compression * (delta_dh_ratio**0.6))
             q_default_tension = 1000 * 0.25 * math.pi * dh * dh * (0.6 * qcavg_tension * (delta_dh_ratio**0.6))
@@ -705,12 +707,12 @@ def calculate_helical_pile_results(processed_cpt, params):
             })
             
         # Create graph of compression and tension capacities
-        plt.figure(figsize=(10, 6))
+        plt.figure(figsize=(8, 6))
         
         # Plot Q vs delta/Dh
         plt.subplot(1, 2, 1)
-        plt.plot(delta_dh_ratios, q_compression_values, 'b-', label='Compression')
-        plt.plot(delta_dh_ratios, q_tension_values, 'r-', label='Tension')
+        plt.plot(delta_dh_ratios, q_compression_values, color='red', label='Compression', linewidth=2, marker='')
+        plt.plot(delta_dh_ratios, q_tension_values, color='blue', label='Tension', linewidth=2, marker='')
         plt.xlabel('δ/Dh')
         plt.ylabel('Capacity (kN)')
         plt.title('Capacity vs δ/Dh')
@@ -719,8 +721,8 @@ def calculate_helical_pile_results(processed_cpt, params):
         
         # Plot Q vs displacement in mm
         plt.subplot(1, 2, 2)
-        plt.plot(delta_mm_values, q_compression_values, 'b-', label='Compression')
-        plt.plot(delta_mm_values, q_tension_values, 'r-', label='Tension')
+        plt.plot(delta_mm_values, q_compression_values, color='red', label='Compression', linewidth=2, marker='')
+        plt.plot(delta_mm_values, q_tension_values, color='blue', label='Tension', linewidth=2, marker='')
         plt.xlabel('Displacement (mm)')
         plt.ylabel('Capacity (kN)')
         plt.title('Capacity vs Displacement')

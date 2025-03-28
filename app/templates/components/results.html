@@ -66,8 +66,8 @@
                             </tbody>
                         </table>
 
-                        <h4 class="mt-4">Additional Parameters</h4>
-                        <table class="results-table">
+                        <h4 class="mt-4"> </h4>
+                        <table class="results-table mt-4">
                             <tbody>
                                 <tr>
                                     <th>Tip Depth (m)</th>
@@ -80,14 +80,6 @@
                                 <tr>
                                     <th>qb0.1 Tension (MPa)</th>
                                     <td>{{ "%.2f"|format(results.get('qb01_tension', 0)) }}</td>
-                                </tr>
-                                <tr>
-                                    <th>qcavg Compression</th>
-                                    <td>{{ "%.2f"|format(results.get('qcavg_compression', 0)) }}</td>
-                                </tr>
-                                <tr>
-                                    <th>qcavg Tension</th>
-                                    <td>{{ "%.2f"|format(results.get('qcavg_tension', 0)) }}</td>
                                 </tr>
                                 <tr>
                                     <th>Installation torque (kNm)</th>
@@ -161,9 +153,8 @@
                         y: qCompression,
                         name: 'Compression',
                         type: 'scatter',
-                        mode: 'lines+markers',
-                        line: { color: '#dc2626', width: 2 },
-                        marker: { size: 6 }
+                        mode: 'lines',
+                        line: { color: '#dc2626', width: 2 }
                     };
                     
                     var trace2 = {
@@ -171,9 +162,8 @@
                         y: qTension,
                         name: 'Tension',
                         type: 'scatter',
-                        mode: 'lines+markers',
-                        line: { color: '#1a73e8', width: 2 },
-                        marker: { size: 6 }
+                        mode: 'lines',
+                        line: { color: '#1a73e8', width: 2 }
                     };
                     
                     var layout = {
@@ -183,7 +173,8 @@
                                 standoff: 40
                             },
                             zeroline: true,
-                            rangemode: 'tozero'
+                            rangemode: 'tozero',
+                            range: [0, null]
                         },
                         yaxis: { 
                             title: 'Load (kN)',
@@ -200,7 +191,10 @@
                             r: 50,
                             t: 50,
                             b: 100
-                        }
+                        },
+                        autosize: false,
+                        height: 600,
+                        width: 600
                     };
                     
                     var config = {
@@ -325,13 +319,10 @@
                 y: depths,
                 name: 'Tension',
                 type: 'scatter',
-                mode: 'lines+markers',
+                mode: 'lines',
                 line: {
                     color: '#1a73e8',
                     width: 2
-                },
-                marker: {
-                    size: 8
                 }
             };
 
@@ -340,13 +331,10 @@
                 y: depths,
                 name: 'Compression',
                 type: 'scatter',
-                mode: 'lines+markers',
+                mode: 'lines',
                 line: {
                     color: '#dc2626',
                     width: 2
-                },
-                marker: {
-                    size: 8
                 }
             };
 
@@ -391,7 +379,8 @@
                     automargin: true,
                     side: 'top',
                     showline: true,
-                    zeroline: false
+                    zeroline: false,
+                    range: [0, null]
                 },
                 yaxis: {
                     title: {
@@ -419,7 +408,9 @@
                     bordercolor: 'rgba(0,0,0,0.1)',
                     borderwidth: 1
                 },
-                autosize: true
+                autosize: false,
+                height: 600,
+                width: 600
             };
 
             var config = {
@@ -566,13 +557,16 @@ h4 {
     padding: 1rem;
     box-shadow: 0 4px 6px rgba(0,0,0,0.05);
     height: 600px;
-    width: 100%;
-    margin: 2rem 0;
+    width: 600px;
+    margin: 2rem auto;
+    max-width: 100%;
+    aspect-ratio: 1 / 1;
 }
 
 .graph {
     width: 100% !important;
     height: 100% !important;
+    aspect-ratio: 1 / 1;
 }
 
 /* Update capacity table styles for the new format */
