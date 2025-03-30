@@ -1,20 +1,31 @@
 import psycopg2
 from tabulate import tabulate
+import os
 
-# Database connection parameters
-DB_PARAMS = {
-    'dbname': 'pile_capacity_calculator_website_analytics',
-    'user': 'analytics_ivy3_user',
-    'password': 'c78LEqkQpjYwG59DwoI_',
-    'host': 'dpg-cviv241r8fns73e9vtdg-a.singapore-postgres.render.com',
-    'port': '5432',
-    'sslmode': 'require'
-}
+def get_database_url():
+    """Get database URL from environment variable or return default local connection string"""
+    database_url = os.environ.get('DATABASE_URL')
+    if not database_url:
+        # Default connection string for Render PostgreSQL database
+        database_url = "postgresql://analytics_ivy3_user:c78LEqbQpjYwG59DwoIcJmo91CKZ2Crb@dpg-cviv241r0fns73e9vtdg-a.singapore-postgres.render.com/analytics_ivy3"
+        print("\nNo DATABASE_URL environment variable found.")
+        print("Using Render PostgreSQL database connection.")
+    return database_url
 
 def view_database():
     try:
-        # Connect directly using psycopg2
-        conn = psycopg2.connect(**DB_PARAMS)
+        database_url = get_database_url()
+        
+        # Connect using DATABASE_URL
+        # If DATABASE_URL contains 'render.com', it's a remote connection requiring SSL
+        # Otherwise, it's a local connection where SSL is not needed
+        conn_params = {
+            'dsn': database_url,
+            'sslmode': 'require' if 'render.com' in database_url else 'disable'
+        }
+        
+        print("\nAttempting to connect to database...")
+        conn = psycopg2.connect(**conn_params)
         cur = conn.cursor()
         
         # Get list of tables
@@ -52,8 +63,15 @@ def view_database():
                 print("(empty table)")
             print()
                 
+    except psycopg2.OperationalError as e:
+        print(f"\nError connecting to database: {e}")
+        print("\nPlease ensure that:")
+        print("1. PostgreSQL is installed and running")
+        print("2. The database exists")
+        print("3. The username and password are correct")
+        print("4. The port number is correct (default: 5432)")
     except Exception as e:
-        print(f"Error connecting to database: {e}")
+        print(f"\nUnexpected error: {e}")
     finally:
         if 'conn' in locals():
             conn.close()

@@ -13,6 +13,8 @@ from flask import session
 import uuid
 from flask import current_app
 
+#comments i remove later
+
 def generate_csv_download(data, filename="results.csv"):
     df = pd.DataFrame(data)
     buffer = io.StringIO()
