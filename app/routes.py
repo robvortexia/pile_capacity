@@ -23,6 +23,7 @@ from sqlalchemy.sql import func
 import logging
 import io
 from .helical_calculations import calculate_helical_pile_results
+from .analytics import record_page_visit, store_analytics_data, get_or_create_user_id, get_page_visit_stats, get_analytics_data_stats
 
 # Set pandas options for full precision 
 pd.set_option('display.precision', 15)  # Increase default precision
@@ -32,6 +33,16 @@ logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 bp = Blueprint('main', __name__)
+
+# Add analytics middleware to track all page visits
+@bp.before_request
+def track_page_visit():
+    # Skip tracking for static files and favicon
+    if request.path.startswith('/static') or request.path == '/favicon.ico':
+        return
+    
+    # Record the page visit in the database
+    record_page_visit()
 
 ALLOWED_EXTENSIONS = {'csv', 'txt'}
 
@@ -80,15 +91,7 @@ def index():
     # Check for session data first
     if 'registered' in session and session['registered']:
         show_modal = False
-        # Log visit if user is registered
-        email = session.get('user_email')
-        if email:
-            visit = Visit(
-                email=email,
-                ip_address=request.remote_addr
-            )
-            db.session.add(visit)
-            db.session.commit()
+        # User is already registered - no need to add Visit record here since the middleware handles it
     # If session doesn't have registration info, check cookies as fallback
     elif request.cookies.get('user_registered') == 'true':
         show_modal = False
@@ -125,7 +128,9 @@ def calculator_step(type, step):
         session.clear()
         session.update(session_data)
     
+    # Store the pile type in session and database
     session['type'] = type
+    store_analytics_data('pile_selection', 'type', type)
     
     if type not in ['driven', 'bored', 'helical']:
         return redirect(url_for('main.index'))
@@ -146,6 +151,9 @@ def calculator_step(type, step):
             # Store parameters in session
             session['pile_params'] = pile_params
             
+            # Store parameters in database
+            store_analytics_data('pile_params', data_dict=pile_params)
+            
             # Load CPT data
             if 'cpt_data_id' in session:
                 cpt_data = load_cpt_data(session['cpt_data_id'])
@@ -164,6 +172,9 @@ def calculator_step(type, step):
                     # Store summary results in session
                     session['results'] = results['summary']
                     
+                    # Store results in database
+                    store_analytics_data('calculation_results', 'summary', results['summary'])
+                    
                     # Create detailed results with all necessary data
                     detailed_results = {
                         'calculations': results['detailed'],
@@ -181,6 +192,9 @@ def calculator_step(type, step):
                     # Save detailed results and store debug_id in session
                     debug_id = save_debug_details([detailed_results])  # Wrap in list since load_debug_details expects a list
                     session['debug_id'] = debug_id
+                    
+                    # Store debug ID in database
+                    store_analytics_data('calculation_debug', 'debug_id', debug_id)
                     
                     # Log successful calculation
                     logger.info(f"Helical pile calculations completed successfully for {pile_params['site_name']}")
@@ -1103,6 +1117,10 @@ def register():
     session['affiliation'] = affiliation
     session.modified = True
     
+    # Store registration in analytics
+    store_analytics_data('registration', 'email', email)
+    store_analytics_data('registration', 'affiliation', affiliation)
+    
     # Set a more persistent cookie
     response = make_response(redirect(url_for('main.index')))
     response.set_cookie(
@@ -1165,13 +1183,28 @@ def admin():
     ).group_by(Visit.email)\
      .order_by(func.count(Visit.id).desc())\
      .all()
+    
+    # Get enhanced analytics data from our new tables
+    from .analytics import get_page_visit_stats, get_analytics_data_stats
+    
+    # Get page visit statistics
+    page_visit_stats = get_page_visit_stats(days=30)
+    
+    # Get analytics data statistics for pile types
+    pile_type_stats = get_analytics_data_stats('pile_selection', days=30)
+    
+    # Get analytics data statistics for pile parameters
+    param_stats = get_analytics_data_stats('pile_params', days=30)
 
     return render_template('admin.html', 
                          registrations=registrations,
                          total_users=total_users,
                          daily_stats=daily_stats,
                          top_affiliations=top_affiliations,
-                         visit_stats=visit_stats)
+                         visit_stats=visit_stats,
+                         page_visit_stats=page_visit_stats,
+                         pile_type_stats=pile_type_stats,
+                         param_stats=param_stats)
 
 @bp.route('/admin/export')
 @admin_required

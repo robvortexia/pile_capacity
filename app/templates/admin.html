@@ -81,6 +81,82 @@
             </div>
         </div>
     </div>
+    
+    <!-- New Analytics Cards -->
+    <h2 class="analytics-section-header">Enhanced Analytics</h2>
+    <div class="analytics-grid">
+        <div class="analytics-card">
+            <h3>Total Page Views</h3>
+            <div class="analytics-number">{{ page_visit_stats.page_stats|sum(attribute='visit_count') }}</div>
+            <p>Unique Visitors: {{ page_visit_stats.unique_visitors }}</p>
+        </div>
+        
+        <div class="analytics-card">
+            <h3>Most Popular Pages</h3>
+            <div class="analytics-table">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Page</th>
+                            <th>Views</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for stat in page_visit_stats.page_stats[:10] %}
+                        <tr>
+                            <td>{{ stat.page_url }}</td>
+                            <td>{{ stat.visit_count }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        <div class="analytics-card">
+            <h3>Pile Type Selection</h3>
+            <div class="analytics-table">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Pile Type</th>
+                            <th>Count</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for stat in pile_type_stats %}
+                        <tr>
+                            <td>{{ stat.data_value }}</td>
+                            <td>{{ stat.count }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        <div class="analytics-card">
+            <h3>Daily Visits</h3>
+            <div class="analytics-table">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Visits</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for stat in page_visit_stats.daily_stats %}
+                        <tr>
+                            <td>{{ stat.date }}</td>
+                            <td>{{ stat.count }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
 
     <div class="registrations-table">
         <h3>Recent Registrations</h3>
@@ -106,4 +182,14 @@
         </table>
     </div>
 </div>
+
+<style>
+.analytics-section-header {
+    margin-top: 30px;
+    margin-bottom: 15px;
+    color: #333;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 10px;
+}
+</style>
 {% endblock %} 

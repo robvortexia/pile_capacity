@@ -8,7 +8,14 @@ import os
 def create_app():
     app = Flask(__name__)
     app.config['SECRET_KEY'] = 'your-secret-key-here'
-    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///registrations.db'
+    
+    # Use PostgreSQL database if DATABASE_URL is provided, otherwise use SQLite
+    app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///registrations.db')
+    
+    # Handle deprecated postgres:// URI format (Render uses postgresql://)
+    if app.config['SQLALCHEMY_DATABASE_URI'].startswith('postgres://'):
+        app.config['SQLALCHEMY_DATABASE_URI'] = app.config['SQLALCHEMY_DATABASE_URI'].replace('postgres://', 'postgresql://', 1)
+    
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     
     # Session configuration - updated for better persistence
