@@ -9,7 +9,7 @@
                 <input type="text" name="site_name" class="form-control" placeholder="Enter site name">
             </div>
 
-            <div class="form-field">
+            <div class="form-field" id="pile-end-condition-field">
                 <label>Pile End Condition</label>
                 <div class="modern-radio-group">
                     <div class="modern-radio">
@@ -157,18 +157,47 @@
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const pileEndCondition = document.getElementsByName('pile_end_condition');
+    const pileShape = document.getElementsByName('pile_shape');
     const wallThicknessField = document.getElementById('wall-thickness-field');
+    const pileEndConditionField = document.getElementById('pile-end-condition-field');
 
     function toggleWallThickness() {
-        wallThicknessField.style.display = 
-            document.querySelector('input[name="pile_end_condition"][value="open"]').checked ? 'block' : 'none';
+        const isSquare = document.querySelector('input[name="pile_shape"][value="square"]').checked;
+        if (isSquare) {
+            wallThicknessField.style.display = 'none';
+        } else {
+            wallThicknessField.style.display = 'block';
+        }
     }
 
-    pileEndCondition.forEach(radio => {
-        radio.addEventListener('change', toggleWallThickness);
-    });
+    function togglePileEndCondition() {
+        const isSquare = document.querySelector('input[name="pile_shape"][value="square"]').checked;
+        if (isSquare) {
+            // Hide pile end condition field for square piles
+            pileEndConditionField.style.display = 'none';
+            // Automatically set to closed for square piles
+            document.querySelector('input[name="pile_end_condition"][value="closed"]').checked = true;
+        } else {
+            // Show pile end condition field for circular piles
+            pileEndConditionField.style.display = 'block';
+        }
+        // Always update wall thickness visibility
+        toggleWallThickness();
+    }
+
+    if (pileEndCondition && pileEndCondition.length) {
+        pileEndCondition.forEach(radio => {
+            radio.addEventListener('change', toggleWallThickness);
+        });
+    }
+    if (pileShape && pileShape.length) {
+        pileShape.forEach(radio => {
+            radio.addEventListener('change', togglePileEndCondition);
+        });
+    }
 
     // Initial state
-    toggleWallThickness();
+    togglePileEndCondition();
+    console.log('Pile parameters JS loaded');
 });
 </script> 

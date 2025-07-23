@@ -110,10 +110,25 @@ def get_qs(i, depth, tf_adop, pile_perimeter, previous_qs):
         return previous_qs + tf_adop*pile_perimeter*delta_depth
 
 def get_lc(qtn_value, fr_percent_value):
-    return math.sqrt((3.47 - math.log10(qtn_value))**2 + (math.log10(fr_percent_value)+1.22)**2)
+    # Ensure positive values for logarithm calculations
+    safe_qtn = max(qtn_value, 0.001)  # Minimum value to prevent log(0)
+    safe_fr = max(fr_percent_value, 0.001)  # Minimum value to prevent log(0)
+    
+    try:
+        return math.sqrt((3.47 - math.log10(safe_qtn))**2 + (math.log10(safe_fr)+1.22)**2)
+    except (ValueError, ZeroDivisionError):
+        # Return a reasonable default value if calculation fails
+        return 2.5
 
 def get_qtn(qt_value, sig_v0_value, sig_v0_prime_value, n_estimate):
-    return ((1000*qt_value - sig_v0_value)/100)*((100/sig_v0_prime_value)**n_estimate)
+    # Prevent division by zero in effective stress
+    safe_sig_v0_prime = max(sig_v0_prime_value, 0.1)  # Minimum 0.1 kPa to prevent division by zero
+    
+    try:
+        return ((1000*qt_value - sig_v0_value)/100)*((100/safe_sig_v0_prime)**n_estimate)
+    except (ValueError, ZeroDivisionError, OverflowError):
+        # Return a reasonable default value if calculation fails
+        return 1.0
 
 def get_iterative_values(qt_value, sig_v0_value, sig_v0_prime_value, fr_percent_value):
     n = 0.0
@@ -130,7 +145,13 @@ def get_iterative_values(qt_value, sig_v0_value, sig_v0_prime_value, fr_percent_
     return {'qtn': qtn_val, 'lc': lc, 'n': n}
 
 def get_fr_percent(fs_value, qc_value, sig_v0_value):
-    return (fs_value/(qc_value*1000 - sig_v0_value))*100
+    denominator = qc_value * 1000 - sig_v0_value
+    if denominator <= 0:
+        # Handle edge case where qc*1000 is less than or equal to sig_v0
+        # This can happen with very small qc values or high stresses
+        # Return a small positive value to avoid division by zero
+        return 0.1
+    return (fs_value / denominator) * 100
 
 def get_qp_clay_array(depthArray, qtArray, nominalSizeDoN, nominalSizeT):
     """Calculate qp values for clay using vectorized operations"""
@@ -232,26 +253,42 @@ def pre_input_calc(data, water_table):
 
         # Use numpy for the simple calculations, then convert back to lists
         for i in range(n_points):
-            # Water pressure calculation
-            u0_kpa[i] = 0 if depth[i] <= water_table else (depth[i]-water_table)*9.81
-            
-            # Stress calculations
-            sig_v0[i] = depth[i]*gtot[i]
-            sig_v0_prime[i] = sig_v0[i]-u0_kpa[i]
-            
-            # Friction ratio calculation
-            fr_percent[i] = get_fr_percent(fs[i], qc[i], sig_v0[i])
-            
-            # Get iterative values (keeping this as is since it's complex)
-            iterative_values = get_iterative_values(qt[i], sig_v0[i], sig_v0_prime[i], fr_percent[i])
-            qtn[i] = iterative_values['qtn']
-            lc[i] = iterative_values['lc']
-            n[i] = iterative_values['n']
-            
-            # Calculate remaining parameters
-            kc[i] = get_kc(lc[i])
-            qtc[i] = get_qtc(kc[i], qt[i])
-            iz1[i] = get_iz1(qtn[i], fr_percent[i])
+            try:
+                # Water pressure calculation
+                u0_kpa[i] = 0 if depth[i] <= water_table else (depth[i]-water_table)*9.81
+                
+                # Stress calculations
+                sig_v0[i] = depth[i]*gtot[i]
+                sig_v0_prime[i] = sig_v0[i]-u0_kpa[i]
+                
+                # Ensure effective stress is positive
+                if sig_v0_prime[i] <= 0:
+                    sig_v0_prime[i] = 0.1  # Minimum value to prevent calculation errors
+                
+                # Friction ratio calculation
+                fr_percent[i] = get_fr_percent(fs[i], qc[i], sig_v0[i])
+                
+                # Get iterative values (keeping this as is since it's complex)
+                iterative_values = get_iterative_values(qt[i], sig_v0[i], sig_v0_prime[i], fr_percent[i])
+                qtn[i] = iterative_values['qtn']
+                lc[i] = iterative_values['lc']
+                n[i] = iterative_values['n']
+                
+                # Calculate remaining parameters
+                kc[i] = get_kc(lc[i])
+                qtc[i] = get_qtc(kc[i], qt[i])
+                iz1[i] = get_iz1(qtn[i], fr_percent[i])
+                
+            except Exception as e:
+                print(f"Error processing data point {i} at depth {depth[i]}: {str(e)}")
+                # Use default values for this point
+                fr_percent[i] = 1.0
+                qtn[i] = 1.0
+                lc[i] = 2.5
+                n[i] = 0.5
+                kc[i] = 1.0
+                qtc[i] = qt[i]
+                iz1[i] = 1.0
 
         return {
             'depth': depth.tolist(),
