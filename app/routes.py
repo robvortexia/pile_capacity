@@ -13,7 +13,7 @@ from .utils import (
     save_debug_details, load_debug_details, create_bored_pile_graphs,
     save_calculation_results, load_calculation_results, create_helical_pile_graphs
 )
-from .calculations import calculate_pile_capacity, process_cpt_data, pre_input_calc, get_iterative_values, calculate_bored_pile_results, calculate_helical_pile_results
+from .calculations import calculate_pile_capacity, process_cpt_data, pre_input_calc, get_iterative_values, calculate_bored_pile_results, calculate_helical_pile_results, calculate_driven_pile_results
 from datetime import datetime, timedelta
 from .models import db, Registration, Visit
 from functools import wraps
@@ -75,6 +75,39 @@ def create_data_dataframe(processed_cpt, calc_dict):
                 'Shaft Compression (kN)': calcs.get('qs_compression_segment', 'N/A'),
                 'Cumulative Shaft Tension (kN)': calcs.get('qs_tension_cumulative', 'N/A'),
                 'Cumulative Shaft Compression (kN)': calcs.get('qs_compression_cumulative', 'N/A')
+            })
+        data.append(row)
+    
+    return pd.DataFrame(data)
+
+def create_driven_data_dataframe(processed_cpt, calc_dict):
+    """Create a DataFrame with CPT data and driven pile calculations."""
+    data = []
+    for i, depth in enumerate(processed_cpt['depth']):
+        row = {
+            'Depth (m)': depth,
+            'qt (MPa)': processed_cpt['qt'][i],
+            'qc (MPa)': processed_cpt['qc'][i],
+            'fs (kPa)': processed_cpt['fs'][i],
+            'Fr (%)': processed_cpt['fr_percent'][i],
+            'Ic': processed_cpt['lc'][i]
+        }
+        
+        # Add calculation data if available for this depth
+        if depth in calc_dict:
+            calcs = calc_dict[depth]
+            row.update({
+                'q1 (MPa)': calcs.get('q1', 'N/A'),
+                'q10 (MPa)': calcs.get('q10', 'N/A'),
+                'Casing Coefficient': calcs.get('coe_casing', 'N/A'),
+                'tf tension (kPa)': calcs.get('tf_adop_tension', 'N/A'),
+                'tf compression (kPa)': calcs.get('tf_adop_compression', 'N/A'),
+                'Delta z (m)': calcs.get('delta_z', 'N/A'),
+                'Shaft Tension (kN)': calcs.get('qs_tension_segment', 'N/A'),
+                'Shaft Compression (kN)': calcs.get('qs_compression_segment', 'N/A'),
+                'Cumulative Shaft Tension (kN)': calcs.get('qs_tension_cumulative', 'N/A'),
+                'Cumulative Shaft Compression (kN)': calcs.get('qs_compression_cumulative', 'N/A'),
+                'Base Resistance (kN)': calcs.get('qb_final', 'N/A')
             })
         data.append(row)
     
@@ -239,6 +272,15 @@ def calculator_step(type, step):
                 logger.error("No debug details found or invalid format")
                 flash('Error loading calculation details', 'error')
                 return redirect(url_for('main.calculator_step', type=type, step=3))
+        elif type == 'driven' and 'debug_id' in session:
+            debug_details = load_debug_details(session['debug_id'])
+            # Add debug logging
+            logger.info(f"Debug details loaded for driven: {debug_details}")
+            if debug_details and isinstance(debug_details, list) and len(debug_details) > 0:
+                detailed_results = debug_details[0]
+            else:
+                logger.error("No debug details found for driven piles")
+                # Don't redirect for driven piles, just continue without detailed results
         
         # Debug print to see what's in the results
         logger.info(f"Rendering step 4 with results: {session['results']}")
@@ -458,11 +500,24 @@ def calculator_step(type, step):
                     flash('CPT data not found. Please upload data again.')
                     return redirect(url_for('main.calculator_step', type=type, step=1))
                 
-                # Calculate results
-                results = calculate_pile_capacity(cpt_data, session['pile_params'], pile_type=type)
-                session['results'] = results
+                # Process the CPT data
+                processed_cpt = pre_input_calc(cpt_data, float(session.get('water_table', 0)))
                 
-                return redirect(url_for('main.calculator_step', type=type, step=4))
+                try:
+                    # Calculate results using the driven pile specific function
+                    results = calculate_driven_pile_results(processed_cpt, session['pile_params'])
+                    
+                    # Store summary results in session
+                    session['results'] = results['summary']
+                    
+                    # Save detailed results and store debug_id in session
+                    debug_id = save_debug_details(results['detailed'])
+                    session['debug_id'] = debug_id
+                    
+                    return redirect(url_for('main.calculator_step', type=type, step=4))
+                except Exception as e:
+                    flash(f'Error in calculation: {str(e)}')
+                    return redirect(url_for('main.calculator_step', type=type, step=3))
             elif type == 'helical':
                 # Validate required fields
                 required_fields = ['shaft_diameter', 'helix_diameter', 'helix_depth', 'borehole_depth', 'water_table']
@@ -696,66 +751,83 @@ def download_debug_params():
                     buffer.write('\nCPT DATA AND CALCULATIONS\n')
                     df_data.to_csv(buffer, index=False)
         elif pile_type == 'driven':
-            # For driven piles, create a simplified output format
-            results = session.get('results', [])
-            
-            for result_index, result in enumerate(results):
-                if result_index > 0:
-                    buffer.write('\n\n' + '='*50 + '\n\n')
+            # For driven piles, use debug_id like bored piles for detailed output
+            if 'debug_id' in session:
+                debug_id = session['debug_id']
+                debug_details = load_debug_details(debug_id)
+                if debug_details and len(debug_details) > 0:
+                    
+                    for tip_index, tip_detail in enumerate(debug_details):
+                        if tip_index > 0:
+                            # Add separator between different tip depth data
+                            buffer.write('\n\n' + '='*50 + '\n\n')
+                        
+                        # Create constants list with tip depth included
+                        constants = [
+                            ['Tip Depth (m)', tip_detail['tip_depth']],
+                            ['Water table depth (m)', float(pile_params['water_table'])]
+                        ]
+                        
+                        # Add pile type specific parameters
+                        constants.extend([
+                            ['Pile type', 'Driven'],
+                            ['Pile end condition', pile_params.get('pile_end_condition', 'N/A')],
+                            ['Pile shape', pile_params.get('pile_shape', 'N/A')],
+                            ['Pile diameter/width (m)', pile_params.get('pile_diameter', 'N/A')],
+                            ['Wall thickness (mm)', pile_params.get('wall_thickness', 'N/A')],
+                            ['Borehole depth (m)', pile_params.get('borehole_depth', 'N/A')]
+                        ])
+                        
+                        # Write constants
+                        df_constants = pd.DataFrame(constants, columns=['Parameter', 'Value'])
+                        buffer.write(f'INPUT PARAMETERS FOR TIP DEPTH {tip_detail["tip_depth"]}m\n')
+                        df_constants.to_csv(buffer, index=False)
+                        
+                        # Process calculations for this tip depth
+                        calcs = tip_detail['calculations']
+                        calc_dict = {calc['depth']: calc for calc in calcs}
+                        
+                        # Create and populate DataFrame for driven piles
+                        df_data = create_driven_data_dataframe(processed, calc_dict)
+                        
+                        # Add a blank line between constants and data
+                        buffer.write('\nCPT DATA AND CALCULATIONS\n')
+                        df_data.to_csv(buffer, index=False)
+            else:
+                # Fallback to simplified format if no debug_id
+                results = session.get('results', [])
                 
-                tip_depth = result['tipdepth']
-                
-                # Create parameters list
-                constants = [
-                    ['Tip Depth (m)', tip_depth],
-                    ['Water table depth (m)', float(pile_params['water_table'])],
-                    ['Pile type', 'Driven'],
-                    ['Pile end condition', pile_params.get('pile_end_condition', 'N/A')],
-                    ['Pile shape', pile_params.get('pile_shape', 'N/A')],
-                    ['Pile diameter/width (m)', pile_params.get('pile_diameter', 'N/A')],
-                    ['Wall thickness (mm)', pile_params.get('wall_thickness', 'N/A')],
-                    ['Borehole depth (m)', pile_params.get('borehole_depth', 'N/A')]
-                ]
-                
-                # Write parameters
-                df_constants = pd.DataFrame(constants, columns=['Parameter', 'Value'])
-                buffer.write(f'INPUT PARAMETERS FOR TIP DEPTH {tip_depth}m\n')
-                df_constants.to_csv(buffer, index=False)
-                
-                # Write results for this tip depth
-                buffer.write('\nRESULTS\n')
-                df_result = pd.DataFrame([{
-                    'Tip Depth (m)': result['tipdepth'],
-                    'q1 (MPa)': result.get('q1', 'N/A'),  # Use get() to handle missing keys
-                    'q10 (MPa)': result.get('q10', 'N/A'),  # Use get() to handle missing keys
-                    'Tension Capacity (kN)': result['tension_capacity'],
-                    'Compression Capacity (kN)': result['compression_capacity']
-                }])
-                
-                df_result.to_csv(buffer, index=False)
-                
-                # Write CPT data
-                buffer.write('\nCPT DATA\n')
-                df_cpt = pd.DataFrame({
-                    'depth': processed['depth'],
-                    'qc (MPa)': processed['qc'],
-                    'qt (MPa)': processed['qt'],
-                    'fs (kPa)': processed['fs'],
-                    'Unit Weight (kN/m³)': processed['gtot'],
-                    'Water Pressure u0 (kPa)': processed['u0_kpa'],
-                    'Total Vertical Stress σv0 (kPa)': processed['sig_v0'],
-                    'Effective Vertical Stress σv0\' (kPa)': processed['sig_v0_prime'],
-                    'Fr (%)': processed['fr_percent'],
-                    'Normalized Tip Resistance Qtn': processed['qtn'],
-                    'Stress Exponent n': processed['n'],
-                    'Soil Behavior Type Index Ic': processed['lc'],
-                    'Pore Pressure Ratio Bq': processed['bq'],
-                    'Correction Factor Kc': processed['kc'],
-                    'Corrected Tip Resistance qtc (MPa)': processed['qtc'],
-                    'Soil Behavior Index Iz': processed['iz1']
-                })
-                
-                df_cpt.to_csv(buffer, index=False)
+                for result_index, result in enumerate(results):
+                    if result_index > 0:
+                        buffer.write('\n\n' + '='*50 + '\n\n')
+                    
+                    tip_depth = result['tipdepth']
+                    
+                    # Create parameters list
+                    constants = [
+                        ['Tip Depth (m)', tip_depth],
+                        ['Water table depth (m)', float(pile_params['water_table'])],
+                        ['Pile type', 'Driven'],
+                        ['Pile end condition', pile_params.get('pile_end_condition', 'N/A')],
+                        ['Pile shape', pile_params.get('pile_shape', 'N/A')],
+                        ['Pile diameter/width (m)', pile_params.get('pile_diameter', 'N/A')],
+                        ['Wall thickness (mm)', pile_params.get('wall_thickness', 'N/A')],
+                        ['Borehole depth (m)', pile_params.get('borehole_depth', 'N/A')]
+                    ]
+                    
+                    # Write parameters
+                    df_constants = pd.DataFrame(constants, columns=['Parameter', 'Value'])
+                    buffer.write(f'INPUT PARAMETERS FOR TIP DEPTH {tip_depth}m\n')
+                    df_constants.to_csv(buffer, index=False)
+                    
+                    # Write basic results for this tip depth
+                    buffer.write('\nBASIC RESULTS\n')
+                    df_result = pd.DataFrame([{
+                        'Tip Depth (m)': result['tipdepth'],
+                        'Tension Capacity (kN)': result['tension_capacity'],
+                        'Compression Capacity (kN)': result['compression_capacity']
+                    }])
+                    df_result.to_csv(buffer, index=False)
         elif pile_type == 'helical':
             # For helical piles, use debug_id like bored piles
             if 'debug_id' in session:
