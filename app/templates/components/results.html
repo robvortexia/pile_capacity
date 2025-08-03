@@ -71,7 +71,7 @@
                             <tbody>
                                 <tr>
                                     <th>Tip Depth (m)</th>
-                                    <td>{{ "%.1f"|format(results.get('tipdepth', 0)) }}</td>
+                                    <td>{{ "%.2f"|format(results.get('tipdepth', 0)) }}</td>
                                 </tr>
                                 <tr>
                                     <th>qb0.1 Compression (MPa)</th>
@@ -291,7 +291,7 @@
                                 <tbody>
                                     {% for result in results %}
                                     <tr>
-                                        <td>{{ "%.0f"|format(result.tipdepth) }}</td>
+                                        <td>{{ "%.2f"|format(result.tipdepth) }}</td>
                                         <td>{{ "%.0f"|format(result.tension_capacity) }}</td>
                                         <td>{{ "%.0f"|format(result.compression_capacity) }}</td>
                                     </tr>
