@@ -50,7 +50,7 @@ def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 def create_data_dataframe(processed_cpt, calc_dict):
-    """Create a DataFrame with CPT data and calculations."""
+    """Create a DataFrame with CPT data and bored pile calculations."""
     data = []
     for i, depth in enumerate(processed_cpt['depth']):
         row = {
@@ -66,13 +66,16 @@ def create_data_dataframe(processed_cpt, calc_dict):
         if depth in calc_dict:
             calcs = calc_dict[depth]
             row.update({
+                'sig_v0_prime (kPa)': calcs.get('sig_v0_prime', 'N/A'),
+                'u0 (kPa)': calcs.get('u0', 'N/A'),
+                'sig_v0 (kPa)': calcs.get('sig_v0', 'N/A'),
                 'Casing Coefficient': calcs.get('coe_casing', 'N/A'),
                 'qb0.1 (MPa)': calcs.get('qb01_adop', 'N/A'),
                 'tf tension (kPa)': calcs.get('tf_tension', 'N/A'),
                 'tf compression (kPa)': calcs.get('tf_compression', 'N/A'),
                 'Delta z (m)': calcs.get('delta_z', 'N/A'),
-                'Shaft Tension (kN)': calcs.get('qs_tension_segment', 'N/A'),
-                'Shaft Compression (kN)': calcs.get('qs_compression_segment', 'N/A'),
+                'Shaft Tension Segment (kN)': calcs.get('qs_tension_segment', 'N/A'),
+                'Shaft Compression Segment (kN)': calcs.get('qs_compression_segment', 'N/A'),
                 'Cumulative Shaft Tension (kN)': calcs.get('qs_tension_cumulative', 'N/A'),
                 'Cumulative Shaft Compression (kN)': calcs.get('qs_compression_cumulative', 'N/A')
             })
@@ -90,21 +93,42 @@ def create_driven_data_dataframe(processed_cpt, calc_dict):
             'qc (MPa)': processed_cpt['qc'][i],
             'fs (kPa)': processed_cpt['fs'][i],
             'Fr (%)': processed_cpt['fr_percent'][i],
-            'Ic': processed_cpt['lc'][i]
+            'qtn': processed_cpt['qtn'][i],
+            'n': processed_cpt['n'][i],
+            'Ic': processed_cpt['lc'][i],
+            'gtot (kN/m³)': processed_cpt['gtot'][i],
+            'u0 (kPa)': processed_cpt['u0_kpa'][i]
         }
         
         # Add calculation data if available for this depth
         if depth in calc_dict:
             calcs = calc_dict[depth]
             row.update({
+                'qtc (MPa)': calcs.get('qtc', 'N/A'),
+                'gtot (kN/m³)': calcs.get('gtot', 'N/A'),
+                'sig_v0 (kPa)': calcs.get('sig_v0', 'N/A'),
+                'sig_v0_prime (kPa)': calcs.get('sig_v0_prime', 'N/A'),
+                'u0 (kPa)': calcs.get('u0', 'N/A'),
+                'iz1': calcs.get('iz1', 'N/A'),
+                'h (m)': calcs.get('h', 'N/A'),
                 'q1 (MPa)': calcs.get('q1', 'N/A'),
                 'q10 (MPa)': calcs.get('q10', 'N/A'),
+                'qp_sand (MPa)': calcs.get('qp_sand', 'N/A'),
+                'qp_clay (MPa)': calcs.get('qp_clay', 'N/A'),
+                'qp_adopted (MPa)': calcs.get('qp_adopted', 'N/A'),
+                'qb1_sand (MPa)': calcs.get('qb1_sand', 'N/A'),
+                'qb1_clay (MPa)': calcs.get('qb1_clay', 'N/A'),
+                'qb1_adopted (MPa)': calcs.get('qb1_adopted', 'N/A'),
                 'Casing Coefficient': calcs.get('coe_casing', 'N/A'),
-                'tf tension (kPa)': calcs.get('tf_adop_tension', 'N/A'),
-                'tf compression (kPa)': calcs.get('tf_adop_compression', 'N/A'),
+                'delta_ord (degrees)': calcs.get('delta_ord', 'N/A'),
+                'orc_val': calcs.get('orc_val', 'N/A'),
+                'tf_sand (kPa)': calcs.get('tf_sand', 'N/A'),
+                'tf_clay (kPa)': calcs.get('tf_clay', 'N/A'),
+                'tf_adop_tension (kPa)': calcs.get('tf_adop_tension', 'N/A'),
+                'tf_adop_compression (kPa)': calcs.get('tf_adop_compression', 'N/A'),
                 'Delta z (m)': calcs.get('delta_z', 'N/A'),
-                'Shaft Tension (kN)': calcs.get('qs_tension_segment', 'N/A'),
-                'Shaft Compression (kN)': calcs.get('qs_compression_segment', 'N/A'),
+                'Shaft Tension Segment (kN)': calcs.get('qs_tension_segment', 'N/A'),
+                'Shaft Compression Segment (kN)': calcs.get('qs_compression_segment', 'N/A'),
                 'Cumulative Shaft Tension (kN)': calcs.get('qs_tension_cumulative', 'N/A'),
                 'Cumulative Shaft Compression (kN)': calcs.get('qs_compression_cumulative', 'N/A'),
                 'Base Resistance (kN)': calcs.get('qb_final', 'N/A')
@@ -735,6 +759,18 @@ def download_debug_params():
                         ['Cased depth (m)', pile_params.get('cased_depth', 'N/A')]
                     ])
                     
+                    # Add pile calculation constants if available
+                    if 'pile_constants' in tip_detail:
+                        pile_consts = tip_detail['pile_constants']
+                        constants.extend([
+                            ['', ''],  # Empty row for spacing
+                            ['PILE CALCULATION CONSTANTS', ''],
+                            ['Pile Perimeter (m)', pile_consts.get('pile_perimeter', 'N/A')],
+                            ['Base Area (m²)', pile_consts.get('base_area', 'N/A')],
+                            ['Minimum qb0.1 (MPa)', pile_consts.get('min_qb01', 'N/A')],
+                            ['Total Base Resistance (kN)', pile_consts.get('base_resistance', 'N/A')]
+                        ])
+                    
                     # Write constants
                     df_constants = pd.DataFrame(constants, columns=['Parameter', 'Value'])
                     buffer.write(f'INPUT PARAMETERS FOR TIP DEPTH {tip_detail["tip_depth"]}m\n')
@@ -768,6 +804,18 @@ def download_debug_params():
                             ['Water table depth (m)', float(pile_params['water_table'])]
                         ]
                         
+                        # Calculate area and perimeter like in calculate_driven_pile_results
+                        pile_shape = 0 if pile_params.get('pile_shape') == 'circular' else 1
+                        nominal_size_don = float(pile_params.get('pile_diameter', 0))
+                        
+                        # Calculate area
+                        if pile_shape == 0:  # circular
+                            area_value = (3.14159/4) * (nominal_size_don**2)
+                            pile_perimeter = 3.14159 * nominal_size_don
+                        else:  # square
+                            area_value = nominal_size_don**2
+                            pile_perimeter = 4 * nominal_size_don
+                        
                         # Add pile type specific parameters
                         constants.extend([
                             ['Pile type', 'Driven'],
@@ -775,8 +823,23 @@ def download_debug_params():
                             ['Pile shape', pile_params.get('pile_shape', 'N/A')],
                             ['Pile diameter/width (m)', pile_params.get('pile_diameter', 'N/A')],
                             ['Wall thickness (mm)', pile_params.get('wall_thickness', 'N/A')],
-                            ['Borehole depth (m)', pile_params.get('borehole_depth', 'N/A')]
+                            ['Borehole depth (m)', pile_params.get('borehole_depth', 'N/A')],
+                            ['Pile Area (m²)', f'{area_value:.4f}'],
+                            ['Pile Perimeter (m)', f'{pile_perimeter:.4f}']
                         ])
+                        
+                        # Add pile calculation constants if available
+                        if 'pile_constants' in tip_detail:
+                            pile_consts = tip_detail['pile_constants']
+                            constants.extend([
+                                ['', ''],  # Empty row for spacing
+                                ['PILE CALCULATION CONSTANTS', ''],
+                                ['Internal Friction Ratio (IFR)', pile_consts.get('ifr_value', 'N/A')],
+                                ['Area Ratio (Are)', pile_consts.get('are_value', 'N/A')],
+                                ['Effective Diameter (Dstar)', pile_consts.get('dstar_value', 'N/A')],
+                                ['Pile Shape Code', pile_consts.get('pile_shape', 'N/A')],
+                                ['End Condition Code', pile_consts.get('pile_end_condition', 'N/A')]
+                            ])
                         
                         # Write constants
                         df_constants = pd.DataFrame(constants, columns=['Parameter', 'Value'])

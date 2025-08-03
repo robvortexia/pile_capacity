@@ -139,7 +139,7 @@ def get_iterative_values(qt_value, sig_v0_value, sig_v0_prime_value, fr_percent_
     while err > 0.001:
         qtn_val = get_qtn(qt_value, sig_v0_value, sig_v0_prime_value, ntrial)
         lc = 0.0 if fr_percent_value == 0 else get_lc(qtn_val, fr_percent_value)
-        n = min(1, 0.381*lc + 0.05*(fr_percent_value/100)-0.15)
+        n = min(1, 0.381*lc + 0.05*(sig_v0_prime_value/100)-0.15)
         err = abs(ntrial - n)
         ntrial = n
     return {'qtn': qtn_val, 'lc': lc, 'n': n}
@@ -255,10 +255,14 @@ def pre_input_calc(data, water_table):
         for i in range(n_points):
             try:
                 # Water pressure calculation
-                u0_kpa[i] = 0 if depth[i] <= water_table else (depth[i]-water_table)*9.81
+                # Using 10 kN/m³ for unit weight of water (simplified from 9.81 kN/m³ for engineering convenience)
+                u0_kpa[i] = 0 if depth[i] <= water_table else (depth[i]-water_table)*10
                 
-                # Stress calculations
-                sig_v0[i] = depth[i]*gtot[i]
+                # Stress calculations - incremental method for varying soil properties
+                if i == 0:
+                    sig_v0[i] = depth[i] * gtot[i]  # First layer: stress = depth × unit weight
+                else:
+                    sig_v0[i] = sig_v0[i-1] + (gtot[i] * (depth[i] - depth[i-1]))  # Incremental: previous stress + layer stress
                 sig_v0_prime[i] = sig_v0[i]-u0_kpa[i]
                 
                 # Ensure effective stress is positive
@@ -480,6 +484,8 @@ def calculate_pile_capacity(cpt_data, params, pile_type='driven'):
                     orc_val = get_orc(qtc_values[i], are_value, nominal_size_don, h[i])
                     tf_sand = get_tf_sand(coe_casing[i], delta_ord, orc_val)
                 else:
+                    delta_ord = 0
+                    orc_val = 0
                     tf_sand = 0
                 
                 tf_clay = get_tf_clay(qt_values[i], coe_casing[i], h[i], dstar_value)
@@ -655,8 +661,15 @@ def calculate_bored_pile_results(processed_cpt, params):
             depth_calculations.append({
                 'depth': np.float64(depths[i]),
                 'qt': np.float64(qt_val),
+                'qc': np.float64(processed_cpt['qc'][i]),
+                'fs': np.float64(processed_cpt['fs'][i]),
                 'lc': np.float64(lc_val),
                 'fr': np.float64(fr_val),
+                'sig_v0_prime': np.float64(processed_cpt['sig_v0_prime'][i]),
+                'u0': np.float64(processed_cpt['u0'][i]),
+                'sig_v0': np.float64(processed_cpt['sig_v0'][i]),
+                'qtn': np.float64(processed_cpt['qtn'][i]),
+                'n': np.float64(processed_cpt['n'][i]),
                 'coe_casing': np.float64(coe_casing),
                 'qb01_adop': np.float64(qb01_adop),
                 'tf_tension': np.float64(tf_tension),
@@ -674,7 +687,16 @@ def calculate_bored_pile_results(processed_cpt, params):
         
         detailed_results.append({
             'tip_depth': chosen_tip,
-            'calculations': depth_calculations
+            'calculations': depth_calculations,
+            'pile_constants': {
+                'shaft_diameter': np.float64(shaft_diameter),
+                'base_diameter': np.float64(base_diameter),
+                'borehole_depth': np.float64(borehole_depth),
+                'pile_perimeter': np.float64(pile_perimeter),
+                'base_area': np.float64(Ab),
+                'min_qb01': np.float64(min_qb01),
+                'base_resistance': np.float64(base_resistance)
+            }
         })
         
         summary_results.append({
@@ -1213,6 +1235,8 @@ def calculate_driven_pile_results(processed_cpt, params):
                 orc_val = get_orc(qtc_values[i], are_value, nominal_size_don, h[i])
                 tf_sand = get_tf_sand(coe_casing[i], delta_ord, orc_val)
             else:
+                delta_ord = 0
+                orc_val = 0
                 tf_sand = 0
             
             tf_clay = get_tf_clay(qt_values[i], coe_casing[i], h[i], dstar_value)
@@ -1238,12 +1262,31 @@ def calculate_driven_pile_results(processed_cpt, params):
                 'depth': np.float64(depths[i]),
                 'qt': np.float64(qt_values[i]),
                 'qc': np.float64(processed_cpt['qc'][i]),
+                'qtc': np.float64(qtc_values[i]),
                 'fs': np.float64(fs_values[i]),
                 'fr_percent': np.float64(fr_values[i]),
                 'lc': np.float64(lc_values[i]),
+                'gtot': np.float64(processed_cpt['gtot'][i]),
+                'sig_v0': np.float64(processed_cpt['sig_v0'][i]),
+                'sig_v0_prime': np.float64(processed_cpt['sig_v0_prime'][i]),
+                'u0': np.float64(processed_cpt['u0_kpa'][i]),
+                'qtn': np.float64(processed_cpt['qtn'][i]),
+                'n': np.float64(processed_cpt['n'][i]),
+                'iz1': np.float64(processed_cpt['iz1'][i]),
+                'h': np.float64(h[i]),
                 'q1': np.float64(q1_values[i]),
                 'q10': np.float64(q10_values[i]),
+                'qp_sand': np.float64(qp_sand_array[i]),
+                'qp_clay': np.float64(qp_clay_array[i]),
+                'qp_adopted': np.float64(qp_values[i]),
+                'qb1_sand': np.float64(qb1_sand[i]),
+                'qb1_clay': np.float64(qb1_clay[i]),
+                'qb1_adopted': np.float64(qb1_adop[i]),
                 'coe_casing': np.float64(coe_casing[i]),
+                'delta_ord': np.float64(delta_ord),
+                'orc_val': np.float64(orc_val),
+                'tf_sand': np.float64(tf_sand),
+                'tf_clay': np.float64(tf_clay),
                 'tf_adop_tension': np.float64(tf_adop_tension),
                 'tf_adop_compression': np.float64(tf_adop_compression),
                 'delta_z': np.float64(delta_z),
@@ -1267,7 +1310,20 @@ def calculate_driven_pile_results(processed_cpt, params):
         
         detailed_results.append({
             'tip_depth': tip_depth,
-            'calculations': depth_calculations
+            'calculations': depth_calculations,
+            'pile_constants': {
+                'nominal_size_don': np.float64(nominal_size_don),
+                'nominal_size_t': np.float64(nominal_size_t),
+                'diameter': np.float64(diameter),
+                'borehole_depth': np.float64(borehole),
+                'pile_perimeter': np.float64(pile_perimeter),
+                'ifr_value': np.float64(ifr_value),
+                'are_value': np.float64(are_value),
+                'area_value': np.float64(area_value),
+                'dstar_value': np.float64(dstar_value),
+                'pile_shape': pile_shape,
+                'pile_end_condition': pile_end_condition
+            }
         })
         
         summary_results.append({
