@@ -38,6 +38,33 @@
                 Start Helical Pile Analysis
             </a>
         </div>
+        
+        <div class="option-card coming-soon">
+            <div class="coming-soon-ribbon">Coming Soon</div>
+            <h2>Shallow Foundations</h2>
+            <p>Load-settlement behaviour of footings on sand and clay</p>
+            <button class="btn btn-disabled" disabled>
+                Start Shallow Footing analysis
+            </button>
+        </div>
+        
+        <div class="option-card coming-soon">
+            <div class="coming-soon-ribbon">Coming Soon</div>
+            <h2>Laterally loaded monopiles</h2>
+            <p>Calculate the lateral load-displacement response of monopiles (for sand only)</p>
+            <button class="btn btn-disabled" disabled>
+                Start Monopile Analysis
+            </button>
+        </div>
+        
+        <div class="option-card coming-soon">
+            <div class="coming-soon-ribbon">Coming Soon</div>
+            <h2>Displacement of embedded cantilever wall</h2>
+            <p>Calculate the lateral displacement of a cantilever wall (for sand only)</p>
+            <button class="btn btn-disabled" disabled>
+                Start Cantilever Wall Analysis
+            </button>
+        </div>
     </div>
 </div>
 
@@ -169,6 +196,59 @@
 .btn-primary:hover {
     transform: translateY(-2px);
     box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+}
+
+/* Coming Soon Styles */
+.option-card.coming-soon {
+    position: relative;
+    opacity: 0.7;
+    filter: grayscale(20%);
+}
+
+.option-card.coming-soon:hover {
+    transform: none;
+}
+
+.coming-soon-ribbon {
+    position: absolute;
+    top: 15px;
+    right: -10px;
+    background: linear-gradient(45deg, #ff6b6b, #ee5a52);
+    color: white;
+    padding: 5px 25px;
+    font-size: 0.8rem;
+    font-weight: bold;
+    text-transform: uppercase;
+    transform: rotate(10deg);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    z-index: 10;
+}
+
+.coming-soon-ribbon:before {
+    content: '';
+    position: absolute;
+    top: 100%;
+    right: 0;
+    border: 3px solid #d63031;
+    border-color: #d63031 transparent transparent #d63031;
+}
+
+.btn-disabled {
+    display: inline-block;
+    padding: 0.8rem 1.5rem;
+    font-weight: 500;
+    background-color: #e9ecef;
+    color: #6c757d;
+    border: 1px solid #dee2e6;
+    border-radius: var(--border-radius);
+    text-decoration: none;
+    cursor: not-allowed;
+    transition: none;
+}
+
+.btn-disabled:hover {
+    transform: none;
+    box-shadow: none;
 }
 
 @media (max-width: 992px) {
