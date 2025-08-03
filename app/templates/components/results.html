@@ -239,10 +239,12 @@
                                 <th>Pile Diameter</th>
                                 <td>{{ session.get('pile_params', {}).get('pile_diameter', 'N/A') }} m</td>
                             </tr>
+                            {% if session.get('pile_params', {}).get('pile_shape', '') != 'square' %}
                             <tr>
                                 <th>Wall Thickness</th>
                                 <td>{{ session.get('pile_params', {}).get('wall_thickness', 'N/A') }} mm</td>
                             </tr>
+                            {% endif %}
                             {% else %}
                             <tr>
                                 <th>Site Name</th>
