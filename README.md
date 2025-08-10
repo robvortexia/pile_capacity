@@ -42,3 +42,9 @@ The application now stores analytics data in the database, including:
 - Calculation parameters and results
 
 This data persists across deployments and can be viewed in the admin dashboard.
+
+## Change Log
+
+- 2025-08-10: Driven piles base resistance ramp to 8×D
+  - Implemented linear ramp of `qb1_adopted` with depth up to 8×pile diameter (D) for driven piles, per design note. For depths z ≤ 8D, `qb1_adopted = qb1 * z/(8D)`; for z > 8D, full `qb1` is used.
+  - Removed previous hard 8×D cutoff inside `get_qp_sand_array` and `get_qp_clay_array`. We now compute `qp` at all depths, applying the depth effect only at the base resistance stage. See `calculate_driven_pile_results` around the qb1 computation for details.

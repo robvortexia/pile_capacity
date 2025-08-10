@@ -154,47 +154,44 @@ def get_fr_percent(fs_value, qc_value, sig_v0_value):
     return (fs_value / denominator) * 100
 
 def get_qp_clay_array(depthArray, qtArray, nominalSizeDoN, nominalSizeT):
-    """Calculate qp values for clay using vectorized operations"""
+    """Calculate qp values for clay using vectorized operations.
+
+    Change (2025-08-10): Previously values above 8×D only were considered and
+    values shallower than 8×D were hard-zeroed. To support the requested linear
+    ramp of base resistance up to 8×D for driven piles, we now compute qp at
+    all depths (no hard cutoff). The depth effect is applied later as a ramp on
+    qb1 instead of zeroing qp here.
+    """
     depthArray = np.array(depthArray)
     qtArray = np.array(qtArray)
-    
-    # Points less than 8*diameter return 0
-    qpArray = np.zeros_like(qtArray)
-    valid_points = depthArray > (8*nominalSizeDoN)
-    
-    if not np.any(valid_points):
-        return qpArray.tolist()
-    
-    # For valid points, calculate the moving average
+
+    # Moving average window based on wall thickness for clay
     window_size = int(np.ceil(20 * nominalSizeT / np.mean(np.diff(depthArray))))
-    window_size = max(1, min(window_size, len(qtArray) // 2))  # Reasonable limits
-    
-    # Use numpy's convolve for efficient moving average
-    weights = np.ones(2*window_size + 1) / (2*window_size + 1)
-    qpArray[valid_points] = np.convolve(qtArray, weights, mode='same')[valid_points]
-    
+    window_size = max(1, min(window_size, len(qtArray) // 2))
+
+    # Use numpy's convolve for efficient moving average across all points
+    weights = np.ones(2 * window_size + 1) / (2 * window_size + 1)
+    qpArray = np.convolve(qtArray, weights, mode='same')
+
     return qpArray.tolist()
 
 def get_qp_sand_array(depthArray, qtArray, nominalSizeDoN):
-    """Calculate qp values for sand using vectorized operations"""
+    """Calculate qp values for sand using vectorized operations.
+
+    Change (2025-08-10): Removed the hard 8×D zeroing. The 8×D shallow depth
+    effect is now handled as a linear ramp on qb1 for driven piles, not here.
+    """
     depthArray = np.array(depthArray)
     qtArray = np.array(qtArray)
-    
-    # Points less than 8*diameter return 0
-    qpArray = np.zeros_like(qtArray)
-    valid_points = depthArray > (8*nominalSizeDoN)
-    
-    if not np.any(valid_points):
-        return qpArray.tolist()
-    
-    # For valid points, calculate the moving average
+
+    # Moving average window based on pile diameter for sand
     window_size = int(np.ceil(1.5 * nominalSizeDoN / np.mean(np.diff(depthArray))))
-    window_size = max(1, min(window_size, len(qtArray) // 2))  # Reasonable limits
-    
-    # Use numpy's convolve for efficient moving average
-    weights = np.ones(2*window_size + 1) / (2*window_size + 1)
-    qpArray[valid_points] = np.convolve(qtArray, weights, mode='same')[valid_points]
-    
+    window_size = max(1, min(window_size, len(qtArray) // 2))
+
+    # Use numpy's convolve for efficient moving average across all points
+    weights = np.ones(2 * window_size + 1) / (2 * window_size + 1)
+    qpArray = np.convolve(qtArray, weights, mode='same')
+
     return qpArray.tolist()
 
 def get_qp_mix_array(qp_sand_val, qp_clay_val, lc):
@@ -625,6 +622,9 @@ def calculate_bored_pile_results(processed_cpt, params):
         zone_end_index = min(range(len(depths)), key=lambda i: abs(depths[i]-zone_end))
         qb01_values = []
         
+        # Find the index of the tip depth to limit detailed output
+        tip_depth_index = min(range(len(depths)), key=lambda i: abs(depths[i]-chosen_tip))
+        
         for i in range(len(depths)):
             if depths[i] > chosen_tip:
                 continue
@@ -657,7 +657,7 @@ def calculate_bored_pile_results(processed_cpt, params):
             qs_tension_cumulative += qs_tension_segment
             qs_compression_cumulative += qs_compression_segment
             
-            # Store all calculations for this depth
+            # Store all calculations for this depth (only up to tip depth)
             depth_calculations.append({
                 'depth': np.float64(depths[i]),
                 'qt': np.float64(qt_val),
@@ -680,6 +680,10 @@ def calculate_bored_pile_results(processed_cpt, params):
                 'qs_tension_cumulative': np.float64(qs_tension_cumulative),
                 'qs_compression_cumulative': np.float64(qs_compression_cumulative)
             })
+            
+            # Stop storing detailed calculations once we reach the tip depth
+            if i >= tip_depth_index:
+                break
         
         # Calculate base resistance using minimum qb01_adop in the zone
         min_qb01 = min(qb01_values) if qb01_values else 0
@@ -1209,8 +1213,21 @@ def calculate_driven_pile_results(processed_cpt, params):
         # Calculate base resistance components
         qb1_sand = get_qb1_sand(are_value, qp_sand_array)
         qb1_clay = get_qb1_clay(qp_clay_array, dstar_value, nominal_size_don)
-        qb1_adop = np.where(lc_values > 2.5, qb1_clay, qb1_sand)
-        qb_final = get_qb_final(qb1_adop, area_value)
+        # For qb1 only, classify sand/clay using Ic threshold 2.6 (per design note)
+        qb1_adop = np.where(lc_values >= 2.6, qb1_clay, qb1_sand)
+
+        # Depth ramp up to 8×D for qb1 adoption (Driven piles only)
+        # Evidence/Note (2025-08-10): Per user note, base resistance should
+        # increase linearly with depth for z ≤ 8D: qb1_adopted = qb1 * z/(8D).
+        # Above 8D, full qb1 is adopted. We apply this here using the current
+        # depth array to avoid hard-zeroing in qp functions and to keep the
+        # ramp logic local to the driven pile base resistance.
+        depth_array_np = np.array(depths)
+        ramp_denominator = max(8 * nominal_size_don, 1e-9)
+        ramp_factor = np.clip(depth_array_np / ramp_denominator, 0.0, 1.0)
+        qb1_adop_ramped = qb1_adop * ramp_factor
+
+        qb_final = get_qb_final(qb1_adop_ramped, area_value)
         
         # Calculate q1 and q10 values for all depths
         q1_values = []
@@ -1224,6 +1241,9 @@ def calculate_driven_pile_results(processed_cpt, params):
         # Calculate shaft resistance and store detailed data
         qs_tension_cumulative = 0
         qs_compression_cumulative = 0
+        
+        # Find the index of the tip depth to limit detailed output
+        tip_depth_index = min(range(len(depths)), key=lambda i: abs(depths[i]-tip_depth))
         
         for i in range(len(depths)):
             if depths[i] > tip_depth:
@@ -1257,7 +1277,7 @@ def calculate_driven_pile_results(processed_cpt, params):
             qs_tension_cumulative += qs_tension_segment
             qs_compression_cumulative += qs_compression_segment
             
-            # Store all calculations for this depth
+            # Store all calculations for this depth (only up to tip depth)
             depth_calculations.append({
                 'depth': np.float64(depths[i]),
                 'qt': np.float64(qt_values[i]),
@@ -1281,7 +1301,7 @@ def calculate_driven_pile_results(processed_cpt, params):
                 'qp_adopted': np.float64(qp_values[i]),
                 'qb1_sand': np.float64(qb1_sand[i]),
                 'qb1_clay': np.float64(qb1_clay[i]),
-                'qb1_adopted': np.float64(qb1_adop[i]),
+                'qb1_adopted': np.float64(qb1_adop_ramped[i]),
                 'coe_casing': np.float64(coe_casing[i]),
                 'delta_ord': np.float64(delta_ord),
                 'orc_val': np.float64(orc_val),
@@ -1296,6 +1316,10 @@ def calculate_driven_pile_results(processed_cpt, params):
                 'qs_compression_cumulative': np.float64(qs_compression_cumulative),
                 'qb_final': np.float64(qb_final[i])
             })
+            
+            # Stop storing detailed calculations once we reach the tip depth
+            if i >= tip_depth_index:
+                break
         
         # Get final capacities
         if needs_interpolation:
