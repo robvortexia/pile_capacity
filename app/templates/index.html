@@ -66,6 +66,14 @@
             </button>
         </div>
     </div>
+
+    <!-- 3D PIV Research Advertisement - Subtle placement -->
+    <div class="research-ad">
+        <a href="https://aus01.safelinks.protection.outlook.com/?url=https%3A%2F%2Fsites.google.com%2Fview%2F3d-piv-measurement&data=05%7C02%7C%7C69fae4f7909842099b8c08ddc8035546%7C84df9e7fe9f640afb435aaaaaaaaaaaa%7C1%7C0%7C638886639025449897%7CUnknown%7CTWFpbGZsb3d8eyJFbXB0eU1hcGkiOnRydWUsIlYiOiIwLjAuMDAwMCIsIlAiOiJXaW4zMiIsIkFOIjoiTWFpbCIsIldUIjoyfQ%3D%3D%7C0%7C%7C%7C&sdata=oGqoKN%2FMOKzibN%2FofyJLuWQm5yWYUdJrRM6YbQSxmAA%3D&reserved=0" class="research-link" id="piv-ad-link" target="_blank" rel="noopener noreferrer">
+            <i class="fas fa-external-link-alt"></i>
+            Check out our <strong>3D PIV Measurement Research</strong> - Advanced geotechnical measurement techniques
+        </a>
+    </div>
 </div>
 
     <style>
@@ -158,7 +166,7 @@
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
     gap: 2rem;
-    margin-bottom: 1rem;
+    margin-bottom: 2rem;
 }
 
     .option-card {
@@ -251,6 +259,42 @@
     box-shadow: none;
 }
 
+/* Research Advertisement Styles */
+.research-ad {
+    margin: 2rem 0;
+    padding: 1rem;
+    text-align: center;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: var(--border-radius);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.research-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: white;
+    text-decoration: none;
+    font-size: 0.95rem;
+    transition: all 0.3s ease;
+}
+
+.research-link:hover {
+    color: #f0f0f0;
+    text-decoration: none;
+    transform: translateY(-1px);
+}
+
+.research-link strong {
+    color: #ffa726;
+    font-weight: 600;
+}
+
+.research-link i {
+    font-size: 0.9rem;
+    opacity: 0.8;
+}
+
 @media (max-width: 992px) {
     .hero-content {
         grid-template-columns: 1fr;
@@ -258,4 +302,27 @@
     }
 }
 </style>
+
+<script>
+// Track 3D PIV advertisement clicks
+document.addEventListener('DOMContentLoaded', function() {
+    const adLink = document.getElementById('piv-ad-link');
+    if (adLink) {
+        adLink.addEventListener('click', function(e) {
+            // Track the click before navigating
+            fetch('{{ url_for("main.track_ad_click") }}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({})
+            }).catch(function(error) {
+                console.log('Error tracking ad click:', error);
+            });
+            
+            // Continue with normal link behavior
+        });
+    }
+});
+</script>
 {% endblock %} 

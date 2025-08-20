@@ -136,6 +136,28 @@
         </div>
         
         <div class="analytics-card">
+            <h3>3D PIV Advertisement Clicks</h3>
+            <div class="analytics-table">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Action</th>
+                            <th>Count</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for stat in ad_click_stats %}
+                        <tr>
+                            <td>{{ stat.data_key }}</td>
+                            <td>{{ stat.count }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        <div class="analytics-card">
             <h3>Daily Visits</h3>
             <div class="analytics-table">
                 <table>

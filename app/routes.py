@@ -173,6 +173,19 @@ def index():
         )
     return response
 
+@bp.route('/track_ad_click', methods=['POST'])
+def track_ad_click():
+    """Track when users click the 3D PIV advertisement"""
+    try:
+        # Store the click event in analytics
+        store_analytics_data('ad_click', '3d_piv_research', 'clicked')
+        
+        # Return success response
+        return jsonify({'success': True}), 200
+    except Exception as e:
+        logger.error(f"Error tracking ad click: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @bp.route('/<type>/calculator/<int:step>', methods=['GET', 'POST'])
 def calculator_step(type, step):
     # Check if we're switching pile types
@@ -1330,6 +1343,9 @@ def admin():
     
     # Get analytics data statistics for pile parameters
     param_stats = get_analytics_data_stats('pile_params', days=30)
+    
+    # Get advertisement click statistics
+    ad_click_stats = get_analytics_data_stats('ad_click', days=30)
 
     return render_template('admin.html', 
                          registrations=registrations,
@@ -1339,7 +1355,8 @@ def admin():
                          visit_stats=visit_stats,
                          page_visit_stats=page_visit_stats,
                          pile_type_stats=pile_type_stats,
-                         param_stats=param_stats)
+                         param_stats=param_stats,
+                         ad_click_stats=ad_click_stats)
 
 @bp.route('/admin/export')
 @admin_required
