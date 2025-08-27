@@ -448,11 +448,15 @@ def calculator_step(type, step):
         elif step == 3:
             if type == 'bored':
                 # Add validation for bored pile parameters
-                required_fields = ['shaft_diameter', 'base_diameter', 'cased_depth', 'water_table', 'pile_tip_depths']
+                required_fields = ['shaft_diameter', 'base_diameter', 'cased_depth', 'pile_tip_depths']
                 for field in required_fields:
                     if field not in request.form or not request.form[field]:
                         flash(f'Missing required field: {field}')
                         return redirect(url_for('main.calculator_step', type=type, step=3))
+                
+                # Debug logging
+                logger.info(f"Bored pile form submitted with data: {request.form}")
+                logger.info(f"Session water table: {session.get('water_table')}")
                 
                 # Parse pile tip depths from the comma-separated string
                 tip_depths_str = request.form.get('pile_tip_depths', '')
@@ -487,17 +491,22 @@ def calculator_step(type, step):
                 
                 try:
                     # Calculate results using the bored pile specific function
+                    logger.info(f"Starting bored pile calculation with params: {session['pile_params']}")
                     results = calculate_bored_pile_results(processed_cpt, session['pile_params'])
+                    logger.info(f"Calculation completed successfully")
                     
                     # Store summary results in session
                     session['results'] = results['summary']
+                    logger.info(f"Results stored in session: {session['results']}")
                     
                     # Save detailed results and store debug_id in session
                     debug_id = save_debug_details(results['detailed'])
                     session['debug_id'] = debug_id
+                    logger.info(f"Debug ID stored: {debug_id}")
                     
                     return redirect(url_for('main.calculator_step', type=type, step=4))
                 except Exception as e:
+                    logger.error(f"Error in bored pile calculation: {str(e)}")
                     flash(f'Error in calculation: {str(e)}')
                     return redirect(url_for('main.calculator_step', type=type, step=3))
             elif type == 'driven':
@@ -696,16 +705,24 @@ def calculator_step(type, step):
         if 'cpt_data_id' not in session:
             flash('No CPT data available. Please complete previous steps first.')
             return redirect(url_for('main.calculator_step', type=type, step=1))
+        logger.info(f"Rendering step 3 for {type} piles")
         return render_template(f'{type}/steps.html', step=step, type=type)
         
     elif step == 4:
+        logger.info(f"Step 4 GET request for {type} piles")
+        logger.info(f"Results in session: {session.get('results')}")
+        logger.info(f"Debug ID in session: {session.get('debug_id')}")
+        
         if 'results' not in session:
             flash('No results available. Please complete the analysis first.')
             return redirect(url_for('main.calculator_step', type=type, step=3))
         
         detailed_results = None
-        if type == 'bored' and 'detailed_results' in session:
-            detailed_results = session['detailed_results']
+        if type == 'bored' and 'debug_id' in session:
+            debug_details = load_debug_details(session['debug_id'])
+            logger.info(f"Loaded debug details: {debug_details}")
+            if debug_details and isinstance(debug_details, list) and len(debug_details) > 0:
+                detailed_results = debug_details[0]
         
         return render_template(
             f'{type}/steps.html', 

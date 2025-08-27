@@ -298,6 +298,7 @@ def pre_input_calc(data, water_table):
             'qt': qt,
             'gtot': gtot.tolist(),
             'u0_kpa': u0_kpa,
+            'u0': u0_kpa,  # Add u0 as alias for u0_kpa for compatibility
             'sig_v0': sig_v0,
             'sig_v0_prime': sig_v0_prime,
             'fs': fs.tolist(),
