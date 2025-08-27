@@ -14,6 +14,7 @@ from .utils import (
     save_calculation_results, load_calculation_results, create_helical_pile_graphs
 )
 from .calculations import calculate_pile_capacity, process_cpt_data, pre_input_calc, get_iterative_values, calculate_bored_pile_results, calculate_helical_pile_results, calculate_driven_pile_results
+from .interpolation import process_uploaded_cpt_data
 from datetime import datetime, timedelta
 from .models import db, Registration, Visit
 from functools import wraps
@@ -404,6 +405,35 @@ def calculator_step(type, step):
                     
                     processed_data = process_cpt_data(data_dict)
                     logger.debug("process_cpt_data completed")
+                    
+                    # Check if we need interpolation for better accuracy
+                    cpt_data = processed_data['cpt_data']
+                    depths = [row['z'] for row in cpt_data]
+                    
+                    if len(depths) > 1:
+                        min_spacing = min(abs(depths[i+1] - depths[i]) for i in range(len(depths)-1))
+                        logger.debug(f"Minimum spacing between data points: {min_spacing}m")
+                        
+                        if min_spacing > 0.1:
+                            # Convert to interpolation format and interpolate
+                            interpolation_data = [[row['z'], row['fs'], row['qc'], row['gtot']] for row in cpt_data]
+                            interpolated_data, warning_message = process_uploaded_cpt_data(
+                                '\n'.join([f"{row[0]} {row[1]} {row[2]} {row[3]}" for row in interpolation_data])
+                            )
+                            
+                            # Convert back to cpt_data format
+                            interpolated_cpt_data = []
+                            for row in interpolated_data:
+                                interpolated_cpt_data.append({
+                                    'z': row[0],
+                                    'qc': row[2], 
+                                    'fs': row[1],
+                                    'gtot': row[3]
+                                })
+                            
+                            processed_data['cpt_data'] = interpolated_cpt_data
+                            flash(warning_message)
+                            logger.debug(f"Data interpolated from {len(cpt_data)} to {len(interpolated_cpt_data)} points")
                     
                     # Save processed data
                     file_id = save_cpt_data(processed_data['cpt_data'], water_table)
@@ -1573,8 +1603,13 @@ def download_helical_calculations():
                 current_app.logger.error("No depth data found in detailed results")
                 writer.writerow(["No detailed calculation data available"])
             else:
-                # Add data rows
+                # Add data rows - only up to helix depth for helical piles
+                helix_depth = pile_params.get('helix_depth', None)
                 for i in range(len(detailed_results['depth'])):
+                    # For helical piles, stop adding rows once we reach or exceed the helix depth
+                    if helix_depth and detailed_results['depth'][i] > float(helix_depth):
+                        break
+                        
                     try:
                         row = [
                             detailed_results['depth'][i],

@@ -855,8 +855,13 @@ def calculate_helical_pile_results(processed_cpt, params):
         ]
         download_rows.append(header)
         
-        # Add data rows
+        # Add data rows - only up to helix depth
+        helix_depth = params['helix_depth']
         for i in range(len(detailed_results['depth'])):
+            # Stop adding rows once we reach or exceed the helix depth
+            if detailed_results['depth'][i] > helix_depth:
+                break
+                
             row = [
                 detailed_results['depth'][i],
                 detailed_results['qt'][i],
