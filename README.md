@@ -1,4 +1,4 @@
-# UWA Pile Capacity Calculator
+# UWA CPT Calculator
 
 A Flask-based web application for calculating pile capacity using CPT data.
 
