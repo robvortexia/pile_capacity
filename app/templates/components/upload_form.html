@@ -45,7 +45,15 @@
         </div>
 
         <div class="button-group">
-            <button type="submit" name="action" value="process" class="btn btn-success">Continue to Step 2</button>
+            <button type="submit" name="action" value="process" class="btn btn-success" id="processBtn">Continue to Step 2</button>
+        </div>
+        
+        <!-- Loading indicator for large files -->
+        <div id="loadingIndicator" style="display: none; text-align: center; margin-top: 20px;">
+            <div class="spinner-border text-primary" role="status">
+                <span class="sr-only">Loading...</span>
+            </div>
+            <p class="mt-2">Processing large file... This may take a moment for files with many data points.</p>
         </div>
     </form>
 
@@ -130,6 +138,16 @@ function handleFileSelect(input) {
     };
     reader.readAsText(file);
 }
+
+// Add loading indicator for large file processing
+document.getElementById('uploadForm').addEventListener('submit', function(e) {
+    const fileInput = document.getElementById('cpt_file');
+    if (fileInput.files[0] && fileInput.files[0].size > 1024 * 1024) { // > 1MB
+        document.getElementById('loadingIndicator').style.display = 'block';
+        document.getElementById('processBtn').disabled = true;
+        document.getElementById('processBtn').textContent = 'Processing...';
+    }
+});
 
 document.addEventListener('DOMContentLoaded', function() {
     const fileInput = document.getElementById('cpt_file');

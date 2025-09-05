@@ -227,89 +227,96 @@ def pre_input_calc(data, water_table):
     print(f"Water table value in pre_input_calc: {water_table}")
     try:
         cpt_data = data['cpt_data'] if isinstance(data, dict) else data
+        n_points = len(cpt_data)
+        print(f"Processing {n_points} data points in pre_input_calc")
+        
         # Convert to numpy arrays for calculations but keep as lists for output
         depth = np.array([row['z'] for row in cpt_data])
         qc = np.array([row['qc'] for row in cpt_data])
         gtot = np.array([row['gtot'] for row in cpt_data])
         fs = np.array([row['fs'] for row in cpt_data])
         
-        # Pre-allocate lists for better performance
-        n_points = len(depth)
-        qt = list(qc)  # Direct copy since qt = qc
-        u0_kpa = [0] * n_points
-        sig_v0 = [0] * n_points
-        sig_v0_prime = [0] * n_points
-        fr_percent = [0] * n_points
-        qtn = [0] * n_points
-        n = [0] * n_points
-        lc = [0] * n_points
-        bq = [0] * n_points
-        kc = [0] * n_points
-        iz1 = [0] * n_points
-        qtc = [0] * n_points
+        # Pre-allocate arrays for better performance with large datasets
+        qt = qc.copy()  # Direct copy since qt = qc
+        
+        # Vectorized calculations for better performance with large datasets
+        # Water pressure calculation - vectorized
+        u0_kpa_array = np.where(depth <= water_table, 0, (depth - water_table) * 10)
+        
+        # Stress calculations - incremental method for varying soil properties
+        sig_v0_array = np.zeros(n_points)
+        sig_v0_array[0] = depth[0] * gtot[0]  # First layer
+        for i in range(1, n_points):
+            sig_v0_array[i] = sig_v0_array[i-1] + (gtot[i] * (depth[i] - depth[i-1]))
+        
+        # Effective stress calculation - vectorized
+        sig_v0_prime_array = sig_v0_array - u0_kpa_array
+        sig_v0_prime_array = np.maximum(sig_v0_prime_array, 0.1)  # Ensure positive values
+        
+        # Pre-allocate arrays for complex calculations
+        fr_percent = np.zeros(n_points)
+        qtn = np.zeros(n_points)
+        n_array = np.zeros(n_points)
+        lc = np.zeros(n_points)
+        kc = np.zeros(n_points)
+        iz1 = np.zeros(n_points)
+        qtc = np.zeros(n_points)
+        
+        # Process complex calculations in batches for better performance
+        batch_size = min(1000, n_points)  # Process in batches of 1000 or less
+        
+        for batch_start in range(0, n_points, batch_size):
+            batch_end = min(batch_start + batch_size, n_points)
+            print(f"Processing batch {batch_start//batch_size + 1}/{(n_points-1)//batch_size + 1}")
+            
+            for i in range(batch_start, batch_end):
+                try:
+                    # Friction ratio calculation
+                    fr_percent[i] = get_fr_percent(fs[i], qc[i], sig_v0_array[i])
+                    
+                    # Get iterative values (keeping this as is since it's complex)
+                    iterative_values = get_iterative_values(qt[i], sig_v0_array[i], sig_v0_prime_array[i], fr_percent[i])
+                    qtn[i] = iterative_values['qtn']
+                    lc[i] = iterative_values['lc']
+                    n_array[i] = iterative_values['n']
+                    
+                    # Calculate remaining parameters
+                    kc[i] = get_kc(lc[i])
+                    qtc[i] = get_qtc(kc[i], qt[i])
+                    iz1[i] = get_iz1(qtn[i], fr_percent[i])
+                    
+                except Exception as e:
+                    print(f"Error processing data point {i} at depth {depth[i]}: {str(e)}")
+                    # Use default values for this point
+                    fr_percent[i] = 1.0
+                    qtn[i] = 1.0
+                    lc[i] = 2.5
+                    n_array[i] = 0.5
+                    kc[i] = 1.0
+                    qtc[i] = qt[i]
+                    iz1[i] = 1.0
 
-        # Use numpy for the simple calculations, then convert back to lists
-        for i in range(n_points):
-            try:
-                # Water pressure calculation
-                # Using 10 kN/m³ for unit weight of water (simplified from 9.81 kN/m³ for engineering convenience)
-                u0_kpa[i] = 0 if depth[i] <= water_table else (depth[i]-water_table)*10
-                
-                # Stress calculations - incremental method for varying soil properties
-                if i == 0:
-                    sig_v0[i] = depth[i] * gtot[i]  # First layer: stress = depth × unit weight
-                else:
-                    sig_v0[i] = sig_v0[i-1] + (gtot[i] * (depth[i] - depth[i-1]))  # Incremental: previous stress + layer stress
-                sig_v0_prime[i] = sig_v0[i]-u0_kpa[i]
-                
-                # Ensure effective stress is positive
-                if sig_v0_prime[i] <= 0:
-                    sig_v0_prime[i] = 0.1  # Minimum value to prevent calculation errors
-                
-                # Friction ratio calculation
-                fr_percent[i] = get_fr_percent(fs[i], qc[i], sig_v0[i])
-                
-                # Get iterative values (keeping this as is since it's complex)
-                iterative_values = get_iterative_values(qt[i], sig_v0[i], sig_v0_prime[i], fr_percent[i])
-                qtn[i] = iterative_values['qtn']
-                lc[i] = iterative_values['lc']
-                n[i] = iterative_values['n']
-                
-                # Calculate remaining parameters
-                kc[i] = get_kc(lc[i])
-                qtc[i] = get_qtc(kc[i], qt[i])
-                iz1[i] = get_iz1(qtn[i], fr_percent[i])
-                
-            except Exception as e:
-                print(f"Error processing data point {i} at depth {depth[i]}: {str(e)}")
-                # Use default values for this point
-                fr_percent[i] = 1.0
-                qtn[i] = 1.0
-                lc[i] = 2.5
-                n[i] = 0.5
-                kc[i] = 1.0
-                qtc[i] = qt[i]
-                iz1[i] = 1.0
-
+        print(f"Completed processing {n_points} data points")
+        
         return {
             'depth': depth.tolist(),
             'h': [0]*n_points,
             'qc': qc.tolist(),
-            'qt': qt,
+            'qt': qt.tolist(),
             'gtot': gtot.tolist(),
-            'u0_kpa': u0_kpa,
-            'u0': u0_kpa,  # Add u0 as alias for u0_kpa for compatibility
-            'sig_v0': sig_v0,
-            'sig_v0_prime': sig_v0_prime,
+            'u0_kpa': u0_kpa_array.tolist(),
+            'u0': u0_kpa_array.tolist(),  # Add u0 as alias for u0_kpa for compatibility
+            'sig_v0': sig_v0_array.tolist(),
+            'sig_v0_prime': sig_v0_prime_array.tolist(),
             'fs': fs.tolist(),
-            'fr_percent': fr_percent,
-            'qtn': qtn,
-            'n': n,
-            'lc': lc,
-            'bq': bq,
-            'kc': kc,
-            'iz1': iz1,
-            'qtc': qtc
+            'fr_percent': fr_percent.tolist(),
+            'qtn': qtn.tolist(),
+            'n': n_array.tolist(),
+            'lc': lc.tolist(),
+            'bq': [0]*n_points,  # Initialize as zeros
+            'kc': kc.tolist(),
+            'iz1': iz1.tolist(),
+            'qtc': qtc.tolist()
         }
     except Exception as e:
         print(f"Error in pre_input_calc: {str(e)}")
@@ -546,18 +553,32 @@ def process_cpt_data(data):
         return {'cpt_data': cpt_data}
         
     except Exception as e:
-        logger.error(f"Error processing CPT data: {str(e)}")
+        print(f"Error processing CPT data: {str(e)}")
         return None
 
 def create_cpt_graphs(data, water_table=0):
-    processed_data = pre_input_calc({'cpt_data': data}, water_table)
+    # Handle both dict and list formats
+    if isinstance(data, dict):
+        cpt_data = data['cpt_data']
+        water_table = data.get('water_table', water_table)
+    else:
+        cpt_data = data
+    
+    print(f"Creating graphs for {len(cpt_data)} data points")
+    
+    processed_data = pre_input_calc({'cpt_data': cpt_data}, water_table)
+    
+    if not processed_data:
+        print("Error: Could not process data for graphs")
+        return {'ic': json.dumps(go.Figure(), cls=plotly.utils.PlotlyJSONEncoder)}
 
     ic_fig = go.Figure()
     ic_fig.add_trace(go.Scatter(
         x=processed_data['lc'],
         y=processed_data['depth'],
         mode='lines',
-        name='Ic'
+        name='Ic',
+        line=dict(width=1)  # Thinner line for better performance
     ))
     ic_fig.update_layout(
         title='Ic vs Depth',
@@ -573,6 +594,7 @@ def create_cpt_graphs(data, water_table=0):
 
     graphs = {}
     graphs['ic'] = json.dumps(ic_fig, cls=plotly.utils.PlotlyJSONEncoder)
+    print("Graph creation completed")
     return graphs
 
 def get_qb01_adop(lc, qt):

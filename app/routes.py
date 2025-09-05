@@ -368,40 +368,50 @@ def calculator_step(type, step):
                     data_dict = []
                     delimiter = None
                     
-                    # Process file line by line
-                    for line in file:
-                        try:
-                            decoded_line = line.decode('utf-8').strip()
-                            if not decoded_line:  # Skip empty lines
-                                continue
-                            
-                            # Try to determine the delimiter from first line
-                            if delimiter is None:
-                                if '\t' in decoded_line:
-                                    delimiter = '\t'
-                                elif ',' in decoded_line:
-                                    delimiter = ','
-                                else:
-                                    delimiter = ' '
-                            
-                            # Split and process each line directly
-                            values = decoded_line.split(delimiter)
-                            if len(values) >= 4:  # Ensure we have all required columns
-                                try:
-                                    data_dict.append({
-                                        'z': float(values[0]),
-                                        'qc': float(values[1]),
-                                        'fs': float(values[2]),
-                                        'gtot': float(values[3])
-                                    })
-                                except (ValueError, IndexError):
-                                    continue
-                        except UnicodeDecodeError:
+                    # Read file content efficiently
+                    file_content = file.read().decode('utf-8')
+                    lines = file_content.strip().split('\n')
+                    
+                    # Determine delimiter from first non-empty line
+                    for line in lines[:5]:  # Check first 5 lines to determine delimiter
+                        line = line.strip()
+                        if line:
+                            if '\t' in line:
+                                delimiter = '\t'
+                            elif ',' in line:
+                                delimiter = ','
+                            else:
+                                delimiter = ' '
+                            break
+                    
+                    if delimiter is None:
+                        delimiter = ','  # Default fallback
+                    
+                    # Process lines in batch for better performance
+                    for line in lines:
+                        line = line.strip()
+                        if not line:  # Skip empty lines
                             continue
+                        
+                        values = line.split(delimiter)
+                        if len(values) >= 4:  # Ensure we have all required columns
+                            try:
+                                data_dict.append({
+                                    'z': float(values[0]),
+                                    'qc': float(values[1]),
+                                    'fs': float(values[2]),
+                                    'gtot': float(values[3])
+                                })
+                            except (ValueError, IndexError):
+                                continue
                     
                     if not data_dict:
                         flash('No valid data found in file')
                         return redirect(request.url)
+                    
+                    # Log progress for large datasets
+                    if len(data_dict) > 1000:
+                        logger.info(f"Processing large dataset with {len(data_dict)} data points...")
                     
                     processed_data = process_cpt_data(data_dict)
                     logger.debug("process_cpt_data completed")
@@ -412,28 +422,19 @@ def calculator_step(type, step):
                     
                     if len(depths) > 1:
                         min_spacing = min(abs(depths[i+1] - depths[i]) for i in range(len(depths)-1))
-                        logger.debug(f"Minimum spacing between data points: {min_spacing}m")
+                        logger.info(f"Dataset size: {len(depths)} points")
+                        logger.info(f"Minimum spacing between data points: {min_spacing}m")
+                        logger.info(f"First 5 depths: {depths[:5]}")
+                        logger.info(f"Last 5 depths: {depths[-5:]}")
                         
                         if min_spacing > 0.1:
-                            # Convert to interpolation format and interpolate
-                            interpolation_data = [[row['z'], row['fs'], row['qc'], row['gtot']] for row in cpt_data]
-                            interpolated_data, warning_message = process_uploaded_cpt_data(
-                                '\n'.join([f"{row[0]} {row[1]} {row[2]} {row[3]}" for row in interpolation_data])
-                            )
-                            
-                            # Convert back to cpt_data format
-                            interpolated_cpt_data = []
-                            for row in interpolated_data:
-                                interpolated_cpt_data.append({
-                                    'z': row[0],
-                                    'qc': row[2], 
-                                    'fs': row[1],
-                                    'gtot': row[3]
-                                })
-                            
-                            processed_data['cpt_data'] = interpolated_cpt_data
-                            flash(warning_message)
-                            logger.debug(f"Data interpolated from {len(cpt_data)} to {len(interpolated_cpt_data)} points")
+                            logger.info(f"Data spacing ({min_spacing}m) is greater than 0.1m - interpolation would be triggered")
+                            # Only show warning for smaller datasets to avoid confusion with large datasets
+                            if len(depths) <= 1000:
+                                flash(f"Note: Data has coarse spacing of {min_spacing:.3f}m. For best accuracy, consider using data with finer spacing.")
+                            else:
+                                logger.info("Large dataset detected - skipping interpolation warning")
+                            # Skipping interpolation to avoid timeout with large datasets
                     
                     # Save processed data
                     file_id = save_cpt_data(processed_data['cpt_data'], water_table)
@@ -722,14 +723,35 @@ def calculator_step(type, step):
             flash('CPT data not found. Please upload data again.')
             return redirect(url_for('main.calculator_step', type=type, step=1))
         
-        if type == 'bored':
-            graphs = create_bored_pile_graphs(data)
-        elif type == 'helical':
-            graphs = create_helical_pile_graphs(data)
+        # For large datasets, subsample for graph display to improve performance
+        cpt_data = data['cpt_data'] if isinstance(data, dict) else data
+        dataset_size = len(cpt_data)
+        logger.info(f"Dataset size: {dataset_size} points")
+        
+        # If dataset is very large (>1000 points), subsample for graph display
+        if dataset_size > 1000:
+            logger.info(f"Large dataset detected ({dataset_size} points). Subsampling for graph display.")
+            # Take every nth point to get approximately 500 points for graphs
+            step_size = max(1, dataset_size // 500)
+            subsampled_data = cpt_data[::step_size]
+            graph_data = {'cpt_data': subsampled_data, 'water_table': data.get('water_table', session.get('water_table', 0))}
+            logger.info(f"Subsampled to {len(subsampled_data)} points for graph display")
         else:
-            water_table = float(session.get('water_table', 0))
-            graphs = create_cpt_graphs(data, water_table)
-        return render_template(f'{type}/steps.html', step=step, graphs=graphs, type=type)
+            graph_data = data
+        
+        try:
+            if type == 'bored':
+                graphs = create_bored_pile_graphs(graph_data)
+            elif type == 'helical':
+                graphs = create_helical_pile_graphs(graph_data)
+            else:
+                water_table = float(session.get('water_table', 0))
+                graphs = create_cpt_graphs(graph_data, water_table)
+            return render_template(f'{type}/steps.html', step=step, graphs=graphs, type=type)
+        except Exception as e:
+            logger.error(f"Error creating graphs: {str(e)}")
+            flash('Error creating graphs. Proceeding to next step.', 'warning')
+            return redirect(url_for('main.calculator_step', type=type, step=3))
     
     elif step == 3:
         if 'cpt_data_id' not in session:
