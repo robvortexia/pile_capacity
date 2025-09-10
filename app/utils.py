@@ -36,7 +36,8 @@ def save_cpt_data(data, water_table):
     with open(os.path.join(temp_dir, f'cpt_data_{file_id}.json'), 'w') as f:
         json.dump({
             'cpt_data': data,
-            'water_table': water_table
+            'water_table': water_table,
+            'data_size': len(data)
         }, f)
     
     return file_id
@@ -79,10 +80,52 @@ def load_graphs_data(file_id):
     except FileNotFoundError:
         return None
 
+def sample_data_for_graphs(cpt_data, max_points=None):
+    """
+    Sample CPT data intelligently for graph visualization while maintaining key characteristics.
+    Uses uniform sampling to preserve the overall data distribution.
+    
+    Args:
+        cpt_data: List of CPT data points
+        max_points: Maximum number of points to keep for graphing (uses config default if None)
+    
+    Returns:
+        Sampled CPT data list
+    """
+    if max_points is None:
+        from flask import current_app
+        max_points = getattr(current_app.config, 'GRAPH_SAMPLE_SIZE', 1000)
+    
+    if len(cpt_data) <= max_points:
+        return cpt_data
+    
+    # Calculate step size for uniform sampling
+    step = len(cpt_data) / max_points
+    
+    # Use numpy for efficient sampling
+    import numpy as np
+    indices = np.linspace(0, len(cpt_data) - 1, max_points, dtype=int)
+    
+    # Ensure we get unique indices and maintain order
+    indices = sorted(list(set(indices)))
+    
+    # Sample the data
+    sampled_data = [cpt_data[i] for i in indices]
+    
+    return sampled_data
+
 def create_cpt_graphs(data, water_table=None):
     if water_table is None:
         water_table = data.get('water_table', 0)
-    processed_data = pre_input_calc(data, water_table)
+    
+    # Sample data for graph performance - this maintains visual accuracy while preventing timeouts
+    cpt_data = data['cpt_data'] if isinstance(data, dict) else data
+    sampled_cpt_data = sample_data_for_graphs(cpt_data)
+    
+    # Create sampled data structure for processing
+    sampled_data = {'cpt_data': sampled_cpt_data, 'water_table': water_table}
+    
+    processed_data = pre_input_calc(sampled_data, water_table)
     if not processed_data:
         return None
     
@@ -229,7 +272,13 @@ def create_cpt_graphs(data, water_table=None):
 def create_bored_pile_graphs(data):
     # Get water table from session
     water_table = float(session['water_table'])
-    processed_data = pre_input_calc(data, water_table)
+    
+    # Sample data for graph performance
+    cpt_data = data['cpt_data'] if isinstance(data, dict) else data
+    sampled_cpt_data = sample_data_for_graphs(cpt_data)
+    sampled_data = {'cpt_data': sampled_cpt_data, 'water_table': water_table}
+    
+    processed_data = pre_input_calc(sampled_data, water_table)
     
     if not processed_data:
         return None
@@ -348,7 +397,13 @@ def create_bored_pile_graphs(data):
 def create_helical_pile_graphs(data):
     # Get water table from data
     water_table = data.get('water_table', 0)
-    processed_data = pre_input_calc(data, water_table)
+    
+    # Sample data for graph performance
+    cpt_data = data['cpt_data'] if isinstance(data, dict) else data
+    sampled_cpt_data = sample_data_for_graphs(cpt_data)
+    sampled_data = {'cpt_data': sampled_cpt_data, 'water_table': water_table}
+    
+    processed_data = pre_input_calc(sampled_data, water_table)
     
     if not processed_data:
         return None

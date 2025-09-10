@@ -136,12 +136,21 @@ def get_iterative_values(qt_value, sig_v0_value, sig_v0_prime_value, fr_percent_
     ntrial = 0.381*lc + 0.05*(sig_v0_prime_value/100)-0.15
     err = abs(ntrial - n)
     qtn_val = 0
-    while err > 0.001:
+    max_iterations = 100  # Prevent infinite loops
+    iterations = 0
+    
+    while err > 0.001 and iterations < max_iterations:
         qtn_val = get_qtn(qt_value, sig_v0_value, sig_v0_prime_value, ntrial)
         lc = 0.0 if fr_percent_value == 0 else get_lc(qtn_val, fr_percent_value)
         n = min(1, 0.381*lc + 0.05*(sig_v0_prime_value/100)-0.15)
         err = abs(ntrial - n)
         ntrial = n
+        iterations += 1
+    
+    # Log if we hit the iteration limit (for debugging)
+    if iterations >= max_iterations:
+        print(f"Warning: get_iterative_values reached max iterations ({max_iterations}) for qt={qt_value}, convergence may be incomplete")
+    
     return {'qtn': qtn_val, 'lc': lc, 'n': n}
 
 def get_fr_percent(fs_value, qc_value, sig_v0_value):
@@ -269,11 +278,18 @@ def pre_input_calc(data, water_table):
                 # Friction ratio calculation
                 fr_percent[i] = get_fr_percent(fs[i], qc[i], sig_v0[i])
                 
-                # Get iterative values (keeping this as is since it's complex)
-                iterative_values = get_iterative_values(qt[i], sig_v0[i], sig_v0_prime[i], fr_percent[i])
-                qtn[i] = iterative_values['qtn']
-                lc[i] = iterative_values['lc']
-                n[i] = iterative_values['n']
+                # Get iterative values with timeout protection
+                try:
+                    iterative_values = get_iterative_values(qt[i], sig_v0[i], sig_v0_prime[i], fr_percent[i])
+                    qtn[i] = iterative_values['qtn']
+                    lc[i] = iterative_values['lc']
+                    n[i] = iterative_values['n']
+                except Exception as iter_error:
+                    print(f"Warning: Iterative calculation failed for point {i} at depth {depth[i]}: {str(iter_error)}")
+                    # Use fallback values
+                    qtn[i] = 1.0
+                    lc[i] = 2.5
+                    n[i] = 0.5
                 
                 # Calculate remaining parameters
                 kc[i] = get_kc(lc[i])

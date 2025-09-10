@@ -1,0 +1,10 @@
+[33m4d84cd1[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmaster[m[33m, [m[1;31morigin/master[m[33m)[m edited step 1 and 2 processing so that there is no timeout for large files
+[33mf81a630[m got rid of subheading on hompeage
+[33me92e8ae[m interpolation and detailed results not doing all depths only up to tip depth
+[33mce65071[m changed title
+[33ma443f2a[m fixed a bored problem and default
+[33m1576fb7[m 3d add and tracking for it
+[33ma996db3[m  changed Formula according to what barry sent in picture
+[33m057033e[m  changed wording of the coming soon modules
+[33mac38bf9[m added the 3 coming soon modules
+[33m5138c87[m some ui changes, such as description of boreholde depth

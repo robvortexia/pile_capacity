@@ -112,14 +112,19 @@ def interpolate_cpt_data(data, target_interval=0.1):
     qc_values = [row[2] for row in data]
     ic_values = [row[3] for row in data]
     
-    # Create interpolation functions for each parameter
-    fs_interp = interp1d(depths, fs_values, kind='linear', bounds_error=False, fill_value='extrapolate')
-    qc_interp = interp1d(depths, qc_values, kind='linear', bounds_error=False, fill_value='extrapolate')
-    ic_interp = interp1d(depths, ic_values, kind='linear', bounds_error=False, fill_value='extrapolate')
-    
     # Create target depth array at regular intervals
     min_depth = min(depths)
     max_depth = max(depths)
+    
+    # Limit interpolation to prevent excessive data points and timeouts
+    max_interpolated_points = 1000  # Reasonable limit for performance
+    depth_range = max_depth - min_depth
+    estimated_points = int(depth_range / target_interval) + 1
+    
+    if estimated_points > max_interpolated_points:
+        # Adjust target interval to stay within limits
+        target_interval = depth_range / (max_interpolated_points - 1)
+        print(f"Warning: Interpolation limited to {max_interpolated_points} points. Adjusted interval to {target_interval:.3f}m")
     
     # Generate depths from min_depth to max_depth at target_interval spacing
     target_depths = np.arange(min_depth, max_depth + target_interval, target_interval)
@@ -127,16 +132,34 @@ def interpolate_cpt_data(data, target_interval=0.1):
     # Round to avoid floating point precision issues
     target_depths = np.round(target_depths, decimals=3)
     
-    # Interpolate values at target depths
-    interpolated_data = []
-    for depth in target_depths:
-        fs_interpolated = float(fs_interp(depth))
-        qc_interpolated = float(qc_interp(depth))
-        ic_interpolated = float(ic_interp(depth))
+    # Use vectorized interpolation for better performance
+    try:
+        # Create interpolation functions for each parameter
+        fs_interp = interp1d(depths, fs_values, kind='linear', bounds_error=False, fill_value='extrapolate')
+        qc_interp = interp1d(depths, qc_values, kind='linear', bounds_error=False, fill_value='extrapolate')
+        ic_interp = interp1d(depths, ic_values, kind='linear', bounds_error=False, fill_value='extrapolate')
         
-        interpolated_data.append([depth, fs_interpolated, qc_interpolated, ic_interpolated])
-    
-    return interpolated_data
+        # Vectorized interpolation - much faster than loop
+        fs_interpolated = fs_interp(target_depths)
+        qc_interpolated = qc_interp(target_depths)
+        ic_interpolated = ic_interp(target_depths)
+        
+        # Convert to list of lists format
+        interpolated_data = []
+        for i, depth in enumerate(target_depths):
+            interpolated_data.append([
+                float(depth), 
+                float(fs_interpolated[i]), 
+                float(qc_interpolated[i]), 
+                float(ic_interpolated[i])
+            ])
+        
+        return interpolated_data
+        
+    except Exception as e:
+        print(f"Interpolation error: {e}")
+        # Fallback: return original data if interpolation fails
+        return data
 
 def format_cpt_data_for_download(data):
     """

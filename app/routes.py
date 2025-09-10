@@ -413,27 +413,38 @@ def calculator_step(type, step):
                     if len(depths) > 1:
                         min_spacing = min(abs(depths[i+1] - depths[i]) for i in range(len(depths)-1))
                         logger.debug(f"Minimum spacing between data points: {min_spacing}m")
+                        logger.debug(f"Total data points: {len(cpt_data)}")
+                        logger.debug(f"Depth range: {min(depths):.2f}m to {max(depths):.2f}m")
                         
-                        if min_spacing > 0.1:
+                        # Use a more conservative threshold for interpolation to prevent timeouts
+                        interpolation_threshold = 0.5  # Only interpolate if spacing > 0.5m
+                        if min_spacing > interpolation_threshold:
                             # Convert to interpolation format and interpolate
                             interpolation_data = [[row['z'], row['fs'], row['qc'], row['gtot']] for row in cpt_data]
-                            interpolated_data, warning_message = process_uploaded_cpt_data(
-                                '\n'.join([f"{row[0]} {row[1]} {row[2]} {row[3]}" for row in interpolation_data])
-                            )
                             
-                            # Convert back to cpt_data format
-                            interpolated_cpt_data = []
-                            for row in interpolated_data:
-                                interpolated_cpt_data.append({
-                                    'z': row[0],
-                                    'qc': row[2], 
-                                    'fs': row[1],
-                                    'gtot': row[3]
-                                })
-                            
-                            processed_data['cpt_data'] = interpolated_cpt_data
-                            flash(warning_message)
-                            logger.debug(f"Data interpolated from {len(cpt_data)} to {len(interpolated_cpt_data)} points")
+                            try:
+                                interpolated_data, warning_message = process_uploaded_cpt_data(
+                                    '\n'.join([f"{row[0]} {row[1]} {row[2]} {row[3]}" for row in interpolation_data])
+                                )
+                                
+                                # Convert back to cpt_data format
+                                interpolated_cpt_data = []
+                                for row in interpolated_data:
+                                    interpolated_cpt_data.append({
+                                        'z': row[0],
+                                        'qc': row[2], 
+                                        'fs': row[1],
+                                        'gtot': row[3]
+                                    })
+                                
+                                processed_data['cpt_data'] = interpolated_cpt_data
+                                flash(warning_message)
+                                logger.debug(f"Data interpolated from {len(cpt_data)} to {len(interpolated_cpt_data)} points")
+                                
+                            except Exception as interp_error:
+                                logger.error(f"Interpolation failed: {str(interp_error)}")
+                                flash(f"Warning: Interpolation failed ({str(interp_error)}). Using original data with coarse spacing.")
+                                # Continue with original data if interpolation fails
                     
                     # Save processed data
                     file_id = save_cpt_data(processed_data['cpt_data'], water_table)
@@ -729,6 +740,12 @@ def calculator_step(type, step):
         else:
             water_table = float(session.get('water_table', 0))
             graphs = create_cpt_graphs(data, water_table)
+        
+        # Add info message for large datasets
+        cpt_data = data['cpt_data'] if isinstance(data, dict) else data
+        if len(cpt_data) > 1000:
+            flash(f'Large dataset detected ({len(cpt_data)} data points). Graphs show sampled data for performance. Full dataset will be used for calculations.', 'info')
+        
         return render_template(f'{type}/steps.html', step=step, graphs=graphs, type=type)
     
     elif step == 3:
