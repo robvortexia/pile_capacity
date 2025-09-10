@@ -139,17 +139,48 @@ def get_iterative_values(qt_value, sig_v0_value, sig_v0_prime_value, fr_percent_
     max_iterations = 100  # Prevent infinite loops
     iterations = 0
     
-    while err > 0.001 and iterations < max_iterations:
+    # Early detection of problematic cases that cause slow convergence
+    # These typically occur with very small qt values and low effective stress
+    is_problematic_case = (qt_value < 0.01 and sig_v0_prime_value < 1.0)
+    if is_problematic_case:
+        # Use a more relaxed convergence criterion for these cases
+        convergence_threshold = 0.01  # 10x more relaxed
+    else:
+        convergence_threshold = 0.001  # Standard precision
+    
+    # Track convergence rate to detect oscillation
+    last_errors = []
+    
+    while err > convergence_threshold and iterations < max_iterations:
         qtn_val = get_qtn(qt_value, sig_v0_value, sig_v0_prime_value, ntrial)
         lc = 0.0 if fr_percent_value == 0 else get_lc(qtn_val, fr_percent_value)
         n = min(1, 0.381*lc + 0.05*(sig_v0_prime_value/100)-0.15)
         err = abs(ntrial - n)
+        
+        # Track error history for oscillation detection
+        last_errors.append(err)
+        if len(last_errors) > 10:
+            last_errors.pop(0)
+        
+        # Check for oscillation or very slow convergence
+        if iterations > 20 and len(last_errors) >= 10:
+            avg_recent_error = sum(last_errors[-5:]) / 5
+            avg_older_error = sum(last_errors[:5]) / 5
+            
+            # If error isn't decreasing significantly, break early
+            if avg_recent_error > avg_older_error * 0.9:
+                # Convergence is too slow, use current values
+                break
+        
         ntrial = n
         iterations += 1
     
-    # Log if we hit the iteration limit (for debugging)
+    # Log if we hit limits or used relaxed criteria (only for debugging)
     if iterations >= max_iterations:
         print(f"Warning: get_iterative_values reached max iterations ({max_iterations}) for qt={qt_value}, convergence may be incomplete")
+    elif is_problematic_case and err > 0.001:
+        # Don't log this as it's expected for small values
+        pass
     
     return {'qtn': qtn_val, 'lc': lc, 'n': n}
 
