@@ -51,9 +51,21 @@ def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 def create_data_dataframe(processed_cpt, calc_dict):
-    """Create a DataFrame with CPT data and bored pile calculations."""
+    """Create a DataFrame with CPT data and bored pile calculations.
+
+    Only include rows up to the selected tip depth by filtering to depths
+    that have calculations stored in calc_dict.
+    """
     data = []
+
+    # Build a set of depths that have calculations (rounded to avoid float issues)
+    calc_depths_set = set(round(float(d), 6) for d in (calc_dict.keys() if calc_dict else []))
+
     for i, depth in enumerate(processed_cpt['depth']):
+        # If we have calculation depths, skip rows beyond the tip depth
+        if calc_depths_set and round(float(depth), 6) not in calc_depths_set:
+            continue
+
         row = {
             'Depth (m)': depth,
             'qt (MPa)': processed_cpt['qt'][i],
@@ -62,32 +74,49 @@ def create_data_dataframe(processed_cpt, calc_dict):
             'Fr (%)': processed_cpt['fr_percent'][i],
             'Ic': processed_cpt['lc'][i]
         }
-        
-        # Add calculation data if available for this depth
-        if depth in calc_dict:
-            calcs = calc_dict[depth]
-            row.update({
-                'sig_v0_prime (kPa)': calcs.get('sig_v0_prime', 'N/A'),
-                'u0 (kPa)': calcs.get('u0', 'N/A'),
-                'sig_v0 (kPa)': calcs.get('sig_v0', 'N/A'),
-                'Casing Coefficient': calcs.get('coe_casing', 'N/A'),
-                'qb0.1 (MPa)': calcs.get('qb01_adop', 'N/A'),
-                'tf tension (kPa)': calcs.get('tf_tension', 'N/A'),
-                'tf compression (kPa)': calcs.get('tf_compression', 'N/A'),
-                'Delta z (m)': calcs.get('delta_z', 'N/A'),
-                'Shaft Tension Segment (kN)': calcs.get('qs_tension_segment', 'N/A'),
-                'Shaft Compression Segment (kN)': calcs.get('qs_compression_segment', 'N/A'),
-                'Cumulative Shaft Tension (kN)': calcs.get('qs_tension_cumulative', 'N/A'),
-                'Cumulative Shaft Compression (kN)': calcs.get('qs_compression_cumulative', 'N/A')
-            })
+
+        # Add calculation data (present for depths up to tip)
+        if calc_dict:
+            # Access using an exact or rounded key
+            calcs = calc_dict.get(depth)
+            if calcs is None:
+                # Try rounded lookup to be robust
+                calcs = next((v for k, v in calc_dict.items() if round(float(k), 6) == round(float(depth), 6)), None)
+            if calcs is not None:
+                row.update({
+                    'sig_v0_prime (kPa)': calcs.get('sig_v0_prime', 'N/A'),
+                    'u0 (kPa)': calcs.get('u0', 'N/A'),
+                    'sig_v0 (kPa)': calcs.get('sig_v0', 'N/A'),
+                    'Casing Coefficient': calcs.get('coe_casing', 'N/A'),
+                    'qb0.1 (MPa)': calcs.get('qb01_adop', 'N/A'),
+                    'tf tension (kPa)': calcs.get('tf_tension', 'N/A'),
+                    'tf compression (kPa)': calcs.get('tf_compression', 'N/A'),
+                    'Delta z (m)': calcs.get('delta_z', 'N/A'),
+                    'Shaft Tension Segment (kN)': calcs.get('qs_tension_segment', 'N/A'),
+                    'Shaft Compression Segment (kN)': calcs.get('qs_compression_segment', 'N/A'),
+                    'Cumulative Shaft Tension (kN)': calcs.get('qs_tension_cumulative', 'N/A'),
+                    'Cumulative Shaft Compression (kN)': calcs.get('qs_compression_cumulative', 'N/A')
+                })
         data.append(row)
-    
+
     return pd.DataFrame(data)
 
 def create_driven_data_dataframe(processed_cpt, calc_dict):
-    """Create a DataFrame with CPT data and driven pile calculations."""
+    """Create a DataFrame with CPT data and driven pile calculations.
+
+    Only include rows up to the selected tip depth by filtering to depths
+    that have calculations stored in calc_dict.
+    """
     data = []
+
+    # Build a set of depths that have calculations (rounded to avoid float issues)
+    calc_depths_set = set(round(float(d), 6) for d in (calc_dict.keys() if calc_dict else []))
+
     for i, depth in enumerate(processed_cpt['depth']):
+        # If we have calculation depths, skip rows beyond the tip depth
+        if calc_depths_set and round(float(depth), 6) not in calc_depths_set:
+            continue
+
         row = {
             'Depth (m)': depth,
             'qt (MPa)': processed_cpt['qt'][i],
@@ -100,42 +129,45 @@ def create_driven_data_dataframe(processed_cpt, calc_dict):
             'gtot (kN/m³)': processed_cpt['gtot'][i],
             'u0 (kPa)': processed_cpt['u0_kpa'][i]
         }
-        
-        # Add calculation data if available for this depth
-        if depth in calc_dict:
-            calcs = calc_dict[depth]
-            row.update({
-                'qtc (MPa)': calcs.get('qtc', 'N/A'),
-                'gtot (kN/m³)': calcs.get('gtot', 'N/A'),
-                'sig_v0 (kPa)': calcs.get('sig_v0', 'N/A'),
-                'sig_v0_prime (kPa)': calcs.get('sig_v0_prime', 'N/A'),
-                'u0 (kPa)': calcs.get('u0', 'N/A'),
-                'iz1': calcs.get('iz1', 'N/A'),
-                'h (m)': calcs.get('h', 'N/A'),
-                'q1 (MPa)': calcs.get('q1', 'N/A'),
-                'q10 (MPa)': calcs.get('q10', 'N/A'),
-                'qp_sand (MPa)': calcs.get('qp_sand', 'N/A'),
-                'qp_clay (MPa)': calcs.get('qp_clay', 'N/A'),
-                'qp_adopted (MPa)': calcs.get('qp_adopted', 'N/A'),
-                'qb1_sand (MPa)': calcs.get('qb1_sand', 'N/A'),
-                'qb1_clay (MPa)': calcs.get('qb1_clay', 'N/A'),
-                'qb1_adopted (MPa)': calcs.get('qb1_adopted', 'N/A'),
-                'Casing Coefficient': calcs.get('coe_casing', 'N/A'),
-                'delta_ord (degrees)': calcs.get('delta_ord', 'N/A'),
-                'orc_val': calcs.get('orc_val', 'N/A'),
-                'tf_sand (kPa)': calcs.get('tf_sand', 'N/A'),
-                'tf_clay (kPa)': calcs.get('tf_clay', 'N/A'),
-                'tf_adop_tension (kPa)': calcs.get('tf_adop_tension', 'N/A'),
-                'tf_adop_compression (kPa)': calcs.get('tf_adop_compression', 'N/A'),
-                'Delta z (m)': calcs.get('delta_z', 'N/A'),
-                'Shaft Tension Segment (kN)': calcs.get('qs_tension_segment', 'N/A'),
-                'Shaft Compression Segment (kN)': calcs.get('qs_compression_segment', 'N/A'),
-                'Cumulative Shaft Tension (kN)': calcs.get('qs_tension_cumulative', 'N/A'),
-                'Cumulative Shaft Compression (kN)': calcs.get('qs_compression_cumulative', 'N/A'),
-                'Base Resistance (kN)': calcs.get('qb_final', 'N/A')
-            })
+
+        # Add calculation data (present for depths up to tip)
+        if calc_dict:
+            calcs = calc_dict.get(depth)
+            if calcs is None:
+                calcs = next((v for k, v in calc_dict.items() if round(float(k), 6) == round(float(depth), 6)), None)
+            if calcs is not None:
+                row.update({
+                    'qtc (MPa)': calcs.get('qtc', 'N/A'),
+                    'gtot (kN/m³)': calcs.get('gtot', 'N/A'),
+                    'sig_v0 (kPa)': calcs.get('sig_v0', 'N/A'),
+                    'sig_v0_prime (kPa)': calcs.get('sig_v0_prime', 'N/A'),
+                    'u0 (kPa)': calcs.get('u0', 'N/A'),
+                    'iz1': calcs.get('iz1', 'N/A'),
+                    'h (m)': calcs.get('h', 'N/A'),
+                    'q1 (MPa)': calcs.get('q1', 'N/A'),
+                    'q10 (MPa)': calcs.get('q10', 'N/A'),
+                    'qp_sand (MPa)': calcs.get('qp_sand', 'N/A'),
+                    'qp_clay (MPa)': calcs.get('qp_clay', 'N/A'),
+                    'qp_adopted (MPa)': calcs.get('qp_adopted', 'N/A'),
+                    'qb1_sand (MPa)': calcs.get('qb1_sand', 'N/A'),
+                    'qb1_clay (MPa)': calcs.get('qb1_clay', 'N/A'),
+                    'qb1_adopted (MPa)': calcs.get('qb1_adopted', 'N/A'),
+                    'Casing Coefficient': calcs.get('coe_casing', 'N/A'),
+                    'delta_ord (degrees)': calcs.get('delta_ord', 'N/A'),
+                    'orc_val': calcs.get('orc_val', 'N/A'),
+                    'tf_sand (kPa)': calcs.get('tf_sand', 'N/A'),
+                    'tf_clay (kPa)': calcs.get('tf_clay', 'N/A'),
+                    'tf_adop_tension (kPa)': calcs.get('tf_adop_tension', 'N/A'),
+                    'tf_adop_compression (kPa)': calcs.get('tf_adop_compression', 'N/A'),
+                    'Delta z (m)': calcs.get('delta_z', 'N/A'),
+                    'Shaft Tension Segment (kN)': calcs.get('qs_tension_segment', 'N/A'),
+                    'Shaft Compression Segment (kN)': calcs.get('qs_compression_segment', 'N/A'),
+                    'Cumulative Shaft Tension (kN)': calcs.get('qs_tension_cumulative', 'N/A'),
+                    'Cumulative Shaft Compression (kN)': calcs.get('qs_compression_cumulative', 'N/A'),
+                    'Base Resistance (kN)': calcs.get('qb_final', 'N/A')
+                })
         data.append(row)
-    
+
     return pd.DataFrame(data)
 
 @bp.route('/')
