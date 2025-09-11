@@ -4,6 +4,7 @@ from flask import request, session
 from datetime import datetime, timedelta
 from sqlalchemy import func
 from .models import db, PageVisit, AnalyticsData, Visit, Registration
+from typing import List, Dict, Any, Optional
 
 def get_or_create_user_id():
     """Get user ID from session or create a new one if it doesn't exist"""
@@ -171,3 +172,72 @@ def get_analytics_data_stats(data_type=None, days=30):
     ).all()
     
     return stats 
+
+
+def record_event(event_type: str, event_name: Optional[str] = None, details: Optional[Dict[str, Any]] = None) -> bool:
+    """Record a fine-grained user event to `AnalyticsData`.
+
+    Args:
+        event_type: High-level category, e.g., 'upload', 'calculation', 'download'.
+        event_name: Specific name, e.g., 'upload_cpt', 'calc_bored', 'download_results_csv'.
+        details: Optional payload; stored as JSON string.
+    """
+    payload = {
+        'name': event_name,
+        'path': request.path if request else None,
+        'method': request.method if request else None,
+        'ip': request.remote_addr if request else None,
+        'ua': request.user_agent.string if request else None,
+        'ref': request.referrer if request else None,
+        'details': details or {}
+    }
+    return store_analytics_data('event', data_key=event_type, data_value=payload)
+
+
+def get_weekly_usage_summary(days: int = 7) -> Dict[str, Any]:
+    """Build a weekly usage summary across key tables for the last `days`.
+
+    Returns a dict of simple primitives and small lists safe to render/email.
+    """
+    end_date = datetime.utcnow()
+    start_date = end_date - timedelta(days=days)
+
+    # Totals
+    total_page_visits = db.session.query(func.count(PageVisit.id)).filter(PageVisit.timestamp >= start_date).scalar() or 0
+    unique_visitors = db.session.query(func.count(func.distinct(PageVisit.user_id))).filter(PageVisit.timestamp >= start_date).scalar() or 0
+    total_registrations = db.session.query(func.count(Registration.id)).filter(Registration.timestamp >= start_date).scalar() or 0
+
+    # Top pages
+    top_pages_rows = db.session.query(
+        PageVisit.page_url,
+        func.count(PageVisit.id).label('count')
+    ).filter(
+        PageVisit.timestamp >= start_date
+    ).group_by(PageVisit.page_url).order_by(func.count(PageVisit.id).desc()).limit(10).all()
+    top_pages = [{'page': r[0], 'count': int(r[1])} for r in top_pages_rows]
+
+    # Event breakdown
+    event_rows = db.session.query(
+        AnalyticsData.data_key,  # event_type
+        func.count(AnalyticsData.id).label('count')
+    ).filter(
+        AnalyticsData.timestamp >= start_date,
+        AnalyticsData.data_type == 'event'
+    ).group_by(AnalyticsData.data_key).order_by(func.count(AnalyticsData.id).desc()).all()
+    events = [{'event_type': r[0], 'count': int(r[1])} for r in event_rows]
+
+    # Pile type selections
+    pile_rows = get_analytics_data_stats('pile_selection', days=days)
+    pile_types = [{'type': r[1], 'count': int(r[2])} for r in pile_rows]
+
+    return {
+        'range': {'start': start_date.isoformat() + 'Z', 'end': end_date.isoformat() + 'Z'},
+        'totals': {
+            'page_visits': int(total_page_visits),
+            'unique_visitors': int(unique_visitors),
+            'registrations': int(total_registrations)
+        },
+        'top_pages': top_pages,
+        'events': events,
+        'pile_types': pile_types,
+    }

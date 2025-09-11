@@ -24,7 +24,7 @@ from sqlalchemy.sql import func
 import logging
 import io
 from .helical_calculations import calculate_helical_pile_results
-from .analytics import record_page_visit, store_analytics_data, get_or_create_user_id, get_page_visit_stats, get_analytics_data_stats
+from .analytics import record_page_visit, store_analytics_data, get_or_create_user_id, get_page_visit_stats, get_analytics_data_stats, record_event
 
 # Set pandas options for full precision 
 pd.set_option('display.precision', 15)  # Increase default precision
@@ -1364,6 +1364,10 @@ def register():
     # Store registration in analytics
     store_analytics_data('registration', 'email', email)
     store_analytics_data('registration', 'affiliation', affiliation)
+    try:
+        record_event('registration', 'user_registered', {'email': email, 'affiliation': affiliation})
+    except Exception:
+        pass
     
     # Set a more persistent cookie
     response = make_response(redirect(url_for('main.index')))
@@ -1453,6 +1457,18 @@ def admin():
                          pile_type_stats=pile_type_stats,
                          param_stats=param_stats,
                          ad_click_stats=ad_click_stats)
+
+@bp.route('/admin/send_weekly_report')
+@admin_required
+def send_weekly_report():
+    from .email_utils import send_weekly_usage_email
+    try:
+        send_weekly_usage_email()
+        flash('Weekly usage report sent')
+    except Exception as e:
+        current_app.logger.error(f"Weekly report send failed: {e}")
+        flash(f'Failed to send: {e}', 'error')
+    return redirect(url_for('main.admin'))
 
 @bp.route('/admin/export')
 @admin_required

@@ -4,6 +4,28 @@ from flask_session import Session
 from .models import db
 from datetime import timedelta
 import os
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
+
+def _init_scheduler(app):
+    """Initialize APScheduler for weekly email reports if enabled."""
+    if not app.config.get('ENABLE_SCHEDULER', False):
+        return None
+    scheduler = BackgroundScheduler(timezone=app.config.get('SCHEDULER_TIMEZONE', 'UTC'))
+    # Every Monday at 07:00 UTC by default
+    cron = app.config.get('WEEKLY_REPORT_CRON', {'day_of_week': 'mon', 'hour': 7, 'minute': 0})
+
+    def _send_weekly():
+        from .email_utils import send_weekly_usage_email
+        with app.app_context():
+            try:
+                send_weekly_usage_email()
+            except Exception as e:
+                app.logger.error(f"Weekly report failed: {e}")
+
+    scheduler.add_job(_send_weekly, CronTrigger(**cron), id='weekly_usage_email', replace_existing=True)
+    scheduler.start()
+    return scheduler
 
 def create_app():
     app = Flask(__name__)
@@ -36,5 +58,8 @@ def create_app():
         
         from .routes import bp as main_blueprint
         app.register_blueprint(main_blueprint)
+
+        # Scheduler (optional)
+        _init_scheduler(app)
     
     return app 
