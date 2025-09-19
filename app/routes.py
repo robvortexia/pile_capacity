@@ -1384,7 +1384,7 @@ def register():
 def admin_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        admin_password = 'barry2002'  # Changed password
+        admin_password = os.environ.get('ADMIN_PASSWORD') or 'barry2002'
         auth = request.authorization
         if not auth or auth.password != admin_password:
             return Response(

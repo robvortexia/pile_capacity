@@ -33,9 +33,13 @@ ENV/
 # Database
 *.db
 *.sqlite3
+instance/
+flask_session/
 
 # Environment variables
 .env
+.env.local
+.env.production
 
 # Logs
 *.log
