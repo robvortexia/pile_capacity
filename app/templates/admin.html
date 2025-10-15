@@ -159,23 +159,12 @@
         
         <div class="analytics-card">
             <h3>Daily Visits</h3>
-            <div class="analytics-table">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Date</th>
-                            <th>Visits</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for stat in page_visit_stats.daily_stats %}
-                        <tr>
-                            <td>{{ stat.date }}</td>
-                            <td>{{ stat.count }}</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+            <div class="chart-container">
+                <canvas id="dailyVisitsChart" width="400" height="200"></canvas>
+            </div>
+            <div class="chart-summary">
+                <p><strong>Total Visits (30 days):</strong> {{ page_visit_stats.daily_stats|sum(attribute='count') }}</p>
+                <p><strong>Average Daily:</strong> {{ "%.1f"|format((page_visit_stats.daily_stats|sum(attribute='count')) / 30) }}</p>
             </div>
         </div>
     </div>
@@ -213,5 +202,153 @@
     border-bottom: 1px solid #eee;
     padding-bottom: 10px;
 }
+
+.chart-container {
+    position: relative;
+    height: 300px;
+    margin: 20px 0;
+    padding: 10px;
+    background: #f9f9f9;
+    border-radius: 8px;
+    border: 1px solid #e0e0e0;
+}
+
+.chart-summary {
+    margin-top: 15px;
+    padding: 10px;
+    background: #f0f8ff;
+    border-radius: 5px;
+    border-left: 4px solid #007bff;
+}
+
+.chart-summary p {
+    margin: 5px 0;
+    font-size: 14px;
+    color: #333;
+}
 </style>
+
+<!-- Chart.js CDN -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<!-- Data for the chart -->
+<script type="application/json" id="dailyVisitsData">
+{{ page_visit_stats.daily_stats | tojson }}
+</script>
+
+<script>
+// Prepare data for the chart
+const dailyVisitsData = JSON.parse(document.getElementById('dailyVisitsData').textContent);
+
+// Format the data for Chart.js
+const labels = dailyVisitsData.map(item => {
+    const date = new Date(item.date);
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+});
+
+const data = dailyVisitsData.map(item => item.count);
+
+// Create the chart
+const ctx = document.getElementById('dailyVisitsChart').getContext('2d');
+const dailyVisitsChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+        labels: labels,
+        datasets: [{
+            label: 'Daily Visits',
+            data: data,
+            borderColor: '#007bff',
+            backgroundColor: 'rgba(0, 123, 255, 0.1)',
+            borderWidth: 2,
+            fill: true,
+            tension: 0.4,
+            pointBackgroundColor: '#007bff',
+            pointBorderColor: '#ffffff',
+            pointBorderWidth: 2,
+            pointRadius: 4,
+            pointHoverRadius: 6
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: {
+                display: true,
+                position: 'top',
+                labels: {
+                    usePointStyle: true,
+                    padding: 20
+                }
+            },
+            tooltip: {
+                mode: 'index',
+                intersect: false,
+                backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                titleColor: '#fff',
+                bodyColor: '#fff',
+                borderColor: '#007bff',
+                borderWidth: 1
+            }
+        },
+        scales: {
+            x: {
+                display: true,
+                title: {
+                    display: true,
+                    text: 'Date',
+                    color: '#666',
+                    font: {
+                        size: 12,
+                        weight: 'bold'
+                    }
+                },
+                grid: {
+                    display: true,
+                    color: 'rgba(0, 0, 0, 0.1)'
+                },
+                ticks: {
+                    color: '#666',
+                    maxTicksLimit: 10
+                }
+            },
+            y: {
+                display: true,
+                title: {
+                    display: true,
+                    text: 'Number of Visits',
+                    color: '#666',
+                    font: {
+                        size: 12,
+                        weight: 'bold'
+                    }
+                },
+                grid: {
+                    display: true,
+                    color: 'rgba(0, 0, 0, 0.1)'
+                },
+                ticks: {
+                    color: '#666',
+                    beginAtZero: true,
+                    precision: 0
+                }
+            }
+        },
+        interaction: {
+            mode: 'nearest',
+            axis: 'x',
+            intersect: false
+        },
+        animation: {
+            duration: 1000,
+            easing: 'easeInOutQuart'
+        }
+    }
+});
+
+// Add some interactivity - update chart on window resize
+window.addEventListener('resize', function() {
+    dailyVisitsChart.resize();
+});
+</script>
 {% endblock %} 
