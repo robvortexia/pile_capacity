@@ -144,6 +144,7 @@ def get_page_visit_stats(days=30):
     return {
         'page_stats': page_stats,
         'daily_stats': daily_stats,
+        'daily_stats_json': [{'date': str(row[0]), 'count': int(row[1])} for row in daily_stats],
         'unique_visitors': unique_visitors
     }
 
