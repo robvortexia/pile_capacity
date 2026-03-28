@@ -9,6 +9,15 @@
 
     <!-- Main Content -->
     <div class="main-content-with-stepper">
+        {% with messages = get_flashed_messages() %}
+            {% if messages %}
+                <div class="flash-messages" style="padding: 0 1rem;">
+                    {% for message in messages %}
+                        <div class="alert alert-error">{{ message }}</div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        {% endwith %}
         <div class="stepper">
             {% if step == 1 %}
             <div class="step active">
@@ -88,6 +97,9 @@
                         </a>
                         <a href="{{ url_for('main.download_results') }}" class="btn btn-info ml-2">
                             <i class="fas fa-download"></i> Download Results
+                        </a>
+                        <a href="{{ url_for('main.download_pdf_report') }}" class="btn btn-primary ml-2">
+                            <i class="fas fa-file-pdf"></i> Download PDF Report
                         </a>
                     </div>
                 </div>
@@ -320,16 +332,28 @@
     transform: translateY(-1px);
 }
 
+.alert {
+    margin-top: 1rem;
+    padding: 1rem;
+    border-radius: 4px;
+}
+
+.alert-error {
+    background: #fde8e8;
+    color: #c53030;
+    border-left: 4px solid #c53030;
+}
+
 @media (max-width: 768px) {
     .main-content-with-stepper {
         margin-left: 0;
         padding: 1rem;
     }
-    
+
     .graphs-container {
         grid-template-columns: 1fr;
     }
-    
+
     .graph-wrapper {
         height: 400px;
     }

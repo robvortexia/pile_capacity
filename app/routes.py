@@ -86,6 +86,52 @@ def sitemap_xml():
     return Response(xml, mimetype='application/xml')
 
 
+@bp.route('/sample/<type>')
+def use_sample_data(type):
+    """Load sample CPT data for demo purposes."""
+    if type not in ['driven', 'bored', 'helical']:
+        return redirect(url_for('main.index'))
+
+    # Read sample data file
+    sample_path = os.path.join(current_app.static_folder, 'data', 'sample_cpt.csv')
+    try:
+        data_dict = []
+        with open(sample_path, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                values = line.split(',')
+                if len(values) >= 4:
+                    data_dict.append({
+                        'z': float(values[0]),
+                        'qc': float(values[1]),
+                        'fs': float(values[2]),
+                        'gtot': float(values[3])
+                    })
+
+        if not data_dict:
+            flash('Error loading sample data')
+            return redirect(url_for('main.calculator_step', type=type, step=1))
+
+        processed_data = process_cpt_data(data_dict)
+        water_table = 2.0  # Default water table for sample
+
+        file_id = save_cpt_data(processed_data['cpt_data'], water_table)
+        session['cpt_data_id'] = file_id
+        session['water_table'] = water_table
+        session['original_filename'] = 'sample_data'
+        session['type'] = type
+
+        store_analytics_data('sample_data', 'type', type)
+
+        return redirect(url_for('main.calculator_step', type=type, step=2))
+    except Exception as e:
+        logger.error(f"Error loading sample data: {str(e)}")
+        flash(f'Error loading sample data: {str(e)}')
+        return redirect(url_for('main.calculator_step', type=type, step=1))
+
+
 # Add analytics middleware to track all page visits
 @bp.before_request
 def track_page_visit():
@@ -224,33 +270,27 @@ def create_driven_data_dataframe(processed_cpt, calc_dict):
 @bp.route('/')
 @bp.route('/index')
 def index():
-    # Add debug logging
     logger.debug(f"Session contents: {dict(session)}")
     logger.debug(f"Session registered flag: {session.get('registered')}")
-    
-    show_modal = True
-    # Check for session data first
-    if 'registered' in session and session['registered']:
-        show_modal = False
-        # User is already registered - no need to add Visit record here since the middleware handles it
-    # If session doesn't have registration info, check cookies as fallback
-    elif request.cookies.get('user_registered') == 'true':
-        show_modal = False
-        session['registered'] = True
-        session.modified = True
-    
-    # Ensure session is saved and make it permanent
+
+    # Don't show registration modal on index - let users explore first
+    show_modal = False
+
+    # Still check for registration status for cookie handling
+    if 'registered' not in session or not session['registered']:
+        if request.cookies.get('user_registered') == 'true':
+            session['registered'] = True
+            session.modified = True
+
     session.permanent = True
     session.modified = True
-    
-    # Force cookie parameters for better persistence
+
     response = make_response(render_template('index.html', show_modal=show_modal))
     if 'registered' in session and session['registered']:
-        # Set a non-session cookie as backup
         response.set_cookie(
-            'user_registered', 
+            'user_registered',
             'true',
-            max_age=31536000,  # 365 days in seconds
+            max_age=31536000,
             httponly=True,
             samesite='Lax',
             path='/'
@@ -288,7 +328,16 @@ def calculator_step(type, step):
     
     if type not in ['driven', 'bored', 'helical']:
         return redirect(url_for('main.index'))
-    
+
+    # Show registration modal if user hasn't registered yet
+    show_modal = False
+    if 'registered' not in session or not session['registered']:
+        if request.cookies.get('user_registered') == 'true':
+            session['registered'] = True
+            session.modified = True
+        else:
+            show_modal = True
+
     # Handle helical pile processing specifically
     if type == 'helical' and step == 3 and request.method == 'POST':
         try:
@@ -302,12 +351,28 @@ def calculator_step(type, step):
                 'water_table': float(session.get('water_table', 0))  # Use water table from session instead of form
             }
             
+            # Validate helical pile parameters
+            errors = []
+            if pile_params['shaft_diameter'] <= 0:
+                errors.append('Shaft diameter must be greater than 0')
+            if pile_params['helix_diameter'] <= 0:
+                errors.append('Helix diameter must be greater than 0')
+            if pile_params['helix_depth'] <= 0:
+                errors.append('Helix depth must be greater than 0')
+            if pile_params['shaft_diameter'] >= pile_params['helix_diameter']:
+                errors.append('Shaft diameter must be smaller than helix diameter')
+
+            if errors:
+                for error in errors:
+                    flash(error)
+                return redirect(url_for('main.calculator_step', type='helical', step=3))
+
             # Store parameters in session
             session['pile_params'] = pile_params
-            
+
             # Store parameters in database
             store_analytics_data('pile_params', data_dict=pile_params)
-            
+
             # Load CPT data
             if 'cpt_data_id' in session:
                 cpt_data = load_cpt_data(session['cpt_data_id'])
@@ -407,15 +472,16 @@ def calculator_step(type, step):
         logger.info(f"Rendering step 4 with results: {session['results']}")
         logger.info(f"Debug ID in session: {session.get('debug_id')}")
         logger.info(f"Detailed results: {detailed_results}")
-        
+
         return render_template(
-            f'{type}/steps.html', 
-            step=step, 
-            type=type, 
+            f'{type}/steps.html',
+            step=step,
+            type=type,
             results=session['results'],
-            detailed_results=detailed_results
+            detailed_results=detailed_results,
+            show_modal=show_modal
         )
-    
+
     # Continue with the rest of the route handler
     if request.method == 'POST':
         if step == 1:  # Handle file upload
@@ -590,6 +656,20 @@ def calculator_step(type, step):
                     flash('Invalid pile tip depths format. Please enter numbers separated by commas.')
                     return redirect(url_for('main.calculator_step', type=type, step=3))
                 
+                # Validate bored pile parameters
+                errors = []
+                if float(request.form.get('shaft_diameter', 0)) <= 0:
+                    errors.append('Shaft diameter must be greater than 0')
+                if float(request.form.get('base_diameter', 0)) <= 0:
+                    errors.append('Base diameter must be greater than 0')
+                if float(request.form.get('cased_depth', 0)) < 0:
+                    errors.append('Cased depth cannot be negative')
+
+                if errors:
+                    for error in errors:
+                        flash(error)
+                    return redirect(url_for('main.calculator_step', type=type, step=3))
+
                 # Store parameters in session
                 session['pile_params'] = {
                     'shaft_diameter': float(request.form['shaft_diameter']),
@@ -599,17 +679,17 @@ def calculator_step(type, step):
                     'site_name': request.form.get('file_name', ''),
                     'pile_tip_depths': pile_tip_depths
                 }
-                
+
                 # Process the data and calculate results
                 if 'cpt_data_id' not in session:
                     flash('No CPT data available. Please upload data first.')
                     return redirect(url_for('main.calculator_step', type=type, step=1))
-                
+
                 cpt_data = load_cpt_data(session['cpt_data_id'])
                 if not cpt_data:
                     flash('CPT data not found. Please upload data again.')
                     return redirect(url_for('main.calculator_step', type=type, step=1))
-                
+
                 # Process the CPT data
                 processed_cpt = pre_input_calc(cpt_data, float(session.get('water_table', 0)))  # Consistent use of session water table
                 
@@ -649,7 +729,7 @@ def calculator_step(type, step):
                     flash('Invalid pile tip depths format. Please enter numbers separated by commas.')
                     return redirect(url_for('main.calculator_step', type=type, step=3))
                 
-                session['pile_params'] = {
+                pile_params = {
                     'pile_diameter': float(request.form['pile_diameter']),
                     'wall_thickness': float(request.form['wall_thickness']),
                     'borehole_depth': float(request.form['borehole_depth']),
@@ -659,7 +739,38 @@ def calculator_step(type, step):
                     'site_name': request.form.get('site_name', ''),
                     'pile_tip_depths': pile_tip_depths
                 }
-                
+                session['pile_params'] = pile_params
+
+                # Validate pile parameters
+                errors = []
+                if pile_params['pile_diameter'] <= 0:
+                    errors.append('Pile diameter must be greater than 0')
+                if pile_params['pile_shape'] == 'circular' and pile_params['wall_thickness'] <= 0:
+                    errors.append('Wall thickness must be greater than 0')
+                if pile_params['pile_shape'] == 'circular' and pile_params['wall_thickness'] >= pile_params['pile_diameter'] * 1000 / 2:
+                    errors.append('Wall thickness must be less than half the pile diameter')
+                if pile_params['borehole_depth'] < 0:
+                    errors.append('Borehole depth cannot be negative')
+
+                # Validate pile tip depths
+                if not pile_params.get('pile_tip_depths'):
+                    errors.append('At least one pile tip depth is required')
+                else:
+                    data = load_cpt_data(session['cpt_data_id'])
+                    if data:
+                        cpt_data_check = data['cpt_data'] if isinstance(data, dict) else data
+                        max_depth = max(row['z'] for row in cpt_data_check)
+                        for depth in pile_params['pile_tip_depths']:
+                            if depth <= 0:
+                                errors.append(f'Pile tip depth {depth}m must be greater than 0')
+                            if depth > max_depth:
+                                errors.append(f'Pile tip depth {depth}m exceeds maximum CPT data depth of {max_depth:.1f}m')
+
+                if errors:
+                    for error in errors:
+                        flash(error)
+                    return redirect(url_for('main.calculator_step', type=type, step=3))
+
                 # Process the data and calculate results
                 if 'cpt_data_id' not in session:
                     flash('No CPT data available. Please upload data first.')
@@ -794,17 +905,18 @@ def calculator_step(type, step):
             # For GET requests, add debug output
             if request.method == 'GET':
                 print("Session data on results page:", session.get('pile_params'))
-            
+
             return render_template(
-                f'{type}/steps.html', 
-                step=step, 
-                type=type, 
+                f'{type}/steps.html',
+                step=step,
+                type=type,
                 results=session['results'],
-                detailed_results=detailed_results
+                detailed_results=detailed_results,
+                show_modal=show_modal
             )
-        
-        return render_template(f'{type}/steps.html', step=step, type=type)
-    
+
+        return render_template(f'{type}/steps.html', step=step, type=type, show_modal=show_modal)
+
     # Handle GET requests
     if step == 2:
         if 'cpt_data_id' not in session:
@@ -828,15 +940,15 @@ def calculator_step(type, step):
         cpt_data = data['cpt_data'] if isinstance(data, dict) else data
         if len(cpt_data) > 1000:
             flash(f'Large dataset detected ({len(cpt_data)} data points). Graphs show sampled data for performance. Full dataset will be used for calculations.', 'info')
-        
-        return render_template(f'{type}/steps.html', step=step, graphs=graphs, type=type)
-    
+
+        return render_template(f'{type}/steps.html', step=step, graphs=graphs, type=type, show_modal=show_modal)
+
     elif step == 3:
         if 'cpt_data_id' not in session:
             flash('No CPT data available. Please complete previous steps first.')
             return redirect(url_for('main.calculator_step', type=type, step=1))
         logger.info(f"Rendering step 3 for {type} piles")
-        return render_template(f'{type}/steps.html', step=step, type=type)
+        return render_template(f'{type}/steps.html', step=step, type=type, show_modal=show_modal)
         
     elif step == 4:
         logger.info(f"Step 4 GET request for {type} piles")
@@ -853,16 +965,17 @@ def calculator_step(type, step):
             logger.info(f"Loaded debug details: {debug_details}")
             if debug_details and isinstance(debug_details, list) and len(debug_details) > 0:
                 detailed_results = debug_details[0]
-        
+
         return render_template(
-            f'{type}/steps.html', 
-            step=step, 
-            type=type, 
+            f'{type}/steps.html',
+            step=step,
+            type=type,
             results=session['results'],
-            detailed_results=detailed_results
+            detailed_results=detailed_results,
+            show_modal=show_modal
         )
-    
-    return render_template(f'{type}/steps.html', step=step, type=type)
+
+    return render_template(f'{type}/steps.html', step=step, type=type, show_modal=show_modal)
 
 @bp.route('/download_debug_params')
 def download_debug_params():
@@ -1387,6 +1500,212 @@ def download_results():
         flash(f'Error generating results download: {str(e)}')
         return redirect(url_for('main.calculator_step', type=pile_type, step=4))
 
+@bp.route('/download_pdf_report')
+def download_pdf_report():
+    """Generate and download a PDF report of pile calculation results."""
+    if 'results' not in session:
+        flash('No results available')
+        return redirect(url_for('main.index'))
+
+    try:
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib import colors
+        from reportlab.lib.units import mm
+        from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+
+        pile_type = session.get('type', 'unknown')
+        pile_params = session.get('pile_params', {})
+        results = session.get('results')
+
+        buffer = io.BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=A4,
+                                leftMargin=20*mm, rightMargin=20*mm,
+                                topMargin=20*mm, bottomMargin=20*mm)
+
+        styles = getSampleStyleSheet()
+        title_style = ParagraphStyle('CustomTitle', parent=styles['Title'],
+                                     fontSize=18, spaceAfter=6*mm,
+                                     textColor=colors.HexColor('#003087'))
+        subtitle_style = ParagraphStyle('Subtitle', parent=styles['Normal'],
+                                        fontSize=10, textColor=colors.grey,
+                                        spaceAfter=4*mm)
+        heading_style = ParagraphStyle('Heading', parent=styles['Heading2'],
+                                       fontSize=13, spaceAfter=3*mm, spaceBefore=6*mm,
+                                       textColor=colors.HexColor('#003087'))
+        normal_style = styles['Normal']
+        small_style = ParagraphStyle('Small', parent=styles['Normal'],
+                                      fontSize=8, textColor=colors.grey)
+
+        elements = []
+
+        # Title
+        elements.append(Paragraph('UWA CPT Pile Calculator Report', title_style))
+        elements.append(Paragraph(
+            f'{pile_type.title()} Pile Analysis &mdash; Generated {datetime.now().strftime("%d %B %Y, %H:%M")}',
+            subtitle_style))
+        elements.append(Spacer(1, 4*mm))
+
+        # Parameters section
+        elements.append(Paragraph('Input Parameters', heading_style))
+        param_data = []
+        if pile_type == 'driven':
+            param_data = [
+                ['Site Name', pile_params.get('site_name', 'N/A')],
+                ['Pile Shape', pile_params.get('pile_shape', 'N/A')],
+                ['Pile End Condition', pile_params.get('pile_end_condition', 'N/A')],
+                ['Pile Diameter (m)', str(pile_params.get('pile_diameter', 'N/A'))],
+                ['Wall Thickness (mm)', str(pile_params.get('wall_thickness', 'N/A'))],
+                ['Borehole Depth (m)', str(pile_params.get('borehole_depth', 'N/A'))],
+                ['Water Table (m)', str(pile_params.get('water_table', 'N/A'))],
+            ]
+        elif pile_type == 'bored':
+            param_data = [
+                ['Site Name', pile_params.get('site_name', 'N/A')],
+                ['Shaft Diameter (m)', str(pile_params.get('shaft_diameter', 'N/A'))],
+                ['Base Diameter (m)', str(pile_params.get('base_diameter', 'N/A'))],
+                ['Cased Depth (m)', str(pile_params.get('cased_depth', 'N/A'))],
+                ['Water Table (m)', str(pile_params.get('water_table', 'N/A'))],
+            ]
+        elif pile_type == 'helical':
+            param_data = [
+                ['Site Name', pile_params.get('site_name', 'N/A')],
+                ['Shaft Diameter (m)', str(pile_params.get('shaft_diameter', 'N/A'))],
+                ['Helix Diameter (m)', str(pile_params.get('helix_diameter', 'N/A'))],
+                ['Helix Depth (m)', str(pile_params.get('helix_depth', 'N/A'))],
+                ['Water Table (m)', str(pile_params.get('water_table', 'N/A'))],
+            ]
+
+        if param_data:
+            param_table = Table([['Parameter', 'Value']] + param_data,
+                                colWidths=[90*mm, 70*mm])
+            param_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#003087')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 9),
+                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#dee2e6')),
+                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f8f9fa')]),
+                ('TOPPADDING', (0, 0), (-1, -1), 4),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+            ]))
+            elements.append(param_table)
+
+        elements.append(Spacer(1, 4*mm))
+
+        # Results section
+        elements.append(Paragraph('Capacity Results', heading_style))
+
+        if pile_type == 'helical':
+            cap_data = [
+                ['CAPACITY', 'Qshaft (kN)', 'Q at \u03b4=10mm (kN)', 'Qult (kN)'],
+                ['Tension',
+                 f"{results.get('qshaft', 0):.1f}",
+                 f"{results.get('q_delta_10mm_tension', 0):.1f}",
+                 f"{results.get('qult_tension', 0):.1f}"],
+                ['Compression',
+                 f"{results.get('qshaft', 0):.1f}",
+                 f"{results.get('q_delta_10mm_compression', 0):.1f}",
+                 f"{results.get('qult_compression', 0):.1f}"],
+            ]
+            cap_table = Table(cap_data, colWidths=[35*mm, 40*mm, 45*mm, 40*mm])
+        else:
+            cap_data = [['Tip Depth (m)', 'Tension Capacity (kN)', 'Compression Capacity (kN)']]
+            if isinstance(results, list):
+                for r in results:
+                    cap_data.append([
+                        f"{r['tipdepth']:.2f}",
+                        f"{r['tension_capacity']:.0f}",
+                        f"{r['compression_capacity']:.0f}"
+                    ])
+            cap_table = Table(cap_data, colWidths=[50*mm, 55*mm, 55*mm])
+
+        cap_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#003087')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#dee2e6')),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f8f9fa')]),
+            ('TOPPADDING', (0, 0), (-1, -1), 4),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        ]))
+        elements.append(cap_table)
+
+        if pile_type == 'helical':
+            elements.append(Spacer(1, 3*mm))
+            extra_data = [
+                ['Installation Torque (kNm)', f"{results.get('installation_torque', 0):.1f}"],
+                ['Tip Depth (m)', f"{results.get('tipdepth', 0):.2f}"],
+                ['qb0.1 Compression (MPa)', f"{results.get('qb01_comp', 0):.2f}"],
+                ['qb0.1 Tension (MPa)', f"{results.get('qb01_tension', 0):.2f}"],
+            ]
+            extra_table = Table(extra_data, colWidths=[90*mm, 70*mm])
+            extra_table.setStyle(TableStyle([
+                ('FONTSIZE', (0, 0), (-1, -1), 9),
+                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#dee2e6')),
+                ('ROWBACKGROUNDS', (0, 0), (-1, -1), [colors.white, colors.HexColor('#f8f9fa')]),
+                ('TOPPADDING', (0, 0), (-1, -1), 4),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+            ]))
+            elements.append(extra_table)
+
+        # Method reference
+        elements.append(Spacer(1, 8*mm))
+        elements.append(Paragraph('Method Reference', heading_style))
+        if pile_type == 'driven':
+            elements.append(Paragraph(
+                'Lehane B.M., Liu Z., Bittar E., et al. (2020). A new CPT-based axial pile capacity '
+                'design method for driven piles in sand. Proc 4th Int. Symposium on Frontiers in '
+                'Offshore Geotechnics, ISFOG-4, Austin, Texas, 462-477.', normal_style))
+            elements.append(Spacer(1, 2*mm))
+            elements.append(Paragraph(
+                'Lehane B.M., Liu Z., Bittar E., et al. (2022). CPT-based axial pile capacity design '
+                'method for driven piles in clay. J. Geotech. &amp; Geoenv. Engrg., ASCE, 148(9).', normal_style))
+        elif pile_type == 'bored':
+            elements.append(Paragraph(
+                'Doan L.V. &amp; Lehane B.M. (2021). CPT-based design method for axial capacities of '
+                'bored piles in sand and clay.', normal_style))
+        elif pile_type == 'helical':
+            elements.append(Paragraph(
+                'Bittar E.J., Lehane B.M., Blake A., et al. (2023). CPT-based design method for '
+                'helical piles in sand. Canadian Geotechnical Journal.', normal_style))
+
+        # Footer
+        elements.append(Spacer(1, 10*mm))
+        elements.append(Paragraph(
+            'Generated by UWA CPT Pile Calculator | uwa-geotech-cpt-calculator.com | '
+            'Developed by Vortexia Solutions', small_style))
+
+        doc.build(elements)
+        buffer.seek(0)
+
+        site_name = pile_params.get('site_name', '').strip()
+        date_str = datetime.now().strftime('%Y%m%d')
+        filename = f"{pile_type}_pile_report"
+        if site_name:
+            filename += f"_{site_name}"
+        filename += f"_{date_str}.pdf"
+
+        return send_file(
+            buffer,
+            mimetype='application/pdf',
+            as_attachment=True,
+            download_name=filename
+        )
+
+    except ImportError:
+        flash('PDF generation is not available. Please install reportlab.')
+        return redirect(url_for('main.calculator_step', type=session.get('type', 'driven'), step=4))
+    except Exception as e:
+        current_app.logger.error(f"Error generating PDF report: {str(e)}")
+        flash(f'Error generating PDF: {str(e)}')
+        return redirect(url_for('main.calculator_step', type=session.get('type', 'driven'), step=4))
+
+
 @bp.route('/register', methods=['POST'])
 def register():
     email = request.form.get('email')
@@ -1421,7 +1740,8 @@ def register():
         pass
     
     # Set a more persistent cookie
-    response = make_response(redirect(url_for('main.index')))
+    next_url = request.form.get('next') or request.args.get('next') or url_for('main.index')
+    response = make_response(redirect(next_url))
     response.set_cookie(
         'user_registered', 
         'true',

@@ -1009,3 +1009,132 @@ input[type="text"] {
         margin-bottom: 0;
     }
 }
+
+/* === Mobile Responsiveness Fixes === */
+
+/* Extra small screens */
+@media (max-width: 480px) {
+    .nav-top-tier {
+        padding: 0.25rem 0.5rem;
+    }
+
+    .site-title {
+        font-size: 0.9rem;
+    }
+
+    .nav-logo {
+        height: 30px;
+    }
+
+    .nav-text {
+        display: none;
+    }
+
+    .nav-link {
+        padding: 0.4rem 0.6rem;
+    }
+}
+
+/* Better touch targets */
+@media (max-width: 768px) {
+    .btn, button, input[type="submit"] {
+        min-height: 44px;
+        min-width: 44px;
+    }
+
+    input, select, textarea {
+        font-size: 16px; /* Prevents iOS zoom on focus */
+        padding: 0.75rem;
+    }
+
+    /* Fix modal on small screens */
+    .modal-content {
+        width: 95%;
+        max-width: none;
+        margin: 1rem;
+        padding: 1.5rem;
+    }
+
+    /* Better table handling */
+    .analytics-table, .table-responsive {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    /* Admin grid fix */
+    .analytics-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .analytics-card {
+        min-width: 0;
+    }
+
+    /* Registration card fix */
+    .registration-card {
+        max-width: 100%;
+        padding: 1.5rem;
+        margin: 0 0.5rem;
+    }
+
+    /* Results grid fix */
+    .results-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .graph-wrapper {
+        width: 100%;
+        height: 350px;
+    }
+
+    /* Calculator options grid */
+    .calculator-options {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Fix navigation on tablets */
+@media (max-width: 1024px) and (min-width: 769px) {
+    .nav-text {
+        font-size: 0.85rem;
+    }
+}
+
+/* Registrations table mobile card layout */
+@media (max-width: 768px) {
+    .registrations-table table {
+        display: block;
+    }
+
+    .registrations-table thead {
+        display: none;
+    }
+
+    .registrations-table tbody {
+        display: block;
+    }
+
+    .registrations-table tr {
+        display: block;
+        margin-bottom: 1rem;
+        padding: 1rem;
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    .registrations-table td {
+        display: block;
+        padding: 0.25rem 0;
+        border: none;
+    }
+
+    .registrations-table td::before {
+        content: attr(data-label);
+        font-weight: 600;
+        color: #666;
+        display: inline-block;
+        width: 100px;
+        font-size: 0.85rem;
+    }
+}

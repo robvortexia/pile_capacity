@@ -47,7 +47,15 @@
         <div class="button-group">
             <button type="submit" name="action" value="process" class="btn btn-success" id="submitBtn">Continue to Step 2</button>
         </div>
-        
+
+        <div class="sample-data-section">
+            <div class="divider-text"><span>or</span></div>
+            <a href="{{ url_for('main.use_sample_data', type=type) }}" class="btn btn-sample">
+                <i class="fas fa-play-circle"></i> Try with sample data
+            </a>
+            <small class="form-text text-muted" style="text-align: center; display: block; margin-top: 0.5rem;">Load a demo CPT dataset to explore the calculator</small>
+        </div>
+
         <!-- Progress indicator for large files -->
         <div id="loadingIndicator" style="display: none;" class="loading-container">
             <div class="progress-content">
@@ -541,5 +549,56 @@ document.addEventListener('DOMContentLoaded', function() {
 .progress-details small {
     color: #6c757d;
     font-size: 0.8rem;
+}
+
+.sample-data-section {
+    text-align: center;
+    margin-top: 1rem;
+}
+
+.divider-text {
+    display: flex;
+    align-items: center;
+    margin: 1rem 0;
+    color: #999;
+    font-size: 0.9rem;
+}
+
+.divider-text::before,
+.divider-text::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: #ddd;
+}
+
+.divider-text span {
+    padding: 0 1rem;
+}
+
+.btn-sample {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 0.75rem 2rem;
+    border-radius: 6px;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-weight: 500;
+    transition: all 0.3s ease;
+}
+
+.btn-sample:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    color: white;
+    text-decoration: none;
+}
+
+.alert-error {
+    background: #fde8e8;
+    color: #c53030;
+    border-left: 4px solid #c53030;
 }
 </style> 
