@@ -1,8 +1,61 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>UWA Calculator</title>
+
+    <title>{% block title %}UWA CPT Pile Calculator — Driven, Bored & Helical Pile Capacity from CPT Data{% endblock %}</title>
+    <meta name="description" content="{% block meta_description %}Free online CPT-based pile capacity calculator from The University of Western Australia. Calculate axial capacity for driven, bored, and helical piles using Cone Penetration Test data.{% endblock %}">
+    <meta name="keywords" content="{% block meta_keywords %}CPT pile calculator, cone penetration test, driven pile capacity, bored pile capacity, helical pile capacity, geotechnical engineering, UWA, pile foundation design, Lehane, axial pile capacity, CPT data analysis{% endblock %}">
+    <meta name="author" content="The University of Western Australia & Vortexia Solutions">
+    <meta name="robots" content="index, follow">
+    <link rel="canonical" href="{% block canonical %}{{ request.url_root.rstrip('/') }}{{ request.path }}{% endblock %}">
+
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="{{ request.url }}">
+    <meta property="og:title" content="{% block og_title %}UWA CPT Pile Calculator{% endblock %}">
+    <meta property="og:description" content="{% block og_description %}Free CPT-based pile capacity calculator from UWA. Calculate axial capacity for driven, bored, and helical piles using Cone Penetration Test data.{% endblock %}">
+    <meta property="og:image" content="{{ url_for('static', filename='img/uwalogo.png', _external=True) }}">
+    <meta property="og:site_name" content="UWA CPT Pile Calculator">
+    <meta property="og:locale" content="en_AU">
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="{% block twitter_title %}UWA CPT Pile Calculator{% endblock %}">
+    <meta name="twitter:description" content="{% block twitter_description %}Free CPT-based pile capacity calculator from UWA. Driven, bored, and helical pile design from CPT data.{% endblock %}">
+    <meta name="twitter:image" content="{{ url_for('static', filename='img/uwalogo.png', _external=True) }}">
+
+    <!-- JSON-LD Structured Data -->
+    {% block jsonld %}
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "UWA CPT Pile Calculator",
+        "url": "https://uwa-geotech-cpt-calculator.com/",
+        "description": "Free online CPT-based pile capacity calculator developed by The University of Western Australia. Supports driven, bored, and helical pile design using Cone Penetration Test data.",
+        "applicationCategory": "Engineering",
+        "operatingSystem": "Web Browser",
+        "offers": {
+            "@type": "Offer",
+            "price": "0",
+            "priceCurrency": "AUD"
+        },
+        "author": {
+            "@type": "Organization",
+            "name": "The University of Western Australia",
+            "url": "https://www.uwa.edu.au/"
+        },
+        "creator": {
+            "@type": "Organization",
+            "name": "Vortexia Solutions",
+            "url": "https://www.vortexiasolutions.com.au/"
+        }
+    }
+    </script>
+    {% endblock %}
+
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/steps.css') }}">
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">

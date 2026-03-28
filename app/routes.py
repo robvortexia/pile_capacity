@@ -35,6 +35,51 @@ logger = logging.getLogger(__name__)
 
 bp = Blueprint('main', __name__)
 
+
+@bp.route('/robots.txt')
+def robots_txt():
+    """Serve robots.txt for search engine crawlers."""
+    content = """User-agent: *
+Allow: /
+Allow: /driven/description
+Allow: /bored/description
+Allow: /helical/description
+Disallow: /admin
+Disallow: /admin/export
+Disallow: /admin/send_weekly_report
+Disallow: /download_results
+Disallow: /download_debug_params
+Disallow: /download_intermediary_calcs
+Disallow: /download_helical_calculations
+Disallow: /register
+Disallow: /track_ad_click
+
+Sitemap: https://uwa-geotech-cpt-calculator.com/sitemap.xml
+"""
+    return Response(content.strip(), mimetype='text/plain')
+
+
+@bp.route('/sitemap.xml')
+def sitemap_xml():
+    """Serve XML sitemap for search engine indexing."""
+    pages = [
+        {'loc': '/', 'priority': '1.0', 'changefreq': 'monthly'},
+        {'loc': '/driven/description', 'priority': '0.8', 'changefreq': 'yearly'},
+        {'loc': '/bored/description', 'priority': '0.8', 'changefreq': 'yearly'},
+        {'loc': '/helical/description', 'priority': '0.8', 'changefreq': 'yearly'},
+    ]
+    xml = '<?xml version="1.0" encoding="UTF-8"?>\n'
+    xml += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+    for page in pages:
+        xml += '  <url>\n'
+        xml += f'    <loc>https://uwa-geotech-cpt-calculator.com{page["loc"]}</loc>\n'
+        xml += f'    <changefreq>{page["changefreq"]}</changefreq>\n'
+        xml += f'    <priority>{page["priority"]}</priority>\n'
+        xml += '  </url>\n'
+    xml += '</urlset>'
+    return Response(xml, mimetype='application/xml')
+
+
 # Add analytics middleware to track all page visits
 @bp.before_request
 def track_page_visit():
