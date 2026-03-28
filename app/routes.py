@@ -96,6 +96,7 @@ def use_sample_data(type):
     sample_path = os.path.join(current_app.static_folder, 'data', 'sample_cpt.csv')
     try:
         data_dict = []
+        raw_rows = []
         with open(sample_path, 'r') as f:
             for line in f:
                 line = line.strip()
@@ -103,12 +104,14 @@ def use_sample_data(type):
                     continue
                 values = line.split(',')
                 if len(values) >= 4:
-                    data_dict.append({
+                    row = {
                         'z': float(values[0]),
                         'qc': float(values[1]),
                         'fs': float(values[2]),
                         'gtot': float(values[3])
-                    })
+                    }
+                    data_dict.append(row)
+                    raw_rows.append(row)
 
         if not data_dict:
             flash('Error loading sample data')
@@ -125,7 +128,8 @@ def use_sample_data(type):
 
         store_analytics_data('sample_data', 'type', type)
 
-        return redirect(url_for('main.calculator_step', type=type, step=2))
+        # Redirect to step 1 with sample flag so user can review the data
+        return redirect(url_for('main.calculator_step', type=type, step=1, sample=1))
     except Exception as e:
         logger.error(f"Error loading sample data: {str(e)}")
         flash(f'Error loading sample data: {str(e)}')
@@ -975,7 +979,18 @@ def calculator_step(type, step):
             show_modal=show_modal
         )
 
-    return render_template(f'{type}/steps.html', step=step, type=type, show_modal=show_modal)
+    # For step 1 with sample data loaded, pass sample data for preview
+    sample_data = None
+    sample_water_table = None
+    if step == 1 and request.args.get('sample') and 'cpt_data_id' in session:
+        data = load_cpt_data(session['cpt_data_id'])
+        if data:
+            cpt_data = data['cpt_data'] if isinstance(data, dict) else data
+            sample_data = cpt_data
+            sample_water_table = session.get('water_table', 2.0)
+
+    return render_template(f'{type}/steps.html', step=step, type=type, show_modal=show_modal,
+                           sample_data=sample_data, sample_water_table=sample_water_table)
 
 @bp.route('/download_debug_params')
 def download_debug_params():
