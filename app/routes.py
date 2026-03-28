@@ -36,6 +36,12 @@ logger = logging.getLogger(__name__)
 bp = Blueprint('main', __name__)
 
 
+@bp.route('/googlef2236ffa5d780ee8.html')
+def google_site_verification():
+    """Serve Google Search Console verification file."""
+    return Response('google-site-verification: googlef2236ffa5d780ee8.html', mimetype='text/html')
+
+
 @bp.route('/robots.txt')
 def robots_txt():
     """Serve robots.txt for search engine crawlers."""
