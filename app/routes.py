@@ -1730,10 +1730,24 @@ def register():
         flash('Please fill in all fields', 'error')
         return redirect(url_for('main.index'))
         
+    ip_addr = request.remote_addr
+    country = None
+    try:
+        import urllib.request, json as _json
+        geo = _json.loads(urllib.request.urlopen(
+            f'http://ip-api.com/json/{ip_addr}?fields=status,country,city', timeout=3
+        ).read())
+        if geo.get('status') == 'success':
+            parts = [geo.get('city'), geo.get('country')]
+            country = ', '.join(p for p in parts if p)
+    except Exception:
+        pass
+
     registration = Registration(
         email=email,
         affiliation=affiliation,
-        ip_address=request.remote_addr
+        ip_address=ip_addr,
+        country=country
     )
     
     db.session.add(registration)
@@ -1788,6 +1802,7 @@ def admin():
     
     # Calculate some basic analytics
     total_users = len(registrations)
+    unique_users = db.session.query(func.count(func.distinct(Registration.email))).scalar() or 0
     
     # Get registrations by day - Modified this query
     daily_stats = db.session.query(
@@ -1861,6 +1876,7 @@ def admin():
     return render_template('admin.html',
                          registrations=registrations,
                          total_users=total_users,
+                         unique_users=unique_users,
                          daily_stats=daily_stats,
                          top_affiliations=top_affiliations,
                          visit_stats=visit_stats,

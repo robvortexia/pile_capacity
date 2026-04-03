@@ -8,7 +8,8 @@ class Registration(db.Model):
     email = db.Column(db.String(120), nullable=False)
     affiliation = db.Column(db.String(120), nullable=False)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
-    ip_address = db.Column(db.String(45)) 
+    ip_address = db.Column(db.String(45))
+    country = db.Column(db.String(100), nullable=True)
 
 class Visit(db.Model):
     id = db.Column(db.Integer, primary_key=True)

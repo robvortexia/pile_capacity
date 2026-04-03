@@ -11,8 +11,13 @@
 
     <div class="analytics-grid">
         <div class="analytics-card">
-            <h3>Total Registered Users</h3>
+            <h3>Total Registrations</h3>
             <div class="analytics-number">{{ total_users }}</div>
+        </div>
+
+        <div class="analytics-card">
+            <h3>Unique Registrations</h3>
+            <div class="analytics-number">{{ unique_users }}</div>
         </div>
 
         <div class="analytics-card">
@@ -186,6 +191,7 @@
                     <th>Email</th>
                     <th>Affiliation</th>
                     <th>IP Address</th>
+                    <th>Location</th>
                     <th>Timestamp</th>
                 </tr>
             </thead>
@@ -195,6 +201,7 @@
                     <td data-label="Email">{{ reg.email }}</td>
                     <td data-label="Affiliation">{{ reg.affiliation }}</td>
                     <td data-label="IP">{{ reg.ip_address }}</td>
+                    <td data-label="Location">{{ reg.country or '—' }}</td>
                     <td data-label="Date">{{ reg.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</td>
                 </tr>
                 {% endfor %}
