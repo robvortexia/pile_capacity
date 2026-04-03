@@ -1833,7 +1833,32 @@ def admin():
     # Get advertisement click statistics
     ad_click_stats = get_analytics_data_stats('ad_click', days=30)
 
-    return render_template('admin.html', 
+    # Build 14-day rolling new-registration series
+    # Need 44 days of data so we have a full 14-day window for the last 30 days
+    rolling_start = datetime.utcnow() - timedelta(days=44)
+    reg_by_day = db.session.query(
+        db.func.date(Registration.timestamp).label('date'),
+        db.func.count(Registration.id).label('count')
+    ).filter(
+        Registration.timestamp >= rolling_start
+    ).group_by(
+        db.func.date(Registration.timestamp)
+    ).all()
+    # Convert to dict for quick lookup
+    reg_lookup = {str(r.date): r.count for r in reg_by_day}
+    # Zero-fill every day in the range
+    today = datetime.utcnow().date()
+    all_days = [(today - timedelta(days=i)) for i in range(44, -1, -1)]
+    daily_counts = [reg_lookup.get(str(d), 0) for d in all_days]
+    # Compute 14-day rolling sum
+    rolling_14d = []
+    for i in range(len(all_days)):
+        window = daily_counts[max(0, i - 13):i + 1]
+        rolling_14d.append({'date': str(all_days[i]), 'count': sum(window)})
+    # Only send the last 30 days of rolling data to the template
+    rolling_14d_json = rolling_14d[-30:]
+
+    return render_template('admin.html',
                          registrations=registrations,
                          total_users=total_users,
                          daily_stats=daily_stats,
@@ -1842,7 +1867,8 @@ def admin():
                          page_visit_stats=page_visit_stats,
                          pile_type_stats=pile_type_stats,
                          param_stats=param_stats,
-                         ad_click_stats=ad_click_stats)
+                         ad_click_stats=ad_click_stats,
+                         rolling_14d_json=rolling_14d_json)
 
 @bp.route('/admin/send_weekly_report')
 @admin_required
