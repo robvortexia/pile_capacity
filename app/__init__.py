@@ -55,7 +55,15 @@ def create_app():
     
     with app.app_context():
         db.create_all()
-        
+
+        # Auto-migrate: add missing columns
+        from sqlalchemy import inspect, text
+        inspector = inspect(db.engine)
+        reg_columns = [c['name'] for c in inspector.get_columns('registration')]
+        if 'country' not in reg_columns:
+            db.session.execute(text('ALTER TABLE registration ADD COLUMN country VARCHAR(100)'))
+            db.session.commit()
+
         from .routes import bp as main_blueprint
         app.register_blueprint(main_blueprint)
 
