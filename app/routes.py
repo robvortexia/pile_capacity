@@ -1797,18 +1797,22 @@ def admin_required(f):
 @bp.route('/admin')
 @admin_required
 def admin():
+    # Exclude demo/test registrations
+    demo_emails = ['demo@uwa.edu.au']
+    real_filter = ~Registration.email.in_(demo_emails)
+
     # Get all registrations
-    registrations = Registration.query.order_by(Registration.timestamp.desc()).all()
-    
+    registrations = Registration.query.filter(real_filter).order_by(Registration.timestamp.desc()).all()
+
     # Calculate some basic analytics
     total_users = len(registrations)
-    unique_users = db.session.query(func.count(func.distinct(Registration.email))).scalar() or 0
-    
+    unique_users = db.session.query(func.count(func.distinct(Registration.email))).filter(real_filter).scalar() or 0
+
     # Get registrations by day - Modified this query
     daily_stats = db.session.query(
         db.func.date(Registration.timestamp).label('date'),
         db.func.count(Registration.id).label('count')
-    ).group_by(
+    ).filter(real_filter).group_by(
         db.func.date(Registration.timestamp)
     ).order_by(
         db.func.date(Registration.timestamp).desc()
@@ -1818,7 +1822,7 @@ def admin():
     top_affiliations = db.session.query(
         Registration.affiliation,
         func.count(Registration.id).label('count')
-    ).group_by(Registration.affiliation)\
+    ).filter(real_filter).group_by(Registration.affiliation)\
      .order_by(func.count(Registration.id).desc())\
      .limit(10).all()
 
@@ -1855,7 +1859,8 @@ def admin():
         db.func.date(Registration.timestamp).label('date'),
         db.func.count(Registration.id).label('count')
     ).filter(
-        Registration.timestamp >= rolling_start
+        Registration.timestamp >= rolling_start,
+        real_filter
     ).group_by(
         db.func.date(Registration.timestamp)
     ).all()
@@ -1901,7 +1906,8 @@ def send_weekly_report():
 @bp.route('/admin/export')
 @admin_required
 def export_registrations():
-    registrations = Registration.query.order_by(Registration.timestamp.desc()).all()
+    demo_emails = ['demo@uwa.edu.au']
+    registrations = Registration.query.filter(~Registration.email.in_(demo_emails)).order_by(Registration.timestamp.desc()).all()
     
     si = StringIO()
     cw = csv.writer(si)
