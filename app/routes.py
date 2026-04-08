@@ -329,7 +329,15 @@ def calculator_step(type, step):
     # Store the pile type in session and database
     session['type'] = type
     store_analytics_data('pile_selection', 'type', type)
-    
+
+    # Track step visit with user context
+    record_event('step_visit', f'{type}_step_{step}', {
+        'pile_type': type,
+        'step': step,
+        'method': request.method,
+        'email': session.get('user_email'),
+    })
+
     if type not in ['driven', 'bored', 'helical']:
         return redirect(url_for('main.index'))
 
@@ -513,6 +521,11 @@ def calculator_step(type, step):
             if file and allowed_file(file.filename):
                 try:
                     logger.debug("Starting file processing")
+                    record_event('upload', f'{type}_file_upload', {
+                        'filename': file.filename,
+                        'water_table': water_table,
+                        'pile_type': type,
+                    })
                     # Store original filename in session (without extension)
                     original_filename = os.path.splitext(secure_filename(file.filename))[0]
                     session['original_filename'] = original_filename
@@ -607,7 +620,14 @@ def calculator_step(type, step):
                     logger.debug(f"File name: {file.filename}")
                     logger.debug(f"Content type: {file.content_type}")
                     logger.debug(f"Detected delimiter: {delimiter}")
-                    
+
+                    record_event('upload_success', f'{type}_upload_complete', {
+                        'pile_type': type,
+                        'data_points': len(processed_data['cpt_data']),
+                        'water_table': water_table,
+                        'delimiter': delimiter,
+                    })
+
                     return redirect(url_for('main.calculator_step', type=type, step=2))
                     
                 except pd.errors.EmptyDataError:
@@ -995,6 +1015,10 @@ def calculator_step(type, step):
 @bp.route('/download_debug_params')
 def download_debug_params():
     """Download debug parameters and calculation data as CSV"""
+    record_event('download', 'download_detailed_output', {
+        'pile_type': session.get('type'),
+        'email': session.get('user_email'),
+    })
     if 'cpt_data_id' not in session:
         flash('No CPT data available')
         return redirect(url_for('main.index'))
@@ -1288,6 +1312,10 @@ def download_debug_params():
 @bp.route('/download_results')
 def download_results():
     """Download pile calculation results as CSV"""
+    record_event('download', 'download_csv', {
+        'pile_type': session.get('type'),
+        'email': session.get('user_email'),
+    })
     if 'results_id' not in session and 'results' not in session:
         flash('No results available')
         return redirect(url_for('main.index'))
@@ -1518,6 +1546,10 @@ def download_results():
 @bp.route('/download_pdf_report')
 def download_pdf_report():
     """Generate and download a PDF report of pile calculation results."""
+    record_event('download', 'download_pdf', {
+        'pile_type': session.get('type'),
+        'email': session.get('user_email'),
+    })
     if 'results' not in session:
         flash('No results available')
         return redirect(url_for('main.index'))
@@ -1878,6 +1910,43 @@ def admin():
     # Only send the last 30 days of rolling data to the template
     rolling_14d_json = rolling_14d[-30:]
 
+    # Recent user activity feed (last 100 events)
+    recent_activity = db.session.query(AnalyticsData).filter(
+        AnalyticsData.data_type == 'event'
+    ).order_by(AnalyticsData.timestamp.desc()).limit(100).all()
+
+    # User journey stats: how far users get in the funnel
+    seven_days_ago = datetime.utcnow() - timedelta(days=7)
+    funnel_steps = {}
+    for step_name in ['step_1', 'step_2', 'step_3', 'step_4']:
+        count = db.session.query(func.count(func.distinct(AnalyticsData.user_id))).filter(
+            AnalyticsData.data_type == 'event',
+            AnalyticsData.data_key == 'step_visit',
+            AnalyticsData.data_value.contains(step_name),
+            AnalyticsData.timestamp >= seven_days_ago
+        ).scalar() or 0
+        funnel_steps[step_name] = count
+
+    # Download stats (last 30 days)
+    download_stats = db.session.query(
+        AnalyticsData.data_key,
+        func.count(AnalyticsData.id).label('count')
+    ).filter(
+        AnalyticsData.data_type == 'event',
+        AnalyticsData.data_key == 'download',
+        AnalyticsData.timestamp >= thirty_days_ago
+    ).group_by(AnalyticsData.data_key).all()
+
+    # Download breakdown by type
+    download_breakdown = db.session.query(
+        AnalyticsData.data_value,
+        func.count(AnalyticsData.id).label('count')
+    ).filter(
+        AnalyticsData.data_type == 'event',
+        AnalyticsData.data_key == 'download',
+        AnalyticsData.timestamp >= thirty_days_ago
+    ).group_by(AnalyticsData.data_value).order_by(func.count(AnalyticsData.id).desc()).all()
+
     return render_template('admin.html',
                          registrations=registrations,
                          total_users=total_users,
@@ -1889,7 +1958,10 @@ def admin():
                          pile_type_stats=pile_type_stats,
                          param_stats=param_stats,
                          ad_click_stats=ad_click_stats,
-                         rolling_14d_json=rolling_14d_json)
+                         rolling_14d_json=rolling_14d_json,
+                         recent_activity=recent_activity,
+                         funnel_steps=funnel_steps,
+                         download_breakdown=download_breakdown)
 
 @bp.route('/admin/send_weekly_report')
 @admin_required
@@ -1930,6 +2002,10 @@ def pile_description(type):
 
 @bp.route('/download_intermediary_calcs')
 def download_intermediary_calcs():
+    record_event('download', 'download_intermediary', {
+        'pile_type': session.get('type'),
+        'email': session.get('user_email'),
+    })
     """Download intermediary calculations used for graphs as CSV"""
     if 'cpt_data_id' not in session:
         flash('No CPT data available')
@@ -1994,6 +2070,9 @@ def download_intermediary_calcs():
 
 @bp.route('/download_helical_calculations')
 def download_helical_calculations():
+    record_event('download', 'download_helical_calcs', {
+        'email': session.get('user_email'),
+    })
     """Download all helical pile calculation data in CSV format"""
     try:
         # Get the calculation results from the session

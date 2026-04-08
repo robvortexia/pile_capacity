@@ -183,6 +183,71 @@
         </div>
     </div>
 
+    <!-- User Funnel & Downloads -->
+    <h2 class="analytics-section-header">User Behaviour</h2>
+    <div class="analytics-grid">
+        <div class="analytics-card">
+            <h3>Calculator Funnel (Last 7 Days)</h3>
+            <div id="funnelChart" style="width: 100%; height: 250px;"></div>
+            <div class="analytics-table">
+                <table>
+                    <thead><tr><th>Step</th><th>Unique Users</th></tr></thead>
+                    <tbody>
+                        <tr><td>Step 1 — Upload Data</td><td>{{ funnel_steps.get('step_1', 0) }}</td></tr>
+                        <tr><td>Step 2 — View Charts</td><td>{{ funnel_steps.get('step_2', 0) }}</td></tr>
+                        <tr><td>Step 3 — Set Parameters</td><td>{{ funnel_steps.get('step_3', 0) }}</td></tr>
+                        <tr><td>Step 4 — Results</td><td>{{ funnel_steps.get('step_4', 0) }}</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="analytics-card">
+            <h3>Downloads (Last 30 Days)</h3>
+            <div class="analytics-table">
+                <table>
+                    <thead><tr><th>Type</th><th>Count</th></tr></thead>
+                    <tbody>
+                        {% for dl in download_breakdown %}
+                        <tr>
+                            <td>{{ dl.data_value | replace('download_', '') | replace('_', ' ') | title }}</td>
+                            <td>{{ dl.count }}</td>
+                        </tr>
+                        {% endfor %}
+                        {% if not download_breakdown %}
+                        <tr><td colspan="2" style="color:#999">No downloads tracked yet</td></tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent Activity Feed -->
+    <h2 class="analytics-section-header">Recent User Activity</h2>
+    <div class="registrations-table">
+        <table>
+            <thead>
+                <tr>
+                    <th>Time</th>
+                    <th>User</th>
+                    <th>Event</th>
+                    <th>Details</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for event in recent_activity[:50] %}
+                <tr>
+                    <td data-label="Time">{{ event.timestamp.strftime('%Y-%m-%d %H:%M') }}</td>
+                    <td data-label="User">{{ event.email or event.user_id[:8] ~ '…' }}</td>
+                    <td data-label="Event">{{ event.data_key }}</td>
+                    <td data-label="Details" style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ event.data_value[:100] if event.data_value else '—' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
     <div class="registrations-table">
         <h3>Recent Registrations</h3>
         <table>
@@ -348,6 +413,29 @@ Plotly.newPlot('rolling14dChart', [{
     yaxis: { title: 'Registrations (14-day total)', rangemode: 'tozero', dtick: 1 },
     plot_bgcolor: '#fff',
     paper_bgcolor: '#fff',
+    font: { family: 'Roboto, sans-serif', size: 12 },
+    showlegend: false
+}, {responsive: true, displayModeBar: false});
+
+// Funnel Chart
+var funnelSteps = ['Step 1: Upload', 'Step 2: Charts', 'Step 3: Params', 'Step 4: Results'];
+var funnelCounts = [
+    {{ funnel_steps.get('step_1', 0) }},
+    {{ funnel_steps.get('step_2', 0) }},
+    {{ funnel_steps.get('step_3', 0) }},
+    {{ funnel_steps.get('step_4', 0) }}
+];
+
+Plotly.newPlot('funnelChart', [{
+    type: 'funnel',
+    y: funnelSteps,
+    x: funnelCounts,
+    textinfo: 'value+percent initial',
+    marker: {
+        color: ['#003087', '#1a5dab', '#3a7fd5', '#DAAA00']
+    }
+}], {
+    margin: { t: 10, r: 30, l: 120, b: 10 },
     font: { family: 'Roboto, sans-serif', size: 12 },
     showlegend: false
 }, {responsive: true, displayModeBar: false});
