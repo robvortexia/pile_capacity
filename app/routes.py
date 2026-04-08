@@ -1977,7 +1977,11 @@ def admin():
     ).group_by(AnalyticsData.data_value).order_by(func.count(AnalyticsData.id).desc()).all()
 
     # Recent suggestions
-    recent_suggestions = Suggestion.query.order_by(Suggestion.timestamp.desc()).limit(20).all()
+    try:
+        recent_suggestions = Suggestion.query.order_by(Suggestion.timestamp.desc()).limit(20).all()
+    except Exception:
+        db.session.rollback()
+        recent_suggestions = []
 
     return render_template('admin.html',
                          registrations=registrations,

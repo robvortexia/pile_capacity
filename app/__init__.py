@@ -56,9 +56,16 @@ def create_app():
     with app.app_context():
         db.create_all()
 
-        # Auto-migrate: add missing columns
+        # Auto-migrate: add missing columns and tables
         from sqlalchemy import inspect, text
         inspector = inspect(db.engine)
+
+        # Create any new tables that don't exist yet (e.g. suggestion)
+        existing_tables = inspector.get_table_names()
+        for table in db.metadata.tables:
+            if table not in existing_tables:
+                db.metadata.tables[table].create(db.engine)
+
         reg_columns = [c['name'] for c in inspector.get_columns('registration')]
         if 'country' not in reg_columns:
             db.session.execute(text('ALTER TABLE registration ADD COLUMN country VARCHAR(100)'))
