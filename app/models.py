@@ -37,4 +37,13 @@ class AnalyticsData(db.Model):
     data_key = db.Column(db.String(100), nullable=True)
     data_value = db.Column(db.Text, nullable=True)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
-    session_id = db.Column(db.String(120), nullable=True) 
+    session_id = db.Column(db.String(120), nullable=True)
+
+class Suggestion(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(120), nullable=True)
+    email = db.Column(db.String(120), nullable=True)
+    category = db.Column(db.String(50), nullable=False)
+    message = db.Column(db.Text, nullable=False)
+    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    ip_address = db.Column(db.String(45), nullable=True)

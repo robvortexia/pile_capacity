@@ -16,7 +16,7 @@ from .utils import (
 from .calculations import calculate_pile_capacity, process_cpt_data, pre_input_calc, get_iterative_values, calculate_bored_pile_results, calculate_helical_pile_results, calculate_driven_pile_results
 from .interpolation import process_uploaded_cpt_data
 from datetime import datetime, timedelta
-from .models import db, Registration, Visit
+from .models import db, Registration, Visit, Suggestion
 from functools import wraps
 import csv
 from io import StringIO
@@ -1813,6 +1813,35 @@ def register():
     )
     return response
 
+
+@bp.route('/suggestions', methods=['GET', 'POST'])
+def suggestions():
+    submitted = False
+    if request.method == 'POST':
+        name = request.form.get('name', '').strip()
+        email = request.form.get('email', '').strip()
+        category = request.form.get('category', 'general')
+        message = request.form.get('message', '').strip()
+
+        if not message:
+            flash('Please enter a suggestion.', 'error')
+            return redirect(url_for('main.suggestions'))
+
+        suggestion = Suggestion(
+            name=name or None,
+            email=email or None,
+            category=category,
+            message=message,
+            ip_address=request.remote_addr
+        )
+        db.session.add(suggestion)
+        db.session.commit()
+        record_event('suggestion', 'suggestion_submitted', {'category': category})
+        submitted = True
+
+    return render_template('suggestions.html', submitted=submitted)
+
+
 def admin_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
@@ -1947,6 +1976,9 @@ def admin():
         AnalyticsData.timestamp >= thirty_days_ago
     ).group_by(AnalyticsData.data_value).order_by(func.count(AnalyticsData.id).desc()).all()
 
+    # Recent suggestions
+    recent_suggestions = Suggestion.query.order_by(Suggestion.timestamp.desc()).limit(20).all()
+
     return render_template('admin.html',
                          registrations=registrations,
                          total_users=total_users,
@@ -1961,7 +1993,8 @@ def admin():
                          rolling_14d_json=rolling_14d_json,
                          recent_activity=recent_activity,
                          funnel_steps=funnel_steps,
-                         download_breakdown=download_breakdown)
+                         download_breakdown=download_breakdown,
+                         recent_suggestions=recent_suggestions)
 
 @bp.route('/admin/send_weekly_report')
 @admin_required
