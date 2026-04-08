@@ -16,7 +16,7 @@ from .utils import (
 from .calculations import calculate_pile_capacity, process_cpt_data, pre_input_calc, get_iterative_values, calculate_bored_pile_results, calculate_helical_pile_results, calculate_driven_pile_results
 from .interpolation import process_uploaded_cpt_data
 from datetime import datetime, timedelta
-from .models import db, Registration, Visit, Suggestion
+from .models import db, Registration, Visit, Suggestion, AnalyticsData
 from functools import wraps
 import csv
 from io import StringIO

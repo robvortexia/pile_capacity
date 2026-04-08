@@ -239,9 +239,9 @@
                 {% for event in recent_activity[:50] %}
                 <tr>
                     <td data-label="Time">{{ event.timestamp.strftime('%Y-%m-%d %H:%M') }}</td>
-                    <td data-label="User">{{ event.email or event.user_id[:8] ~ '…' }}</td>
+                    <td data-label="User">{{ event.email or (event.user_id[:8] ~ '…' if event.user_id else '—') }}</td>
                     <td data-label="Event">{{ event.data_key }}</td>
-                    <td data-label="Details" style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ event.data_value[:100] if event.data_value else '—' }}</td>
+                    <td data-label="Details" style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ (event.data_value or '')[:100] or '—' }}</td>
                 </tr>
                 {% endfor %}
             </tbody>
