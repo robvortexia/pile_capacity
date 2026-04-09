@@ -21,6 +21,7 @@
                         <label for="closed">Closed</label>
                     </div>
                 </div>
+                <span class="help-text">Open-ended: hollow steel pipe. Closed-ended: solid base or plugged.</span>
             </div>
 
             <div class="form-field">
@@ -35,16 +36,19 @@
                         <label for="square">Square</label>
                     </div>
                 </div>
+                <span class="help-text">Square piles are treated as closed-ended.</span>
             </div>
 
             <div class="form-field">
                 <label>Pile Diameter or side width (m)</label>
                 <input type="number" name="pile_diameter" value="1" step="0.0001" class="form-control" required>
+                <span class="help-text">Outer diameter for circular piles, or side length for square piles.</span>
             </div>
 
             <div class="form-field" id="wall-thickness-field">
                 <label>Pile Wall Thickness (mm)</label>
                 <input type="number" name="wall_thickness" value="20" class="form-control" required>
+                <span class="help-text">Steel wall thickness of the pipe pile.</span>
             </div>
 
             <div class="form-field">

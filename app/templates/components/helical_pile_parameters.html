@@ -2,20 +2,23 @@
     <form method="POST" action="{{ url_for('main.calculator_step', type='helical', step=3) }}" id="helicalForm">
         <div class="form-group">
             <label for="shaft_diameter">Shaft Diameter (m)</label>
-            <input type="number" step="0.001" class="form-control" id="shaft_diameter" name="shaft_diameter" 
+            <input type="number" step="0.001" class="form-control" id="shaft_diameter" name="shaft_diameter"
                    value="{{ session.get('pile_params', {}).get('shaft_diameter', 0.762) }}" required>
+            <span class="help-text">Outer diameter of the central steel shaft.</span>
         </div>
-        
+
         <div class="form-group">
             <label for="helix_diameter">Helix Diameter (m)</label>
-            <input type="number" step="0.001" class="form-control" id="helix_diameter" name="helix_diameter" 
+            <input type="number" step="0.001" class="form-control" id="helix_diameter" name="helix_diameter"
                    value="{{ session.get('pile_params', {}).get('helix_diameter', 1.5) }}" required>
+            <span class="help-text">Outer diameter of the helical plate.</span>
         </div>
-        
+
         <div class="form-group">
             <label for="helix_depth">Helix Depth (m)</label>
-            <input type="number" step="0.001" class="form-control" id="helix_depth" name="helix_depth" 
+            <input type="number" step="0.001" class="form-control" id="helix_depth" name="helix_depth"
                    value="{{ session.get('pile_params', {}).get('helix_depth', 7.0) }}" required>
+            <span class="help-text">Depth of the helix plate below ground surface.</span>
         </div>
         
         <div class="form-group">
