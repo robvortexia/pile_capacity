@@ -48,6 +48,9 @@
                     <div class="graph-wrapper">
                         <div id="iz_graph" class="graph"></div>
                     </div>
+                    <div class="graph-wrapper">
+                        <div id="sbt_graph" class="graph"></div>
+                    </div>
                 </div>
                 <div class="debug-section">
                     <div class="button-group">
@@ -135,7 +138,8 @@
     var frGraph = JSON.parse('{{ graphs.fr | safe }}');
     var icGraph = JSON.parse('{{ graphs.ic | safe }}');
     var izGraph = JSON.parse('{{ graphs.iz | safe }}');
-    
+    var sbtGraph = JSON.parse('{{ graphs.sbt | safe }}');
+
     // Modern styling for all graphs
     const modernStyle = {
         font: {
@@ -221,10 +225,11 @@
     Plotly.newPlot('fr_graph', frGraph.data, frGraph.layout, config);
     Plotly.newPlot('ic_graph', icGraph.data, icGraph.layout, config);
     Plotly.newPlot('iz_graph', izGraph.data, izGraph.layout, config);
-    
+    Plotly.newPlot('sbt_graph', sbtGraph.data, sbtGraph.layout, config);
+
     // Handle window resize
     function resizeGraphs() {
-        const graphDivs = ['qt_graph', 'fr_graph', 'ic_graph', 'iz_graph'];
+        const graphDivs = ['qt_graph', 'fr_graph', 'ic_graph', 'iz_graph', 'sbt_graph'];
         graphDivs.forEach(div => {
             Plotly.Plots.resize(document.getElementById(div));
         });

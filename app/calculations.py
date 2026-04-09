@@ -753,8 +753,11 @@ def calculate_bored_pile_results(processed_cpt, params):
         
         summary_results.append({
             'tipdepth': chosen_tip,
-            'tension_capacity': np.float64(qs_tension_cumulative),  # Use full precision
-            'compression_capacity': np.float64(qs_compression_cumulative + base_resistance)  # Use full precision
+            'shaft_tension': np.float64(qs_tension_cumulative),
+            'shaft_compression': np.float64(qs_compression_cumulative),
+            'base_compression': np.float64(base_resistance),
+            'tension_capacity': np.float64(qs_tension_cumulative),
+            'compression_capacity': np.float64(qs_compression_cumulative + base_resistance)
         })
     
     return {
@@ -1398,12 +1401,16 @@ def calculate_driven_pile_results(processed_cpt, params):
             }
         })
         
+        compression_base = qb_final[tip_index] if not needs_interpolation else compression_base
         summary_results.append({
             'tipdepth': tip_depth,
+            'shaft_tension': np.float64(qs_tension_cumulative),
+            'shaft_compression': np.float64(qs_compression_cumulative),
+            'base_compression': np.float64(compression_base),
             'tension_capacity': np.float64(tension_capacity),
             'compression_capacity': np.float64(compression_capacity)
         })
-    
+
     return {
         'summary': summary_results,
         'detailed': detailed_results

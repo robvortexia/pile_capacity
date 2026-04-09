@@ -262,11 +262,85 @@ def create_cpt_graphs(data, water_table=None):
         }
     }
 
+    # Robertson SBT profile — colour-coded soil classification from Ic
+    sbt_zones = [
+        (0, 1.31, 'Gravelly sand to dense sand', '#d4a017'),
+        (1.31, 2.05, 'Sands: clean to silty', '#f0c040'),
+        (2.05, 2.60, 'Sand mixtures', '#90c050'),
+        (2.60, 2.95, 'Silt mixtures', '#50a0d0'),
+        (2.95, 3.60, 'Clays', '#3060b0'),
+        (3.60, 5.0, 'Organic / sensitive', '#704090'),
+    ]
+    sbt_traces = []
+    ic_vals = processed_data['lc']
+    depth_vals = processed_data['depth']
+    # Create a horizontal bar for each depth showing its SBT zone
+    for ic_lo, ic_hi, label, color in sbt_zones:
+        x_vals = []
+        y_vals = []
+        for i, ic in enumerate(ic_vals):
+            if ic_lo <= ic < ic_hi:
+                x_vals.append(1)
+                y_vals.append(depth_vals[i])
+            else:
+                x_vals.append(0)
+                y_vals.append(depth_vals[i])
+        sbt_traces.append(go.Bar(
+            x=x_vals,
+            y=y_vals,
+            orientation='h',
+            name=label,
+            marker={'color': color},
+            hovertemplate='%{y:.1f}m: ' + label + '<extra></extra>',
+            width=max(0.08, (depth_vals[1] - depth_vals[0]) if len(depth_vals) > 1 else 0.1),
+        ))
+
+    sbt_graph = {
+        'data': sbt_traces,
+        'layout': {
+            'title': {'text': 'Robertson SBT', 'x': 0.5, 'xanchor': 'center', 'font': {'size': 12}, 'y': 0.95},
+            'barmode': 'stack',
+            'xaxis': {
+                'title': None,
+                'showticklabels': False,
+                'showgrid': False,
+                'zeroline': False,
+                'showline': True,
+                'linewidth': 1,
+                'linecolor': 'lightgrey',
+                'mirror': True,
+                'side': 'top',
+            },
+            'yaxis': {
+                'title': {'text': 'Depth (m)', 'standoff': 5},
+                'range': [max_depth + 0.5, 0],
+                'dtick': 5,
+                'tickfont': {'size': 10},
+                'zeroline': False,
+                'rangemode': 'tozero',
+                'showline': True,
+                'linewidth': 1,
+                'linecolor': 'lightgrey',
+                'mirror': True,
+                'showgrid': True,
+                'gridcolor': 'lightgrey',
+                'gridwidth': 1,
+            },
+            'plot_bgcolor': 'white',
+            'margin': {'l': 50, 'r': 20, 't': 30, 'b': 30},
+            'font': {'size': 10},
+            'autosize': True,
+            'showlegend': True,
+            'legend': {'font': {'size': 8}, 'orientation': 'h', 'y': -0.05, 'x': 0.5, 'xanchor': 'center'},
+        }
+    }
+
     return {
         'qt': json.dumps(qt_graph, cls=plotly.utils.PlotlyJSONEncoder),
         'fr': json.dumps(fr_graph, cls=plotly.utils.PlotlyJSONEncoder),
         'ic': json.dumps(ic_graph, cls=plotly.utils.PlotlyJSONEncoder),
-        'iz': json.dumps(iz_graph, cls=plotly.utils.PlotlyJSONEncoder)
+        'iz': json.dumps(iz_graph, cls=plotly.utils.PlotlyJSONEncoder),
+        'sbt': json.dumps(sbt_graph, cls=plotly.utils.PlotlyJSONEncoder),
     }
 
 def create_bored_pile_graphs(data):
