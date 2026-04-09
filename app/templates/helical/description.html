@@ -8,20 +8,62 @@
 {% block twitter_title %}Helical Pile Capacity — CPT Method | UWA{% endblock %}
 {% block twitter_description %}Calculate helical pile capacity in sand from CPT data. Free tool from UWA.{% endblock %}
 
+{% block jsonld %}
+<script type="application/ld+json">
+{
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "UWA Helical Pile Capacity Calculator",
+    "url": "https://uwa-geotech-cpt-calculator.com/helical/description",
+    "description": "Calculate helical pile axial capacity in sand from CPT data using the Bittar et al. (2023) method.",
+    "applicationCategory": "Engineering",
+    "author": {
+        "@type": "Person",
+        "name": "Professor Barry M. Lehane",
+        "jobTitle": "Professor of Geotechnical Engineering",
+        "affiliation": {
+            "@type": "Organization",
+            "name": "The University of Western Australia"
+        },
+        "url": "https://research-repository.uwa.edu.au/en/persons/barry-lehane",
+        "sameAs": [
+            "https://scholar.google.com.au/citations?user=6JOr_LkAAAAJ"
+        ]
+    }
+}
+</script>
+{% endblock %}
+
 {% block content %}
 <div class="description-container">
     <div class="description-content">
         <div class="description-text">
-            <p>This program uses CPT data to calculate the axial capacity of helical piles.</p>
-            
-            <!-- Add any relevant publication links or method descriptions here -->
+            <p>This program uses CPT data to calculate the axial capacity of helical piles in sand.</p>
+
             <p>This calculator implements the design method described in:</p>
+            <p>Bittar, E.J., Lehane, B.M., Blake, A., Richards, D., White, D., Mahdavi, S., & Cerfontaine, B. (2023).
+            CPT-based design method for helical piles in sand. Canadian Geotechnical Journal, 61, 102-117.
+            <a href="https://doi.org/10.1139/cgj-2022-0209" target="_blank" rel="noopener">DOI: 10.1139/cgj-2022-0209</a></p>
+
             <a href="{{ url_for('static', filename='pdf/bittar-et-al-2023-cpt-based-design-method-for-helical-piles-in-sand.pdf') }}" class="link-to-publication" target="_blank">
-                Bittar, E.J., Lehane, B.M., Blake, A., Richards, D., White, D., Mahdavi, S., & Cerfontaine, B. (2023). CPT-based design method for helical piles in sand. Canadian Geotechnical Journal.
+                Download publication (PDF)
             </a>
         </div>
         <div class="description-image">
             <img src="{{ url_for('static', filename='img/helical_pile.jpg') }}" alt="Helical Pile Illustration">
+        </div>
+    </div>
+
+    <div class="author-card">
+        <div class="author-info">
+            <h3>Lead Researcher</h3>
+            <p class="author-name">Professor Barry M. Lehane</p>
+            <p class="author-title">Professor of Geotechnical Engineering, The University of Western Australia</p>
+            <p class="author-bio">Prof. Lehane leads the development of CPT-based pile design methods at UWA's Centre for Offshore Foundation Systems. His research on driven, bored, and helical pile capacity has been adopted into the API and ISO design guidelines used across the offshore energy industry worldwide.</p>
+            <div class="author-links">
+                <a href="https://research-repository.uwa.edu.au/en/persons/barry-lehane" target="_blank" rel="noopener"><i class="fas fa-university"></i> UWA Profile</a>
+                <a href="https://scholar.google.com.au/citations?user=6JOr_LkAAAAJ" target="_blank" rel="noopener"><i class="fas fa-graduation-cap"></i> Google Scholar</a>
+            </div>
         </div>
     </div>
 
@@ -81,6 +123,62 @@
 
 .link-to-publication:hover {
     text-decoration: underline;
+}
+
+.author-card {
+    background: white;
+    border-left: 4px solid #003087;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    padding: 1.5rem 2rem;
+    margin-bottom: 2rem;
+}
+
+.author-card h3 {
+    margin-top: 0;
+    font-size: 0.9rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #6b7280;
+}
+
+.author-name {
+    font-size: 1.2rem;
+    font-weight: 600;
+    color: #1f2937;
+    margin: 0.25rem 0;
+}
+
+.author-title {
+    color: #4b5563;
+    margin: 0.25rem 0 0.75rem;
+}
+
+.author-bio {
+    color: #374151;
+    line-height: 1.6;
+    margin-bottom: 1rem;
+}
+
+.author-links {
+    display: flex;
+    gap: 1.5rem;
+    flex-wrap: wrap;
+}
+
+.author-links a {
+    color: #003087;
+    text-decoration: none;
+    font-weight: 500;
+    font-size: 0.95rem;
+}
+
+.author-links a:hover {
+    text-decoration: underline;
+}
+
+.author-links i {
+    margin-right: 0.3rem;
 }
 </style>
 {% endblock %}

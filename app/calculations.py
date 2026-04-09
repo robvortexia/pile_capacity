@@ -1415,3 +1415,177 @@ def calculate_driven_pile_results(processed_cpt, params):
         'summary': summary_results,
         'detailed': detailed_results
     }
+
+
+def compute_capacity_envelope_bored(processed_cpt, params, max_points=80):
+    """
+    Compute a continuous capacity-vs-depth profile for bored piles.
+    Returns lists of (depth, tension, compression) at regular intervals.
+    """
+    shaft_diameter = float(params['shaft_diameter'])
+    base_diameter = float(params['base_diameter'])
+    borehole_depth = float(params['cased_depth'])
+    pile_perimeter = get_pile_perimeter(0, shaft_diameter)
+    Ab = math.pi * base_diameter * base_diameter * 0.25
+
+    depths = processed_cpt['depth']
+    n = len(depths)
+    if n < 2:
+        return {'depths': [], 'tension': [], 'compression': []}
+
+    # Pre-compute tf at every depth (coe_casing = 1 below borehole, 0 above)
+    tf_comp_arr = []
+    tf_tens_arr = []
+    for i in range(n):
+        if depths[i] <= borehole_depth:
+            tf_comp_arr.append(0.0)
+            tf_tens_arr.append(0.0)
+        else:
+            qt_val = processed_cpt['qt'][i]
+            lc_val = processed_cpt['lc'][i]
+            tf_c = get_tf_compression_bored(1.0, lc_val, qt_val)
+            tf_t = get_tf_tension_bored(1.0, lc_val, tf_c)
+            tf_comp_arr.append(tf_c)
+            tf_tens_arr.append(tf_t)
+
+    # Cumulative shaft resistance at every depth
+    cum_tension = [0.0] * n
+    cum_compression = [0.0] * n
+    for i in range(n):
+        dz = depths[i] - (depths[i - 1] if i > 0 else 0)
+        seg_t = tf_tens_arr[i] * pile_perimeter * dz
+        seg_c = tf_comp_arr[i] * pile_perimeter * dz
+        cum_tension[i] = (cum_tension[i - 1] if i > 0 else 0) + seg_t
+        cum_compression[i] = (cum_compression[i - 1] if i > 0 else 0) + seg_c
+
+    # Pre-compute qb01_adop at every depth
+    qb01_arr = []
+    for i in range(n):
+        qb01_arr.append(get_qb01_adop(processed_cpt['lc'][i], processed_cpt['qt'][i]))
+
+    # Sample depths for the envelope
+    step = max(1, n // max_points)
+    sample_indices = list(range(0, n, step))
+    if sample_indices[-1] != n - 1:
+        sample_indices.append(n - 1)
+
+    env_depths = []
+    env_tension = []
+    env_compression = []
+
+    for idx in sample_indices:
+        if depths[idx] <= borehole_depth:
+            continue
+        d = depths[idx]
+        shaft_t = cum_tension[idx]
+        shaft_c = cum_compression[idx]
+
+        # Base resistance: min qb01 in zone [tip, tip + base_diameter]
+        zone_end = d + base_diameter
+        zone_qb01 = [qb01_arr[j] for j in range(idx, n) if depths[j] <= zone_end]
+        min_qb01 = min(zone_qb01) if zone_qb01 else 0
+        base_r = min_qb01 * Ab * 1000
+
+        env_depths.append(float(d))
+        env_tension.append(float(shaft_t))
+        env_compression.append(float(shaft_c + base_r))
+
+    return {'depths': env_depths, 'tension': env_tension, 'compression': env_compression}
+
+
+def compute_capacity_envelope_driven(processed_cpt, params, max_points=80):
+    """
+    Compute a continuous capacity-vs-depth profile for driven piles.
+    Returns lists of (depth, tension, compression) at regular intervals.
+    """
+    pile_shape = 0 if params['pile_shape'] == 'circular' else 1
+    pile_end_condition = 0 if params['pile_end_condition'] == 'open' else 1
+    nominal_size_don = float(params['pile_diameter'])
+    nominal_size_t = float(params.get('wall_thickness', 0)) / 1000
+    borehole = float(params['borehole_depth'])
+
+    if pile_end_condition == 0:
+        diameter = nominal_size_don - 2 * nominal_size_t
+    else:
+        diameter = nominal_size_don
+
+    ifr_value = get_ifr(diameter)
+    are_value = get_ar(pile_end_condition, nominal_size_don, ifr_value, diameter)
+    area_value = get_area_b(pile_shape, nominal_size_don)
+    dstar_value = get_dstar(pile_end_condition, nominal_size_don, diameter)
+    if dstar_value == 0:
+        dstar_value = nominal_size_don
+    pile_perimeter = get_pile_perimeter(pile_shape, nominal_size_don)
+
+    depths = processed_cpt['depth']
+    n = len(depths)
+    if n < 2:
+        return {'depths': [], 'tension': [], 'compression': []}
+
+    # Pre-compute arrays
+    qp_sand_array = np.array(get_qp_sand_array(depths, processed_cpt['qtc'], nominal_size_don))
+    qp_clay_array = np.array(get_qp_clay_array(depths, processed_cpt['qt'], nominal_size_don, nominal_size_t))
+    lc_values = np.array(processed_cpt['lc'])
+    qt_values = np.array(processed_cpt['qt'])
+    qtc_values = np.array(processed_cpt['qtc'])
+
+    # Base resistance arrays
+    qb1_sand = get_qb1_sand(are_value, qp_sand_array)
+    qb1_clay = get_qb1_clay(qp_clay_array, dstar_value, nominal_size_don)
+    qb1_adop = np.where(lc_values >= 2.6, qb1_clay, qb1_sand)
+
+    depth_array_np = np.array(depths)
+    ramp_denominator = max(8 * nominal_size_don, 1e-9)
+    ramp_factor = np.clip(depth_array_np / ramp_denominator, 0.0, 1.0)
+    qb1_adop_ramped = qb1_adop * ramp_factor
+    qb_final = get_qb_final(qb1_adop_ramped, area_value)
+
+    # Sample depths for envelope
+    step = max(1, n // max_points)
+    sample_indices = list(range(0, n, step))
+    if sample_indices[-1] != n - 1:
+        sample_indices.append(n - 1)
+
+    env_depths = []
+    env_tension = []
+    env_compression = []
+
+    for tip_idx in sample_indices:
+        tip_depth = depths[tip_idx]
+        if tip_depth <= borehole:
+            continue
+
+        h = np.maximum(0, tip_depth - depth_array_np)
+        coe_casing = np.array([get_coe_casing(d, borehole, tip_depth) for d in depths])
+
+        qs_tension_cum = 0.0
+        qs_compression_cum = 0.0
+
+        for i in range(tip_idx + 1):
+            if depths[i] > tip_depth:
+                continue
+            cc = coe_casing[i]
+            if cc == 0:
+                continue
+
+            if lc_values[i] < 2.5:
+                delta_ord = get_delta_ord(qtc_values[i], processed_cpt['sig_v0_prime'][i], nominal_size_don)
+                orc_val = get_orc(qtc_values[i], are_value, nominal_size_don, h[i])
+                tf_sand = get_tf_sand(cc, delta_ord, orc_val)
+            else:
+                tf_sand = 0
+
+            tf_clay = get_tf_clay(qt_values[i], cc, h[i], dstar_value)
+            tf_t = get_tf_adop_tension(processed_cpt['iz1'][i], tf_clay, tf_sand, lc_values[i])
+            tf_c = get_tf_adop_compression(processed_cpt['iz1'][i], tf_clay, tf_sand, lc_values[i])
+
+            dz = depths[i] - (depths[i - 1] if i > 0 else 0)
+            qs_tension_cum += tf_t * pile_perimeter * dz
+            qs_compression_cum += tf_c * pile_perimeter * dz
+
+        base = qb_final[tip_idx]
+        env_depths.append(float(tip_depth))
+        env_tension.append(float(qs_tension_cum))
+        env_compression.append(float(qs_compression_cum + base))
+
+    return {'depths': env_depths, 'tension': env_tension, 'compression': env_compression}

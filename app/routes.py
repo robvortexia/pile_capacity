@@ -13,7 +13,7 @@ from .utils import (
     save_debug_details, load_debug_details, create_bored_pile_graphs,
     save_calculation_results, load_calculation_results, create_helical_pile_graphs
 )
-from .calculations import calculate_pile_capacity, process_cpt_data, pre_input_calc, get_iterative_values, calculate_bored_pile_results, calculate_helical_pile_results, calculate_driven_pile_results
+from .calculations import calculate_pile_capacity, process_cpt_data, pre_input_calc, get_iterative_values, calculate_bored_pile_results, calculate_helical_pile_results, calculate_driven_pile_results, compute_capacity_envelope_bored, compute_capacity_envelope_driven
 from .interpolation import process_uploaded_cpt_data
 from datetime import datetime, timedelta
 from .models import db, Registration, Visit, Suggestion, AnalyticsData
@@ -735,12 +735,20 @@ def calculator_step(type, step):
                     # Store summary results in session
                     session['results'] = results['summary']
                     logger.info(f"Results stored in session: {session['results']}")
-                    
+
                     # Save detailed results and store debug_id in session
                     debug_id = save_debug_details(results['detailed'])
                     session['debug_id'] = debug_id
                     logger.info(f"Debug ID stored: {debug_id}")
-                    
+
+                    # Compute continuous capacity envelope for the graph
+                    try:
+                        envelope = compute_capacity_envelope_bored(processed_cpt, session['pile_params'])
+                        session['capacity_envelope'] = envelope
+                    except Exception as env_e:
+                        logger.warning(f"Could not compute capacity envelope: {env_e}")
+                        session['capacity_envelope'] = None
+
                     return redirect(url_for('main.calculator_step', type=type, step=4))
                 except Exception as e:
                     logger.error(f"Error in bored pile calculation: {str(e)}")
@@ -820,14 +828,22 @@ def calculator_step(type, step):
                 try:
                     # Calculate results using the driven pile specific function
                     results = calculate_driven_pile_results(processed_cpt, session['pile_params'])
-                    
+
                     # Store summary results in session
                     session['results'] = results['summary']
-                    
+
                     # Save detailed results and store debug_id in session
                     debug_id = save_debug_details(results['detailed'])
                     session['debug_id'] = debug_id
-                    
+
+                    # Compute continuous capacity envelope for the graph
+                    try:
+                        envelope = compute_capacity_envelope_driven(processed_cpt, session['pile_params'])
+                        session['capacity_envelope'] = envelope
+                    except Exception as env_e:
+                        logger.warning(f"Could not compute capacity envelope: {env_e}")
+                        session['capacity_envelope'] = None
+
                     return redirect(url_for('main.calculator_step', type=type, step=4))
                 except Exception as e:
                     flash(f'Error in calculation: {str(e)}')
@@ -945,6 +961,7 @@ def calculator_step(type, step):
                 type=type,
                 results=session['results'],
                 detailed_results=detailed_results,
+                capacity_envelope=session.get('capacity_envelope'),
                 show_modal=show_modal
             )
 
@@ -1005,6 +1022,7 @@ def calculator_step(type, step):
             type=type,
             results=session['results'],
             detailed_results=detailed_results,
+            capacity_envelope=session.get('capacity_envelope'),
             show_modal=show_modal
         )
 

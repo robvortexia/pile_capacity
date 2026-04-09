@@ -322,32 +322,65 @@
             var tension_capacities = {{ results|map(attribute='tension_capacity')|list|tojson }};
             var compression_capacities = {{ results|map(attribute='compression_capacity')|list|tojson }};
 
-            var trace1 = {
+            // Capacity envelope (continuous profile)
+            {% if capacity_envelope %}
+            var env_depths = {{ capacity_envelope.depths|tojson }};
+            var env_tension = {{ capacity_envelope.tension|tojson }};
+            var env_compression = {{ capacity_envelope.compression|tojson }};
+            {% else %}
+            var env_depths = null;
+            {% endif %}
+
+            var traces = [];
+
+            // Add envelope lines first (behind markers) if available
+            if (env_depths && env_depths.length > 0) {
+                traces.push({
+                    x: env_tension,
+                    y: env_depths,
+                    name: 'Tension (profile)',
+                    type: 'scatter',
+                    mode: 'lines',
+                    line: { color: 'rgba(26, 115, 232, 0.35)', width: 1.5 },
+                    hoverinfo: 'x+y',
+                    showlegend: false
+                });
+                traces.push({
+                    x: env_compression,
+                    y: env_depths,
+                    name: 'Compression (profile)',
+                    type: 'scatter',
+                    mode: 'lines',
+                    line: { color: 'rgba(220, 38, 38, 0.35)', width: 1.5 },
+                    hoverinfo: 'x+y',
+                    showlegend: false
+                });
+            }
+
+            // User-specified tip depths as bold markers + lines
+            traces.push({
                 x: tension_capacities,
                 y: depths,
                 name: 'Tension',
                 type: 'scatter',
-                mode: 'lines',
-                line: {
-                    color: '#1a73e8',
-                    width: 2
-                }
-            };
+                mode: 'lines+markers',
+                line: { color: '#1a73e8', width: 2 },
+                marker: { size: 7, color: '#1a73e8' }
+            });
 
-            var trace2 = {
+            traces.push({
                 x: compression_capacities,
                 y: depths,
                 name: 'Compression',
                 type: 'scatter',
-                mode: 'lines',
-                line: {
-                    color: '#dc2626',
-                    width: 2
-                }
-            };
+                mode: 'lines+markers',
+                line: { color: '#dc2626', width: 2 },
+                marker: { size: 7, color: '#dc2626' }
+            });
 
-            var maxDepth = Math.max.apply(null, depths);
-            var minDepth = Math.min.apply(null, depths);
+            var allDepths = (env_depths && env_depths.length > 0) ? env_depths : depths;
+            var maxDepth = Math.max.apply(null, allDepths);
+            var minDepth = Math.min.apply(null, allDepths);
             var layout = {
                 title: {
                     text: 'Capacity vs Depth',
@@ -428,7 +461,7 @@
                 scrollZoom: false
             };
 
-            Plotly.newPlot('capacity_vs_depth', [trace1, trace2], layout, config).then(function() {
+            Plotly.newPlot('capacity_vs_depth', traces, layout, config).then(function() {
                 var gd = document.getElementById('capacity_vs_depth');
                 function resizeGraph() {
                     var wrapper = gd.closest('.graph-wrapper');
