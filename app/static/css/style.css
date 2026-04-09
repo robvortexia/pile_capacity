@@ -677,6 +677,24 @@ input[type="text"] {
     border-radius: 4px;
 }
 
+.btn-skip-registration {
+    display: block;
+    width: 100%;
+    margin-top: 0.75rem;
+    padding: 0.5rem;
+    background: none;
+    border: none;
+    color: #6b7280;
+    font-size: 0.875rem;
+    cursor: pointer;
+    text-decoration: underline;
+    text-align: center;
+}
+
+.btn-skip-registration:hover {
+    color: var(--primary-color);
+}
+
 .registration-container {
     display: flex;
     justify-content: center;

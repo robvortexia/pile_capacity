@@ -50,6 +50,10 @@ Allow: /
 Allow: /driven/description
 Allow: /bored/description
 Allow: /helical/description
+Allow: /driven/calculator/1
+Allow: /bored/calculator/1
+Allow: /helical/calculator/1
+Allow: /suggestions
 Disallow: /admin
 Disallow: /admin/export
 Disallow: /admin/send_weekly_report
@@ -69,16 +73,21 @@ Sitemap: https://uwa-geotech-cpt-calculator.com/sitemap.xml
 def sitemap_xml():
     """Serve XML sitemap for search engine indexing."""
     pages = [
-        {'loc': '/', 'priority': '1.0', 'changefreq': 'monthly'},
-        {'loc': '/driven/description', 'priority': '0.8', 'changefreq': 'yearly'},
-        {'loc': '/bored/description', 'priority': '0.8', 'changefreq': 'yearly'},
-        {'loc': '/helical/description', 'priority': '0.8', 'changefreq': 'yearly'},
+        {'loc': '/', 'priority': '1.0', 'changefreq': 'monthly', 'lastmod': '2026-04-10'},
+        {'loc': '/driven/description', 'priority': '0.9', 'changefreq': 'monthly', 'lastmod': '2026-04-10'},
+        {'loc': '/bored/description', 'priority': '0.9', 'changefreq': 'monthly', 'lastmod': '2026-04-10'},
+        {'loc': '/helical/description', 'priority': '0.9', 'changefreq': 'monthly', 'lastmod': '2026-04-10'},
+        {'loc': '/driven/calculator/1', 'priority': '0.8', 'changefreq': 'monthly', 'lastmod': '2026-04-10'},
+        {'loc': '/bored/calculator/1', 'priority': '0.8', 'changefreq': 'monthly', 'lastmod': '2026-04-10'},
+        {'loc': '/helical/calculator/1', 'priority': '0.8', 'changefreq': 'monthly', 'lastmod': '2026-04-10'},
+        {'loc': '/suggestions', 'priority': '0.5', 'changefreq': 'yearly', 'lastmod': '2026-04-10'},
     ]
     xml = '<?xml version="1.0" encoding="UTF-8"?>\n'
     xml += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
     for page in pages:
         xml += '  <url>\n'
         xml += f'    <loc>https://uwa-geotech-cpt-calculator.com{page["loc"]}</loc>\n'
+        xml += f'    <lastmod>{page["lastmod"]}</lastmod>\n'
         xml += f'    <changefreq>{page["changefreq"]}</changefreq>\n'
         xml += f'    <priority>{page["priority"]}</priority>\n'
         xml += '  </url>\n'

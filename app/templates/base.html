@@ -56,11 +56,16 @@
     </script>
     {% endblock %}
 
+    <!-- Favicon & Apple Touch Icon -->
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/uwalogo.png') }}">
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='img/uwalogo.png') }}">
+    <meta name="theme-color" content="#003087">
+
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/steps.css') }}">
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
-    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    {% block extra_head %}{% endblock %}
 </head>
 <body>
     <div id="registrationModal" class="modal" {% if show_modal %}style="display: flex"{% else %}style="display: none"{% endif %}>
@@ -81,6 +86,7 @@
                     <button type="submit" class="btn btn-primary">Continue</button>
                 </div>
             </form>
+            <button type="button" class="btn-skip-registration" onclick="document.getElementById('registrationModal').style.display='none'">Skip for now</button>
             {% with messages = get_flashed_messages() %}
                 {% if messages %}
                     {% for message in messages %}
