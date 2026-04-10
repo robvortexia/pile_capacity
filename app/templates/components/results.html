@@ -275,6 +275,7 @@
             <div class="card">
                 <div class="card-header">
                     <h3>Capacity Results</h3>
+                    <p style="margin:0.25rem 0 0;font-size:0.85rem;color:#6b7280;font-weight:400">Note these are unfactored capacities and do not include pile/plug weights</p>
                 </div>
                 <div class="card-body">
                     <div class="results-grid">
@@ -284,7 +285,6 @@
                                 <thead>
                                     <tr>
                                         <th>Tip Depth (m)</th>
-                                        <th>Shaft Tension (kN)</th>
                                         <th>Shaft Compression (kN)</th>
                                         <th>Base Compression (kN)</th>
                                         <th>Total Tension (kN)</th>
@@ -295,7 +295,6 @@
                                     {% for result in results %}
                                     <tr>
                                         <td>{{ "%.2f"|format(result.tipdepth) }}</td>
-                                        <td>{{ "%.0f"|format(result.get('shaft_tension', result.tension_capacity)) }}</td>
                                         <td>{{ "%.0f"|format(result.get('shaft_compression', 0)) }}</td>
                                         <td>{{ "%.0f"|format(result.get('base_compression', 0)) }}</td>
                                         <td><strong>{{ "%.0f"|format(result.tension_capacity) }}</strong></td>

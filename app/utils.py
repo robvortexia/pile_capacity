@@ -263,28 +263,46 @@ def create_cpt_graphs(data, water_table=None):
     }
 
     # Robertson SBT profile — colour-coded soil classification from Ic
+    # Zone 1 (sensitive soils) is identified by Iz < 0, overriding the Ic classification
     sbt_zones = [
-        (0, 1.31, 'Gravelly sand to dense sand', '#d4a017'),
-        (1.31, 2.05, 'Sands: clean to silty', '#f0c040'),
-        (2.05, 2.60, 'Sand mixtures', '#90c050'),
-        (2.60, 2.95, 'Silt mixtures', '#50a0d0'),
-        (2.95, 3.60, 'Clays', '#3060b0'),
-        (3.60, 5.0, 'Organic / sensitive', '#704090'),
+        ('gravelly',   0,    1.31, 'Gravelly sand to dense sand', '#d4a017'),
+        ('sand',       1.31, 2.05, 'Sands: clean to silty',       '#f0c040'),
+        ('sand_mix',   2.05, 2.60, 'Sand mixtures',               '#90c050'),
+        ('silt_mix',   2.60, 2.95, 'Silt mixtures',               '#50a0d0'),
+        ('clay',       2.95, 5.0,  'Clays',                       '#3060b0'),
+        ('sensitive',  None, None, 'Zone 1, Sensitive soils',      '#704090'),
     ]
     sbt_traces = []
     ic_vals = processed_data['lc']
+    iz_vals = processed_data.get('iz1', [])
     depth_vals = processed_data['depth']
-    # Create a horizontal bar for each depth showing its SBT zone
-    for ic_lo, ic_hi, label, color in sbt_zones:
+
+    # Assign each depth point to a zone
+    zone_assignments = []
+    for i, ic in enumerate(ic_vals):
+        iz = iz_vals[i] if i < len(iz_vals) else 0
+        if iz < 0:
+            zone_assignments.append('sensitive')
+        elif ic < 1.31:
+            zone_assignments.append('gravelly')
+        elif ic < 2.05:
+            zone_assignments.append('sand')
+        elif ic < 2.60:
+            zone_assignments.append('sand_mix')
+        elif ic < 2.95:
+            zone_assignments.append('silt_mix')
+        else:
+            zone_assignments.append('clay')
+
+    for zone_key, ic_lo, ic_hi, label, color in sbt_zones:
         x_vals = []
         y_vals = []
-        for i, ic in enumerate(ic_vals):
-            if ic_lo <= ic < ic_hi:
+        for i in range(len(depth_vals)):
+            if zone_assignments[i] == zone_key:
                 x_vals.append(1)
-                y_vals.append(depth_vals[i])
             else:
                 x_vals.append(0)
-                y_vals.append(depth_vals[i])
+            y_vals.append(depth_vals[i])
         sbt_traces.append(go.Bar(
             x=x_vals,
             y=y_vals,
