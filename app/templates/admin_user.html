@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="admin-container">
+    <div class="admin-header">
+        <h1>User: {{ user.email or (user.user_id[:12] ~ '...') }}</h1>
+        <a href="{{ url_for('main.admin') }}" class="btn btn-secondary">Back to Admin</a>
+    </div>
+
+    <div class="analytics-grid">
+        <div class="analytics-card">
+            <h3>Location</h3>
+            <div class="analytics-number" style="font-size:1.2rem">
+                {{ user.geo.city }}{{ ', ' if user.geo.city and user.geo.country }}{{ user.geo.country }}
+            </div>
+            {% if user.geo.isp %}
+            <p style="color:#6b7280;margin-top:0.25rem">{{ user.geo.isp }}</p>
+            {% endif %}
+        </div>
+        <div class="analytics-card">
+            <h3>Session Duration</h3>
+            <div class="analytics-number">{{ user.duration_minutes }} min</div>
+        </div>
+        <div class="analytics-card">
+            <h3>Pages Viewed</h3>
+            <div class="analytics-number">{{ user.page_count }}</div>
+        </div>
+        <div class="analytics-card">
+            <h3>Browser / OS</h3>
+            <div class="analytics-number" style="font-size:1.2rem">{{ user.browser_os }}</div>
+        </div>
+    </div>
+
+    <div class="analytics-grid" style="grid-template-columns: 1fr 1fr; margin-top:1rem">
+        <div class="analytics-card">
+            <h3>Details</h3>
+            <table class="registrations-table" style="margin:0">
+                <tbody>
+                    <tr><th style="width:35%">User ID</th><td><code>{{ user.user_id }}</code></td></tr>
+                    <tr><th>IP Address</th><td>{{ user.ip }}</td></tr>
+                    {% if user.email %}<tr><th>Email</th><td>{{ user.email }}</td></tr>{% endif %}
+                    {% if user.affiliation %}<tr><th>Affiliation</th><td>{{ user.affiliation }}</td></tr>{% endif %}
+                    <tr><th>Referrer</th><td style="word-break:break-all">{{ user.referrer }}</td></tr>
+                    <tr><th>First Seen</th><td>{{ user.first_seen.strftime('%Y-%m-%d %H:%M:%S') }}</td></tr>
+                    <tr><th>Last Seen</th><td>{{ user.last_seen.strftime('%Y-%m-%d %H:%M:%S') }}</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="analytics-card">
+            <h3>Pages Visited</h3>
+            <div style="max-height:300px;overflow-y:auto">
+                <table class="registrations-table" style="margin:0">
+                    <thead>
+                        <tr><th>Time</th><th>Page</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for p in user.pages %}
+                        <tr>
+                            <td>{{ p.time.strftime('%H:%M:%S') }}</td>
+                            <td>{{ p.url }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    {% if user.events %}
+    <h2 class="analytics-section-header" style="margin-top:2rem">Events</h2>
+    <div class="registrations-table">
+        <table>
+            <thead>
+                <tr>
+                    <th>Time</th>
+                    <th>Type</th>
+                    <th>Details</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for e in user.events %}
+                <tr>
+                    <td>{{ e.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                    <td>{{ e.data_key }}</td>
+                    <td style="max-width:500px;word-break:break-word;font-size:0.85rem">{{ e.data_value or '' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+</div>
+
+<style>
+.admin-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 2rem;
+}
+.admin-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+}
+.analytics-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+}
+.analytics-card {
+    background: white;
+    border-radius: 8px;
+    padding: 1.5rem;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+.analytics-card h3 {
+    margin: 0 0 0.5rem;
+    font-size: 0.85rem;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+.analytics-number {
+    font-size: 1.8rem;
+    font-weight: 600;
+    color: #1f2937;
+}
+.analytics-section-header {
+    font-size: 1.2rem;
+    color: #1f2937;
+    margin: 1.5rem 0 1rem;
+}
+.registrations-table table {
+    width: 100%;
+    border-collapse: collapse;
+}
+.registrations-table th,
+.registrations-table td {
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid #e5e7eb;
+    text-align: left;
+    font-size: 0.9rem;
+}
+.registrations-table th {
+    color: #6b7280;
+    font-weight: 500;
+}
+code {
+    background: #f3f4f6;
+    padding: 0.15rem 0.4rem;
+    border-radius: 3px;
+    font-size: 0.85rem;
+}
+</style>
+{% endblock %}

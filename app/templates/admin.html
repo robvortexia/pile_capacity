@@ -227,6 +227,43 @@
         </div>
     </div>
 
+    <!-- Recent Users with Geo & Session Info -->
+    <h2 class="analytics-section-header">Recent Users (30 days)</h2>
+    <div class="registrations-table">
+        <table>
+            <thead>
+                <tr>
+                    <th>User</th>
+                    <th>Location</th>
+                    <th>Browser / OS</th>
+                    <th>Referrer</th>
+                    <th>Pages</th>
+                    <th>Session</th>
+                    <th>First Seen</th>
+                    <th>Last Seen</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for u in recent_users %}
+                <tr>
+                    <td data-label="User">
+                        <a href="{{ url_for('main.admin_user_detail', user_id=u.user_id) }}" style="color:#003087;text-decoration:none;font-weight:500">
+                            {{ u.email or (u.user_id[:8] ~ '...') }}
+                        </a>
+                    </td>
+                    <td data-label="Location">{{ u.city }}{{ ', ' if u.city and u.country }}{{ u.country }}</td>
+                    <td data-label="Browser">{{ u.browser_os }}</td>
+                    <td data-label="Referrer" style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ u.referrer }}</td>
+                    <td data-label="Pages">{{ u.page_count }}</td>
+                    <td data-label="Session">{{ u.duration_minutes }} min</td>
+                    <td data-label="First">{{ u.first_seen.strftime('%Y-%m-%d %H:%M') }}</td>
+                    <td data-label="Last">{{ u.last_seen.strftime('%Y-%m-%d %H:%M') }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
     <!-- Recent Activity Feed -->
     <h2 class="analytics-section-header">Recent User Activity</h2>
     <div class="registrations-table">

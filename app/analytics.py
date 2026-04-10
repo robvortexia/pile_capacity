@@ -1,10 +1,15 @@
 import json
 import uuid
+import urllib.request
+import urllib.error
 from flask import request, session
 from datetime import datetime, timedelta
 from sqlalchemy import func
 from .models import db, PageVisit, AnalyticsData, Visit, Registration
 from typing import List, Dict, Any, Optional
+
+# In-memory cache so we don't re-lookup the same IP during one app lifecycle
+_geo_cache: Dict[str, Dict[str, str]] = {}
 
 def get_or_create_user_id():
     """Get user ID from session or create a new one if it doesn't exist"""
@@ -242,3 +247,153 @@ def get_weekly_usage_summary(days: int = 7) -> Dict[str, Any]:
         'events': events,
         'pile_types': pile_types,
     }
+
+
+def lookup_ip_geo(ip: str) -> Dict[str, str]:
+    """Look up country/city for an IP using ip-api.com (free, no key needed).
+    Results are cached in memory so we only call the API once per IP per app restart."""
+    if not ip or ip in ('127.0.0.1', '::1', 'unknown'):
+        return {'country': 'Local', 'city': '', 'isp': ''}
+
+    if ip in _geo_cache:
+        return _geo_cache[ip]
+
+    try:
+        url = f'http://ip-api.com/json/{ip}?fields=status,country,city,isp'
+        req = urllib.request.Request(url, headers={'User-Agent': 'UWA-CPT-Calculator'})
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            data = json.loads(resp.read().decode())
+            if data.get('status') == 'success':
+                result = {
+                    'country': data.get('country', ''),
+                    'city': data.get('city', ''),
+                    'isp': data.get('isp', ''),
+                }
+            else:
+                result = {'country': '', 'city': '', 'isp': ''}
+    except Exception:
+        result = {'country': '', 'city': '', 'isp': ''}
+
+    _geo_cache[ip] = result
+    return result
+
+
+def get_user_details(user_id: str) -> Dict[str, Any]:
+    """Build a detailed profile for a given user_id from existing analytics data."""
+    # All page visits for this user
+    visits = PageVisit.query.filter_by(user_id=user_id).order_by(PageVisit.timestamp).all()
+
+    if not visits:
+        return None
+
+    first_visit = visits[0]
+    last_visit = visits[-1]
+    duration_seconds = (last_visit.timestamp - first_visit.timestamp).total_seconds()
+
+    # Get their IP and geo info
+    ip = first_visit.ip_address or ''
+    geo = lookup_ip_geo(ip)
+
+    # Parse user agent for a readable browser/OS string
+    ua = first_visit.user_agent or ''
+    browser_os = _parse_ua_short(ua)
+
+    # Get their events (parameters, uploads, downloads)
+    events = AnalyticsData.query.filter_by(
+        user_id=user_id, data_type='event'
+    ).order_by(AnalyticsData.timestamp).all()
+
+    # Check if they registered
+    reg = Registration.query.filter_by(ip_address=ip).first() if ip else None
+
+    return {
+        'user_id': user_id,
+        'ip': ip,
+        'geo': geo,
+        'browser_os': browser_os,
+        'referrer': first_visit.referrer or 'Direct',
+        'email': first_visit.email or (reg.email if reg else None),
+        'affiliation': reg.affiliation if reg else None,
+        'first_seen': first_visit.timestamp,
+        'last_seen': last_visit.timestamp,
+        'duration_minutes': round(duration_seconds / 60, 1),
+        'page_count': len(visits),
+        'pages': [{'url': v.page_url, 'time': v.timestamp} for v in visits],
+        'events': events,
+    }
+
+
+def get_recent_users(days: int = 7, limit: int = 30) -> list:
+    """Get a summary list of recent unique users with geo and session info."""
+    cutoff = datetime.utcnow() - timedelta(days=days)
+
+    # Get distinct user_ids from recent page visits
+    user_rows = db.session.query(
+        PageVisit.user_id,
+        func.min(PageVisit.timestamp).label('first_seen'),
+        func.max(PageVisit.timestamp).label('last_seen'),
+        func.count(PageVisit.id).label('page_count'),
+        func.min(PageVisit.ip_address).label('ip'),
+        func.min(PageVisit.referrer).label('referrer'),
+        func.min(PageVisit.email).label('email'),
+        func.min(PageVisit.user_agent).label('ua'),
+    ).filter(
+        PageVisit.timestamp >= cutoff,
+        PageVisit.user_id.isnot(None)
+    ).group_by(
+        PageVisit.user_id
+    ).order_by(
+        func.max(PageVisit.timestamp).desc()
+    ).limit(limit).all()
+
+    users = []
+    for row in user_rows:
+        ip = row.ip or ''
+        geo = lookup_ip_geo(ip)
+        duration = (row.last_seen - row.first_seen).total_seconds()
+        users.append({
+            'user_id': row.user_id,
+            'first_seen': row.first_seen,
+            'last_seen': row.last_seen,
+            'duration_minutes': round(duration / 60, 1),
+            'page_count': row.page_count,
+            'ip': ip,
+            'country': geo.get('country', ''),
+            'city': geo.get('city', ''),
+            'referrer': row.referrer or 'Direct',
+            'email': row.email,
+            'browser_os': _parse_ua_short(row.ua or ''),
+        })
+
+    return users
+
+
+def _parse_ua_short(ua: str) -> str:
+    """Extract a short browser/OS label from a user agent string."""
+    ua_lower = ua.lower()
+    # Browser
+    browser = 'Other'
+    if 'edg/' in ua_lower:
+        browser = 'Edge'
+    elif 'chrome/' in ua_lower and 'chromium' not in ua_lower:
+        browser = 'Chrome'
+    elif 'firefox/' in ua_lower:
+        browser = 'Firefox'
+    elif 'safari/' in ua_lower and 'chrome' not in ua_lower:
+        browser = 'Safari'
+    # OS
+    os_name = ''
+    if 'windows' in ua_lower:
+        os_name = 'Windows'
+    elif 'mac os' in ua_lower or 'macintosh' in ua_lower:
+        os_name = 'Mac'
+    elif 'linux' in ua_lower:
+        os_name = 'Linux'
+    elif 'android' in ua_lower:
+        os_name = 'Android'
+    elif 'iphone' in ua_lower or 'ipad' in ua_lower:
+        os_name = 'iOS'
+
+    if os_name:
+        return f'{browser} / {os_name}'
+    return browser

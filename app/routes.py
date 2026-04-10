@@ -24,7 +24,7 @@ from sqlalchemy.sql import func
 import logging
 import io
 from .helical_calculations import calculate_helical_pile_results
-from .analytics import record_page_visit, store_analytics_data, get_or_create_user_id, get_page_visit_stats, get_analytics_data_stats, record_event
+from .analytics import record_page_visit, store_analytics_data, get_or_create_user_id, get_page_visit_stats, get_analytics_data_stats, record_event, get_recent_users, get_user_details
 
 # Set pandas options for full precision 
 pd.set_option('display.precision', 15)  # Increase default precision
@@ -630,9 +630,15 @@ def calculator_step(type, step):
                     logger.debug(f"Content type: {file.content_type}")
                     logger.debug(f"Detected delimiter: {delimiter}")
 
+                    # Track upload details including depth range
+                    cpt_rows = processed_data['cpt_data']
+                    depth_min = min(r['z'] for r in cpt_rows) if cpt_rows else 0
+                    depth_max = max(r['z'] for r in cpt_rows) if cpt_rows else 0
                     record_event('upload_success', f'{type}_upload_complete', {
                         'pile_type': type,
-                        'data_points': len(processed_data['cpt_data']),
+                        'filename': file.filename,
+                        'data_points': len(cpt_rows),
+                        'depth_range': f'{depth_min:.1f} - {depth_max:.1f} m',
                         'water_table': water_table,
                         'delimiter': delimiter,
                     })
@@ -713,6 +719,13 @@ def calculator_step(type, step):
                     'pile_tip_depths': pile_tip_depths
                 }
 
+                record_event('calculation', 'bored_params', {
+                    'shaft_diameter': session['pile_params']['shaft_diameter'],
+                    'base_diameter': session['pile_params']['base_diameter'],
+                    'cased_depth': session['pile_params']['cased_depth'],
+                    'tip_depths': pile_tip_depths,
+                })
+
                 # Process the data and calculate results
                 if 'cpt_data_id' not in session:
                     flash('No CPT data available. Please upload data first.')
@@ -781,6 +794,15 @@ def calculator_step(type, step):
                     'pile_tip_depths': pile_tip_depths
                 }
                 session['pile_params'] = pile_params
+
+                record_event('calculation', 'driven_params', {
+                    'pile_diameter': pile_params['pile_diameter'],
+                    'wall_thickness': pile_params['wall_thickness'],
+                    'pile_shape': pile_params['pile_shape'],
+                    'pile_end_condition': pile_params['pile_end_condition'],
+                    'borehole_depth': pile_params['borehole_depth'],
+                    'tip_depths': pile_tip_depths,
+                })
 
                 # Validate pile parameters
                 errors = []
@@ -881,7 +903,13 @@ def calculator_step(type, step):
                 
                 # Store in session
                 session['pile_params'] = pile_params
-                
+
+                record_event('calculation', 'helical_params', {
+                    'shaft_diameter': pile_params.get('shaft_diameter'),
+                    'helix_diameter': pile_params.get('helix_diameter'),
+                    'helix_depth': pile_params.get('helix_depth'),
+                })
+
                 # Process the data and calculate results
                 if 'cpt_data_id' not in session:
                     flash('No CPT data available. Please upload data first.')
@@ -1971,6 +1999,9 @@ def admin():
         AnalyticsData.data_type == 'event'
     ).order_by(AnalyticsData.timestamp.desc()).limit(100).all()
 
+    # Recent users with geo, session duration, browser info
+    recent_users = get_recent_users(days=30, limit=30)
+
     # User journey stats: how far users get in the funnel
     seven_days_ago = datetime.utcnow() - timedelta(days=7)
     funnel_steps = {}
@@ -2023,9 +2054,21 @@ def admin():
                          ad_click_stats=ad_click_stats,
                          rolling_14d_json=rolling_14d_json,
                          recent_activity=recent_activity,
+                         recent_users=recent_users,
                          funnel_steps=funnel_steps,
                          download_breakdown=download_breakdown,
                          recent_suggestions=recent_suggestions)
+
+@bp.route('/admin/user/<user_id>')
+@admin_required
+def admin_user_detail(user_id):
+    """Show detailed info for a specific user session."""
+    details = get_user_details(user_id)
+    if not details:
+        flash('User not found')
+        return redirect(url_for('main.admin'))
+    return render_template('admin_user.html', user=details)
+
 
 @bp.route('/admin/send_weekly_report')
 @admin_required
