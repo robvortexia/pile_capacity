@@ -114,6 +114,96 @@ def sample_data_for_graphs(cpt_data, max_points=None):
     
     return sampled_data
 
+def _build_sbt_graph(processed_data, max_depth):
+    """Build a Robertson SBT colour-coded soil profile graph.
+    Shared by driven, bored, and helical pile graph functions."""
+    sbt_zones = [
+        ('gravelly',   0,    1.31, 'Gravelly sand to dense sand', '#d4a017'),
+        ('sand',       1.31, 2.05, 'Sands: clean to silty',       '#f0c040'),
+        ('sand_mix',   2.05, 2.60, 'Sand mixtures',               '#90c050'),
+        ('silt_mix',   2.60, 2.95, 'Silt mixtures',               '#50a0d0'),
+        ('clay',       2.95, 5.0,  'Clays',                       '#3060b0'),
+        ('sensitive',  None, None, 'Zone 1, Sensitive soils',      '#704090'),
+    ]
+    ic_vals = processed_data['lc']
+    iz_vals = processed_data.get('iz1', [])
+    depth_vals = processed_data['depth']
+
+    # Assign each depth point to a zone (Iz < 0 overrides Ic classification)
+    zone_assignments = []
+    for i, ic in enumerate(ic_vals):
+        iz = iz_vals[i] if i < len(iz_vals) else 0
+        if iz < 0:
+            zone_assignments.append('sensitive')
+        elif ic < 1.31:
+            zone_assignments.append('gravelly')
+        elif ic < 2.05:
+            zone_assignments.append('sand')
+        elif ic < 2.60:
+            zone_assignments.append('sand_mix')
+        elif ic < 2.95:
+            zone_assignments.append('silt_mix')
+        else:
+            zone_assignments.append('clay')
+
+    sbt_traces = []
+    for zone_key, ic_lo, ic_hi, label, color in sbt_zones:
+        x_vals = []
+        y_vals = []
+        for i in range(len(depth_vals)):
+            x_vals.append(1 if zone_assignments[i] == zone_key else 0)
+            y_vals.append(depth_vals[i])
+        sbt_traces.append(go.Bar(
+            x=x_vals,
+            y=y_vals,
+            orientation='h',
+            name=label,
+            marker={'color': color},
+            hovertemplate='%{y:.1f}m: ' + label + '<extra></extra>',
+            width=max(0.08, (depth_vals[1] - depth_vals[0]) if len(depth_vals) > 1 else 0.1),
+        ))
+
+    return {
+        'data': sbt_traces,
+        'layout': {
+            'title': {'text': 'Robertson SBT', 'x': 0.5, 'xanchor': 'center', 'font': {'size': 12}, 'y': 0.95},
+            'barmode': 'stack',
+            'xaxis': {
+                'title': None,
+                'showticklabels': False,
+                'showgrid': False,
+                'zeroline': False,
+                'showline': True,
+                'linewidth': 1,
+                'linecolor': 'lightgrey',
+                'mirror': True,
+                'side': 'top',
+            },
+            'yaxis': {
+                'title': {'text': 'Depth (m)', 'standoff': 5},
+                'range': [max_depth + 0.5, 0],
+                'dtick': 5,
+                'tickfont': {'size': 10},
+                'zeroline': False,
+                'rangemode': 'tozero',
+                'showline': True,
+                'linewidth': 1,
+                'linecolor': 'lightgrey',
+                'mirror': True,
+                'showgrid': True,
+                'gridcolor': 'lightgrey',
+                'gridwidth': 1,
+            },
+            'plot_bgcolor': 'white',
+            'margin': {'l': 50, 'r': 20, 't': 30, 'b': 30},
+            'font': {'size': 10},
+            'autosize': True,
+            'showlegend': True,
+            'legend': {'font': {'size': 8}, 'orientation': 'h', 'y': -0.05, 'x': 0.5, 'xanchor': 'center'},
+        }
+    }
+
+
 def create_cpt_graphs(data, water_table=None):
     if water_table is None:
         water_table = data.get('water_table', 0)
@@ -262,96 +352,7 @@ def create_cpt_graphs(data, water_table=None):
         }
     }
 
-    # Robertson SBT profile — colour-coded soil classification from Ic
-    # Zone 1 (sensitive soils) is identified by Iz < 0, overriding the Ic classification
-    sbt_zones = [
-        ('gravelly',   0,    1.31, 'Gravelly sand to dense sand', '#d4a017'),
-        ('sand',       1.31, 2.05, 'Sands: clean to silty',       '#f0c040'),
-        ('sand_mix',   2.05, 2.60, 'Sand mixtures',               '#90c050'),
-        ('silt_mix',   2.60, 2.95, 'Silt mixtures',               '#50a0d0'),
-        ('clay',       2.95, 5.0,  'Clays',                       '#3060b0'),
-        ('sensitive',  None, None, 'Zone 1, Sensitive soils',      '#704090'),
-    ]
-    sbt_traces = []
-    ic_vals = processed_data['lc']
-    iz_vals = processed_data.get('iz1', [])
-    depth_vals = processed_data['depth']
-
-    # Assign each depth point to a zone
-    zone_assignments = []
-    for i, ic in enumerate(ic_vals):
-        iz = iz_vals[i] if i < len(iz_vals) else 0
-        if iz < 0:
-            zone_assignments.append('sensitive')
-        elif ic < 1.31:
-            zone_assignments.append('gravelly')
-        elif ic < 2.05:
-            zone_assignments.append('sand')
-        elif ic < 2.60:
-            zone_assignments.append('sand_mix')
-        elif ic < 2.95:
-            zone_assignments.append('silt_mix')
-        else:
-            zone_assignments.append('clay')
-
-    for zone_key, ic_lo, ic_hi, label, color in sbt_zones:
-        x_vals = []
-        y_vals = []
-        for i in range(len(depth_vals)):
-            if zone_assignments[i] == zone_key:
-                x_vals.append(1)
-            else:
-                x_vals.append(0)
-            y_vals.append(depth_vals[i])
-        sbt_traces.append(go.Bar(
-            x=x_vals,
-            y=y_vals,
-            orientation='h',
-            name=label,
-            marker={'color': color},
-            hovertemplate='%{y:.1f}m: ' + label + '<extra></extra>',
-            width=max(0.08, (depth_vals[1] - depth_vals[0]) if len(depth_vals) > 1 else 0.1),
-        ))
-
-    sbt_graph = {
-        'data': sbt_traces,
-        'layout': {
-            'title': {'text': 'Robertson SBT', 'x': 0.5, 'xanchor': 'center', 'font': {'size': 12}, 'y': 0.95},
-            'barmode': 'stack',
-            'xaxis': {
-                'title': None,
-                'showticklabels': False,
-                'showgrid': False,
-                'zeroline': False,
-                'showline': True,
-                'linewidth': 1,
-                'linecolor': 'lightgrey',
-                'mirror': True,
-                'side': 'top',
-            },
-            'yaxis': {
-                'title': {'text': 'Depth (m)', 'standoff': 5},
-                'range': [max_depth + 0.5, 0],
-                'dtick': 5,
-                'tickfont': {'size': 10},
-                'zeroline': False,
-                'rangemode': 'tozero',
-                'showline': True,
-                'linewidth': 1,
-                'linecolor': 'lightgrey',
-                'mirror': True,
-                'showgrid': True,
-                'gridcolor': 'lightgrey',
-                'gridwidth': 1,
-            },
-            'plot_bgcolor': 'white',
-            'margin': {'l': 50, 'r': 20, 't': 30, 'b': 30},
-            'font': {'size': 10},
-            'autosize': True,
-            'showlegend': True,
-            'legend': {'font': {'size': 8}, 'orientation': 'h', 'y': -0.05, 'x': 0.5, 'xanchor': 'center'},
-        }
-    }
+    sbt_graph = _build_sbt_graph(processed_data, max_depth)
 
     return {
         'qt': json.dumps(qt_graph, cls=plotly.utils.PlotlyJSONEncoder),
@@ -480,10 +481,14 @@ def create_bored_pile_graphs(data):
         }
     }
 
+    # Robertson SBT profile
+    sbt_graph = _build_sbt_graph(processed_data, max_depth)
+
     return {
         'qt': json.dumps(qt_graph, cls=plotly.utils.PlotlyJSONEncoder),
         'fr': json.dumps(fr_graph, cls=plotly.utils.PlotlyJSONEncoder),
-        'ic': json.dumps(ic_graph, cls=plotly.utils.PlotlyJSONEncoder)
+        'ic': json.dumps(ic_graph, cls=plotly.utils.PlotlyJSONEncoder),
+        'sbt': json.dumps(sbt_graph, cls=plotly.utils.PlotlyJSONEncoder),
     }
 
 def create_helical_pile_graphs(data):
@@ -599,10 +604,14 @@ def create_helical_pile_graphs(data):
         }
     }
 
+    # Robertson SBT profile
+    sbt_graph = _build_sbt_graph(processed_data, max_depth)
+
     return {
         'qt': json.dumps(qt_graph, cls=plotly.utils.PlotlyJSONEncoder),
         'fr': json.dumps(fr_graph, cls=plotly.utils.PlotlyJSONEncoder),
-        'ic': json.dumps(ic_graph, cls=plotly.utils.PlotlyJSONEncoder)
+        'ic': json.dumps(ic_graph, cls=plotly.utils.PlotlyJSONEncoder),
+        'sbt': json.dumps(sbt_graph, cls=plotly.utils.PlotlyJSONEncoder),
     }
 
 def validate_and_process_data(df):
