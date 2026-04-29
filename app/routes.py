@@ -283,8 +283,7 @@ def create_driven_data_dataframe(processed_cpt, calc_dict):
 @bp.route('/')
 @bp.route('/index')
 def index():
-    logger.debug(f"Session contents: {dict(session)}")
-    logger.debug(f"Session registered flag: {session.get('registered')}")
+    logger.debug("Session keys: %s, registered=%s", list(session.keys()), session.get('registered'))
 
     # Don't show registration modal on index - let users explore first
     show_modal = False
@@ -435,17 +434,12 @@ def calculator_step(type, step):
                     
                     # Store debug ID in database
                     store_analytics_data('calculation_debug', 'debug_id', debug_id)
-                    
-                    # Log successful calculation
-                    logger.info(f"Helical pile calculations completed successfully for {pile_params['site_name']}")
-                    logger.info(f"Results stored in session: {session['results']}")
-                    logger.info(f"Debug ID stored in session: {session['debug_id']}")
-                    logger.info(f"Detailed results saved: {detailed_results}")
-                    
-                    # Remove any old results_id from session to avoid confusion
+
+                    logger.info("Helical pile calculations completed for %s (debug_id=%s)", pile_params.get('site_name'), debug_id)
+
                     session.pop('results_id', None)
                     session.pop('detailed_results', None)
-                    
+
                     return redirect(url_for('main.calculator_step', type=type, step=4))
                 except Exception as e:
                     logger.error(f"Error in helical pile calculations: {str(e)}")
@@ -471,8 +465,6 @@ def calculator_step(type, step):
             detailed_results = session['detailed_results']
         elif type == 'helical' and 'debug_id' in session:
             debug_details = load_debug_details(session['debug_id'])
-            # Add debug logging
-            logger.info(f"Debug details loaded: {debug_details}")
             if debug_details and isinstance(debug_details, list) and len(debug_details) > 0:
                 detailed_results = debug_details[0]
             else:
@@ -481,18 +473,10 @@ def calculator_step(type, step):
                 return redirect(url_for('main.calculator_step', type=type, step=3))
         elif type == 'driven' and 'debug_id' in session:
             debug_details = load_debug_details(session['debug_id'])
-            # Add debug logging
-            logger.info(f"Debug details loaded for driven: {debug_details}")
             if debug_details and isinstance(debug_details, list) and len(debug_details) > 0:
                 detailed_results = debug_details[0]
             else:
                 logger.error("No debug details found for driven piles")
-                # Don't redirect for driven piles, just continue without detailed results
-        
-        # Debug print to see what's in the results
-        logger.info(f"Rendering step 4 with results: {session['results']}")
-        logger.info(f"Debug ID in session: {session.get('debug_id')}")
-        logger.info(f"Detailed results: {detailed_results}")
 
         return render_template(
             f'{type}/steps.html',
@@ -740,19 +724,13 @@ def calculator_step(type, step):
                 processed_cpt = pre_input_calc(cpt_data, float(session.get('water_table', 0)))  # Consistent use of session water table
                 
                 try:
-                    # Calculate results using the bored pile specific function
-                    logger.info(f"Starting bored pile calculation with params: {session['pile_params']}")
                     results = calculate_bored_pile_results(processed_cpt, session['pile_params'])
-                    logger.info(f"Calculation completed successfully")
-                    
-                    # Store summary results in session
-                    session['results'] = results['summary']
-                    logger.info(f"Results stored in session: {session['results']}")
 
-                    # Save detailed results and store debug_id in session
+                    session['results'] = results['summary']
+
                     debug_id = save_debug_details(results['detailed'])
                     session['debug_id'] = debug_id
-                    logger.info(f"Debug ID stored: {debug_id}")
+                    logger.info("Bored pile calculation complete (debug_id=%s)", debug_id)
 
                     # Compute continuous capacity envelope for the graph
                     try:
@@ -944,17 +922,11 @@ def calculator_step(type, step):
                         'input_parameters': session['pile_params']
                     }
                     
-                    # Save detailed results and store debug_id in session
-                    debug_id = save_debug_details([detailed_results])  # Wrap in list since load_debug_details expects a list
+                    debug_id = save_debug_details([detailed_results])
                     session['debug_id'] = debug_id
-                    
-                    # Log successful calculation
-                    logger.info(f"Helical pile calculations completed successfully for {pile_params['site_name']}")
-                    logger.info(f"Results stored in session: {session['results']}")
-                    logger.info(f"Debug ID stored in session: {session['debug_id']}")
-                    logger.info(f"Detailed results saved: {detailed_results}")
-                    
-                    # Remove any old results_id from session to avoid confusion
+
+                    logger.info("Helical pile calculations completed for %s (debug_id=%s)", pile_params.get('site_name'), debug_id)
+
                     session.pop('results_id', None)
                     session.pop('detailed_results', None)
                     
@@ -975,13 +947,6 @@ def calculator_step(type, step):
             detailed_results = None
             if type == 'bored' and 'detailed_results' in session:
                 detailed_results = session['detailed_results']
-            
-            # Debug print to see what's in the results
-            print("RESULTS IN SESSION:", session['results'])
-            
-            # For GET requests, add debug output
-            if request.method == 'GET':
-                print("Session data on results page:", session.get('pile_params'))
 
             return render_template(
                 f'{type}/steps.html',
@@ -1029,18 +994,15 @@ def calculator_step(type, step):
         return render_template(f'{type}/steps.html', step=step, type=type, show_modal=show_modal)
         
     elif step == 4:
-        logger.info(f"Step 4 GET request for {type} piles")
-        logger.info(f"Results in session: {session.get('results')}")
-        logger.info(f"Debug ID in session: {session.get('debug_id')}")
-        
+        logger.info("Step 4 GET request for %s piles (debug_id=%s)", type, session.get('debug_id'))
+
         if 'results' not in session:
             flash('No results available. Please complete the analysis first.')
             return redirect(url_for('main.calculator_step', type=type, step=3))
-        
+
         detailed_results = None
         if type == 'bored' and 'debug_id' in session:
             debug_details = load_debug_details(session['debug_id'])
-            logger.info(f"Loaded debug details: {debug_details}")
             if debug_details and isinstance(debug_details, list) and len(debug_details) > 0:
                 detailed_results = debug_details[0]
 
@@ -1079,11 +1041,6 @@ def download_debug_params():
         return redirect(url_for('main.index'))
     
     try:
-        # Add debug logging
-        print("Session contents:", dict(session))
-        print("Pile type:", session.get('type'))
-        print("Pile params:", session.get('pile_params'))
-        
         data = load_cpt_data(session['cpt_data_id'])
         if not data:
             flash('CPT data not found')
@@ -1263,8 +1220,7 @@ def download_debug_params():
             if 'debug_id' in session:
                 debug_id = session['debug_id']
                 debug_details = load_debug_details(debug_id)
-                logger.info(f"Debug details for download: {debug_details}")
-                
+
                 if debug_details and isinstance(debug_details, list) and len(debug_details) > 0:
                     detail_data = debug_details[0]
                     
