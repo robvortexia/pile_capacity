@@ -197,10 +197,7 @@ def _build_sbt_graph(processed_data, max_depth):
             'plot_bgcolor': '#ffffff',
             'paper_bgcolor': '#ffffff',
             'margin': {'l': 60, 'r': 140, 't': 40, 'b': 30},
-            'font': {
-                'family': '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
-                'size': 12,
-            },
+            'font': {'size': 12},
             'autosize': True,
             'showlegend': True,
             'legend': {
