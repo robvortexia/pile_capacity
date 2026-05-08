@@ -18,6 +18,9 @@ from .interpolation import process_uploaded_cpt_data
 from datetime import datetime, timedelta
 from .models import db, Registration, Visit, Suggestion, AnalyticsData
 from functools import wraps
+from hmac import compare_digest
+from collections import deque
+from time import time as _now
 import csv
 from io import StringIO
 from sqlalchemy.sql import func
@@ -1853,16 +1856,50 @@ def suggestions():
     return render_template('suggestions.html', submitted=submitted)
 
 
+_ADMIN_RATE_LIMIT = 5
+_ADMIN_RATE_WINDOW_SECONDS = 60 * 60
+_admin_failed_attempts = {}
+
+
+def _client_ip():
+    forwarded = request.headers.get('X-Forwarded-For', '')
+    if forwarded:
+        return forwarded.split(',')[0].strip()
+    return request.remote_addr or 'unknown'
+
+
 def admin_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        admin_password = os.environ.get('ADMIN_PASSWORD') or 'barry2002'
+        admin_password = os.environ.get('ADMIN_PASSWORD')
+        if not admin_password:
+            logger.error("ADMIN_PASSWORD env var is not set; refusing admin access")
+            return Response('Server misconfigured: admin disabled.', 500)
+
+        ip = _client_ip()
+        attempts = _admin_failed_attempts.setdefault(ip, deque())
+        cutoff = _now() - _ADMIN_RATE_WINDOW_SECONDS
+        while attempts and attempts[0] < cutoff:
+            attempts.popleft()
+
+        if len(attempts) >= _ADMIN_RATE_LIMIT:
+            logger.warning("Admin rate limit hit for ip=%s", ip)
+            return Response(
+                'Too many failed attempts. Try again later.', 429,
+                {'Retry-After': str(_ADMIN_RATE_WINDOW_SECONDS)})
+
         auth = request.authorization
-        if not auth or auth.password != admin_password:
+        supplied = (auth.password or '') if auth else ''
+        if not compare_digest(supplied, admin_password):
+            attempts.append(_now())
+            logger.warning("Failed admin auth from ip=%s (failures in window=%d)", ip, len(attempts))
             return Response(
                 'Could not verify your access level for that URL.\n'
                 'You have to login with proper credentials', 401,
                 {'WWW-Authenticate': 'Basic realm="Login Required"'})
+
+        _admin_failed_attempts.pop(ip, None)
+        logger.info("Admin auth succeeded for ip=%s", ip)
         return f(*args, **kwargs)
     return decorated_function
 
