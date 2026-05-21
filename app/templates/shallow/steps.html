@@ -1,0 +1,293 @@
+{% extends "base.html" %}
+
+{% block extra_head %}
+<script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="page-container">
+    <div class="side-stepper">
+        {% include 'components/step_indicator.html' %}
+    </div>
+
+    <div class="main-content-with-stepper">
+        {% with messages = get_flashed_messages() %}
+            {% if messages %}
+                <div class="flash-messages" style="padding: 0 1rem;">
+                    {% for message in messages %}
+                        <div class="alert alert-error">{{ message }}</div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        {% endwith %}
+        <div class="stepper">
+            {% if step == 1 %}
+            <div class="step active">
+                <h2>Step 1: CPT Data</h2>
+                {% include 'components/upload_form.html' %}
+                <div class="button-group">
+                    <a href="{{ url_for('main.index') }}" class="btn btn-secondary">Back to Home</a>
+                </div>
+            </div>
+            {% endif %}
+
+            {% if step == 2 %}
+            <div class="step active">
+                <h2>Step 2: View CPT Data</h2>
+                {% if graphs %}
+                <div class="graphs-container">
+                    <div class="graph-wrapper"><div id="qt_graph" class="graph"></div></div>
+                    <div class="graph-wrapper"><div id="fr_graph" class="graph"></div></div>
+                    <div class="graph-wrapper"><div id="ic_graph" class="graph"></div></div>
+                    <div class="graph-wrapper"><div id="sbt_graph" class="graph"></div></div>
+                </div>
+                <div class="debug-section">
+                    <div class="button-group">
+                        <a href="{{ url_for('main.download_intermediary_calcs') }}" class="btn btn-info">
+                            <i class="fas fa-download"></i> Download Intermediary Calculations
+                        </a>
+                    </div>
+                </div>
+                <div class="button-group">
+                    <form method="POST" action="{{ url_for('main.calculator_step', type=type, step=2) }}">
+                        <button type="submit" class="btn btn-primary">Continue to Step 3</button>
+                    </form>
+                    <a href="{{ url_for('main.calculator_step', type=type, step=1) }}" class="btn btn-secondary">Back to Step 1</a>
+                </div>
+                {% else %}
+                <p>No CPT data available. Please go back to step 1 and upload your data.</p>
+                <div class="button-group">
+                    <a href="{{ url_for('main.calculator_step', type=type, step=1) }}" class="btn btn-secondary">Back to Step 1</a>
+                </div>
+                {% endif %}
+            </div>
+            {% endif %}
+
+            {% if step == 3 %}
+            <div class="step active">
+                <h2>Step 3: Footing Parameters</h2>
+                {% include 'components/shallow_footing_parameters.html' %}
+                <div class="button-group">
+                    <a href="{{ url_for('main.calculator_step', type=type, step=2) }}" class="btn btn-secondary">Back to Step 2</a>
+                </div>
+            </div>
+            {% endif %}
+
+            {% if step == 4 and results %}
+            {% set sd = results.soil_decision %}
+            {% set sm = results.summary %}
+            {% set sand = sd.soil_model_used == 'sand' %}
+            <div class="step active">
+                <h2>Step 4: Load-settlement Result</h2>
+
+                <div class="soil-banner {{ sd.classification }}">
+                    <strong>Average I<sub>c</sub> in zone of influence = {{ '%.2f'|format(sd.avg_ic) }}</strong>
+                    &nbsp;&rarr;&nbsp; {{ sd.message }}
+                    {% if sd.soil_model_used != sd.classification %}
+                        <em>(analysed with the {{ sd.soil_model_used }} formulation)</em>
+                    {% endif %}
+                </div>
+
+                {% if sd.requires_user_confirmation %}
+                <div class="alert alert-warn">
+                    The material is silt (I<sub>c</sub> between 2.25 and 2.59). The result below uses the
+                    <strong>sand</strong> formulation. To treat it as clay, go
+                    <a href="{{ url_for('main.calculator_step', type=type, step=3) }}">back to Step 3</a>
+                    and set Soil model to "Force clay".
+                </div>
+                {% endif %}
+
+                {% for w in results.warnings %}
+                <div class="alert alert-warn">{{ w }}</div>
+                {% endfor %}
+
+                <div class="results-grid">
+                    <div class="result-card chart-card">
+                        <div class="scale-controls">
+                            <label>Max settlement (mm)
+                                <input type="number" id="xMax" value="{{ results.curve.default_scale.x_max }}" step="10" min="1">
+                            </label>
+                            <label>Max pressure (kPa)
+                                <input type="number" id="yMax" value="{{ results.curve.default_scale.y_max }}" step="50" min="1">
+                            </label>
+                            <button type="button" class="btn btn-secondary btn-sm" onclick="rescaleSettlement()">Apply scale</button>
+                            <button type="button" class="btn btn-secondary btn-sm" onclick="autoScaleSettlement()">Auto</button>
+                        </div>
+                        <div id="settlement_graph" class="graph-tall"></div>
+                    </div>
+
+                    <div class="result-card">
+                        <h3>Summary</h3>
+                        <table class="summary-table">
+                            <tr><td>Footing B &times; L</td><td>{{ results.inputs.footing_width_m }} &times; {{ results.inputs.footing_length_m }} m</td></tr>
+                            <tr><td>Founding depth D (below excavation)</td><td>{{ results.inputs.founding_depth_m }} m</td></tr>
+                            <tr><td>Site excavation d<sub>ex</sub></td><td>{{ results.inputs.excavation_depth_m }} m</td></tr>
+                            <tr><td>Unit weight used</td><td>{{ '%.1f'|format(results.inputs.unit_weight_used_knm3) }} kN/m³</td></tr>
+                            <tr><td>Zone of influence</td><td>{{ '%.2f'|format(sm.zone_top_m) }} – {{ '%.2f'|format(sm.zone_base_m) }} m</td></tr>
+                            {% if sand %}
+                            <tr><td>q<sub>c,avg</sub> in zone (after excavation)</td><td>{{ '%.2f'|format(sm.qc_avg_mpa) }} MPa</td></tr>
+                            <tr><td>Average peak friction angle φ'<sub>p</sub></td><td>{{ '%.1f'|format(sm.avg_friction_angle_deg) }}°</td></tr>
+                            <tr><td>q<sub>b0.1</sub> (bearing stress at s/B = 0.1)</td><td>{{ '%.0f'|format(sm.qb01_kpa) }} kPa</td></tr>
+                            <tr><td>σ'<sub>vy</sub> at footing level</td><td>{{ '%.1f'|format(sm.svy_footing_kpa) }} kPa</td></tr>
+                            <tr><td>Design life</td><td>{{ results.inputs.design_life_years }} yr</td></tr>
+                            <tr class="divider"><td>Bearing capacity (CPT, q<sub>b0.1</sub>)</td><td>{{ '%.0f'|format(sm.bearing_capacity_cpt_kpa) }} kPa</td></tr>
+                            <tr><td>Bearing capacity (N<sub>q</sub>, N<sub>γ</sub>)<sup>*</sup></td><td>{{ '%.0f'|format(sm.bearing_capacity_nq_ng_kpa) }} kPa</td></tr>
+                            {% else %}
+                            <tr><td>q<sub>t,net</sub> in zone</td><td>{{ '%.1f'|format(sm.qt_net_kpa) }} kPa</td></tr>
+                            <tr><td>Average s<sub>u</sub></td><td>{{ '%.1f'|format(sm.avg_su_kpa) }} kPa</td></tr>
+                            <tr><td>Average OCR</td><td>{{ '%.1f'|format(sm.avg_ocr) }}</td></tr>
+                            <tr><td>σ'<sub>vy</sub> at footing level</td><td>{{ '%.1f'|format(sm.svy_footing_kpa) }} kPa</td></tr>
+                            <tr><td>A (immediate / long term)</td><td>{{ sm.a_immediate }} / {{ sm.a_longterm }}</td></tr>
+                            <tr><td>Ultimate bearing pressure (0.42 q<sub>t,net</sub>)</td><td>{{ '%.0f'|format(sm.ultimate_curve_cap_kpa) }} kPa</td></tr>
+                            <tr class="divider"><td>Bearing capacity (CPT, 0.45 q<sub>t,net</sub>)</td><td>{{ '%.0f'|format(sm.bearing_capacity_cpt_kpa) }} kPa</td></tr>
+                            <tr><td>Bearing capacity (N<sub>c</sub>)</td><td>{{ '%.0f'|format(sm.bearing_capacity_nc_kpa) }} kPa</td></tr>
+                            {% endif %}
+                        </table>
+                        {% if sand %}
+                        <p class="footnote"><sup>*</sup> Computed with the founding-level surcharge and the
+                        profile unit weight. The source spreadsheet omitted the surcharge term and used a
+                        different unit weight, giving a lower figure (~1222 kPa for the sample).</p>
+                        {% endif %}
+                    </div>
+                </div>
+
+                {% if sand and results.qc_before_after %}
+                <div class="result-card">
+                    <h3>q<sub>c</sub> before and after excavation</h3>
+                    <div id="qc_graph" class="graph-tall"></div>
+                </div>
+                {% endif %}
+
+                <div class="button-group">
+                    <a href="{{ url_for('main.calculator_step', type=type, step=3) }}" class="btn btn-secondary">Back to Step 3</a>
+                    <a href="{{ url_for('main.index') }}" class="btn btn-primary">Return to Home</a>
+                </div>
+            </div>
+            {% elif step == 4 %}
+            <div class="step active">
+                <h2>Step 4: Results</h2>
+                <p>No results available. Please complete Step 3 first.</p>
+                <a href="{{ url_for('main.calculator_step', type=type, step=3) }}" class="btn btn-secondary">Back to Step 3</a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+
+{% if step == 2 and graphs %}
+<script>
+    var config = { responsive: true, displayModeBar: false, displaylogo: false,
+        modeBarButtonsToRemove: ['zoom2d','pan2d','select2d','lasso2d','zoomIn2d','zoomOut2d','autoScale2d','resetScale2d'] };
+    var qtGraph = JSON.parse('{{ graphs.qt | safe }}');
+    var frGraph = JSON.parse('{{ graphs.fr | safe }}');
+    var icGraph = JSON.parse('{{ graphs.ic | safe }}');
+    var sbtGraph = JSON.parse('{{ graphs.sbt | safe }}');
+    const modernStyle = { font: { family: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif', size: 12 },
+        plot_bgcolor: '#ffffff', paper_bgcolor: '#ffffff', margin: { t: 40, r: 30, l: 60, b: 30 } };
+    function configureGraph(graph, xRange, xDtick) {
+        let depths = (graph.data && graph.data.length > 0 && graph.data[0].y) ? graph.data[0].y : [];
+        graph.layout = { ...graph.layout, ...modernStyle, title: { text: '' },
+            xaxis: { showgrid: true, gridcolor: 'rgba(0,0,0,0.05)', tickfont: { size: 11 },
+                title: { text: graph === qtGraph ? 'qt (MPa)' : graph === frGraph ? 'Fr (%)' : 'Ic', standoff: 15 },
+                side: 'top', zeroline: false, showline: true, range: xRange, dtick: xDtick },
+            yaxis: { showgrid: true, gridcolor: 'rgba(0,0,0,0.05)', tickfont: { size: 11 },
+                title: { text: 'Depth (m)', standoff: 15 }, autorange: false,
+                range: depths.length > 0 ? [Math.max(...depths) + 0.5, 0] : [90, 0], zeroline: false, showline: true } };
+        if (graph.data && graph.data.length > 0) { graph.data[0].line = { ...graph.data[0].line, width: 2, shape: 'spline' }; }
+    }
+    configureGraph(qtGraph, [0, 40], 10);
+    configureGraph(frGraph, [0, 10], 2);
+    configureGraph(icGraph, [0, 4], 1);
+    Plotly.newPlot('qt_graph', qtGraph.data, qtGraph.layout, config);
+    Plotly.newPlot('fr_graph', frGraph.data, frGraph.layout, config);
+    Plotly.newPlot('ic_graph', icGraph.data, icGraph.layout, config);
+    Plotly.newPlot('sbt_graph', sbtGraph.data, sbtGraph.layout, config);
+    function resizeGraphs() { ['qt_graph','fr_graph','ic_graph','sbt_graph'].forEach(d => Plotly.Plots.resize(document.getElementById(d))); }
+    window.addEventListener('resize', resizeGraphs);
+    setTimeout(resizeGraphs, 100);
+</script>
+{% endif %}
+
+{% if step == 4 and results %}
+<script>
+    var R = {{ results | tojson }};
+    var plotConfig = { responsive: true, displaylogo: false };
+    var palette = ['#1a73e8', '#e8710a', '#188038'];
+
+    function drawSettlement() {
+        var traces = R.curve.series.map(function (s, i) {
+            return { x: s.points.map(p => p[0]), y: s.points.map(p => p[1]),
+                mode: 'lines', name: s.name, line: { width: 2.5, color: palette[i % palette.length] } };
+        });
+        var layout = {
+            margin: { t: 20, r: 20, l: 60, b: 50 }, paper_bgcolor: '#fff', plot_bgcolor: '#fff',
+            xaxis: { title: R.curve.x_label, range: [0, R.curve.default_scale.x_max], zeroline: true, showline: true, gridcolor: 'rgba(0,0,0,0.06)' },
+            yaxis: { title: R.curve.y_label, range: [0, R.curve.default_scale.y_max], zeroline: true, showline: true, gridcolor: 'rgba(0,0,0,0.06)' },
+            legend: { orientation: 'h', y: 1.1 }, showlegend: R.curve.series.length > 1
+        };
+        Plotly.newPlot('settlement_graph', traces, layout, plotConfig);
+    }
+    function rescaleSettlement() {
+        var x = parseFloat(document.getElementById('xMax').value);
+        var y = parseFloat(document.getElementById('yMax').value);
+        Plotly.relayout('settlement_graph', { 'xaxis.range': [0, x], 'yaxis.range': [0, y] });
+    }
+    function autoScaleSettlement() {
+        Plotly.relayout('settlement_graph', { 'xaxis.autorange': true, 'yaxis.autorange': true });
+    }
+    function drawQc() {
+        if (!R.qc_before_after) return;
+        var q = R.qc_before_after;
+        var t1 = { x: q.qc_before, y: q.depth, mode: 'lines', name: 'Before excavation', line: { color: '#9aa0a6', width: 2 } };
+        var t2 = { x: q.qc_after, y: q.depth, mode: 'lines', name: 'After excavation', line: { color: '#1a73e8', width: 2 } };
+        var layout = { margin: { t: 20, r: 20, l: 60, b: 50 }, paper_bgcolor: '#fff', plot_bgcolor: '#fff',
+            xaxis: { title: 'qc (MPa)', side: 'top', zeroline: false, gridcolor: 'rgba(0,0,0,0.06)' },
+            yaxis: { title: 'Depth (m)', autorange: 'reversed', gridcolor: 'rgba(0,0,0,0.06)' },
+            legend: { orientation: 'h', y: 1.12 } };
+        Plotly.newPlot('qc_graph', [t1, t2], layout, plotConfig);
+    }
+    drawSettlement();
+    drawQc();
+    window.addEventListener('resize', function () {
+        Plotly.Plots.resize(document.getElementById('settlement_graph'));
+        if (document.getElementById('qc_graph')) Plotly.Plots.resize(document.getElementById('qc_graph'));
+    });
+</script>
+{% endif %}
+
+<style>
+.page-container { margin-top: -8px; }
+.main-content-with-stepper { max-width: 100%; padding: 0; margin-left: calc(var(--side-nav-width) - 1px); box-sizing: border-box; }
+.step { background: white; padding: 1rem; }
+.graphs-container { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem; width: 100%; margin: 0 auto; padding: 1rem 0; }
+.graph-wrapper { background: white; border-radius: 12px; padding: 1rem; box-shadow: 0 4px 6px rgba(0,0,0,0.05); height: 500px; }
+.graph { width: 100% !important; height: 100% !important; }
+.graph-tall { width: 100%; height: 460px; }
+.soil-banner { padding: 0.85rem 1rem; border-radius: 8px; margin: 0.5rem 0 1rem; background: #e8f0fe; border-left: 4px solid #1a73e8; }
+.soil-banner.clay { background: #fef7e0; border-left-color: #f29900; }
+.soil-banner.silt { background: #fce8e6; border-left-color: #d93025; }
+.results-grid { display: grid; grid-template-columns: 1.4fr 1fr; gap: 1.25rem; align-items: start; }
+.result-card { background: #fff; border: 1px solid #eceff1; border-radius: 12px; padding: 1rem 1.25rem; box-shadow: 0 2px 8px rgba(0,0,0,0.04); margin-bottom: 1.25rem; }
+.result-card h3 { margin: 0 0 0.75rem; font-size: 1rem; color: #202124; }
+.scale-controls { display: flex; gap: 0.75rem; align-items: end; flex-wrap: wrap; margin-bottom: 0.5rem; font-size: 0.8rem; color: #5f6368; }
+.scale-controls input { width: 90px; padding: 0.3rem 0.4rem; border: 1px solid #e5e7eb; border-radius: 4px; display: block; }
+.btn-sm { padding: 0.3rem 0.7rem; font-size: 0.8rem; }
+.summary-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+.summary-table td { padding: 0.35rem 0.25rem; border-bottom: 1px solid #f1f3f4; }
+.summary-table td:last-child { text-align: right; font-weight: 600; color: #202124; white-space: nowrap; }
+.summary-table tr.divider td { border-top: 2px solid #e0e0e0; padding-top: 0.5rem; }
+.footnote { font-size: 0.72rem; color: #80868b; margin-top: 0.6rem; line-height: 1.4; }
+.button-group { margin-top: 1.5rem; display: flex; gap: 1rem; flex-wrap: wrap; }
+.btn { padding: 0.75rem 1.5rem; border-radius: 6px; font-weight: 500; }
+.btn-primary { background: #1a73e8; color: #fff; border: none; }
+.btn-secondary { background: #f1f3f4; color: #3c4043; border: 1px solid #dadce0; }
+.btn-info { background: #17a2b8; color: #fff; border: none; }
+.alert { margin-top: 1rem; padding: 0.85rem 1rem; border-radius: 4px; }
+.alert-error { background: #fde8e8; color: #c53030; border-left: 4px solid #c53030; }
+.alert-warn { background: #fff8e1; color: #8a6d00; border-left: 4px solid #f4b400; }
+@media (max-width: 900px) { .results-grid { grid-template-columns: 1fr; } }
+@media (max-width: 768px) { .main-content-with-stepper { margin-left: 0; padding: 1rem; } .graphs-container { grid-template-columns: 1fr; } .graph-wrapper { height: 400px; } }
+</style>
+{% endblock %}

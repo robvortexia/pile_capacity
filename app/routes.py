@@ -27,6 +27,7 @@ from sqlalchemy.sql import func
 import logging
 import io
 from .helical_calculations import calculate_helical_pile_results
+from .shallow_calculations import calculate_shallow_footing_results
 from .analytics import record_page_visit, store_analytics_data, get_or_create_user_id, get_page_visit_stats, get_analytics_data_stats, record_event, get_recent_users, get_user_details
 
 # Set pandas options for full precision 
@@ -37,6 +38,37 @@ logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 bp = Blueprint('main', __name__)
+
+
+# ---------------------------------------------------------------------------
+# Shallow-foundations demo gating (private "coming soon" module).
+# Access is granted to specific people only, via either:
+#   SHALLOW_DEMO_EMAILS - comma-separated allowlist matched against the
+#                         registered session email, or
+#   SHALLOW_DEMO_CODE   - a shared code; visiting any shallow URL with
+#                         ?code=<code> remembers access in the session.
+# With neither set the demo stays fully private (default deny).
+# ---------------------------------------------------------------------------
+def _shallow_demo_emails():
+    raw = os.environ.get('SHALLOW_DEMO_EMAILS', '') or current_app.config.get('SHALLOW_DEMO_EMAILS', '')
+    return {e.strip().lower() for e in raw.split(',') if e.strip()}
+
+
+def _maybe_grant_shallow_demo():
+    """Remember demo access in the session if a valid ?code= is supplied."""
+    code = os.environ.get('SHALLOW_DEMO_CODE') or current_app.config.get('SHALLOW_DEMO_CODE')
+    supplied = request.args.get('code') or request.form.get('demo_code')
+    if code and supplied and compare_digest(str(supplied), str(code)):
+        session['shallow_demo_ok'] = True
+        session.modified = True
+
+
+def _shallow_demo_allowed():
+    """True only for people authorised to see the shallow-foundations demo."""
+    if session.get('shallow_demo_ok'):
+        return True
+    email = (session.get('email') or session.get('user_email') or '').strip().lower()
+    return bool(email) and email in _shallow_demo_emails()
 
 
 @bp.route('/googlef2236ffa5d780ee8.html')
@@ -101,8 +133,12 @@ def sitemap_xml():
 @bp.route('/sample/<type>')
 def use_sample_data(type):
     """Load sample CPT data for demo purposes."""
-    if type not in ['driven', 'bored', 'helical']:
+    if type not in ['driven', 'bored', 'helical', 'shallow']:
         return redirect(url_for('main.index'))
+    if type == 'shallow':
+        _maybe_grant_shallow_demo()
+        if not _shallow_demo_allowed():
+            return redirect(url_for('main.index'))
 
     # Read sample data file
     sample_path = os.path.join(current_app.static_folder, 'data', 'sample_cpt.csv')
@@ -163,16 +199,25 @@ ALLOWED_EXTENSIONS = {'csv', 'txt'}
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-def create_data_dataframe(processed_cpt, calc_dict):
+def create_data_dataframe(processed_cpt, calc_dict, cpt_profile_dict=None):
     """Create a DataFrame with CPT data and bored pile calculations.
 
-    Only include rows up to the selected tip depth by filtering to depths
-    that have calculations stored in calc_dict.
+    Tip-INDEPENDENT per-row fields (qb01_adop, delta_z) come from ``cpt_profile_dict``
+    (keyed by depth). Tip-DEPENDENT fields come from ``calc_dict``.
     """
     data = []
+    cpt_profile_dict = cpt_profile_dict or {}
 
     # Build a set of depths that have calculations (rounded to avoid float issues)
     calc_depths_set = set(round(float(d), 6) for d in (calc_dict.keys() if calc_dict else []))
+
+    def _lookup(d_map, depth):
+        if not d_map:
+            return None
+        v = d_map.get(depth)
+        if v is None:
+            v = next((vv for kk, vv in d_map.items() if round(float(kk), 6) == round(float(depth), 6)), None)
+        return v
 
     for i, depth in enumerate(processed_cpt['depth']):
         # If we have calculation depths, skip rows beyond the tip depth
@@ -185,48 +230,53 @@ def create_data_dataframe(processed_cpt, calc_dict):
             'qc (MPa)': processed_cpt['qc'][i],
             'fs (kPa)': processed_cpt['fs'][i],
             'Fr (%)': processed_cpt['fr_percent'][i],
-            'Ic': processed_cpt['lc'][i]
+            'Ic': processed_cpt['lc'][i],
+            'sig_v0_prime (kPa)': processed_cpt['sig_v0_prime'][i],
+            'u0 (kPa)': processed_cpt['u0'][i],
+            'sig_v0 (kPa)': processed_cpt['sig_v0'][i],
         }
 
-        # Add calculation data (present for depths up to tip)
-        if calc_dict:
-            # Access using an exact or rounded key
-            calcs = calc_dict.get(depth)
-            if calcs is None:
-                # Try rounded lookup to be robust
-                calcs = next((v for k, v in calc_dict.items() if round(float(k), 6) == round(float(depth), 6)), None)
-            if calcs is not None:
-                row.update({
-                    'sig_v0_prime (kPa)': calcs.get('sig_v0_prime', 'N/A'),
-                    'u0 (kPa)': calcs.get('u0', 'N/A'),
-                    'sig_v0 (kPa)': calcs.get('sig_v0', 'N/A'),
-                    'Casing Coefficient': calcs.get('coe_casing', 'N/A'),
-                    'qb0.1 (MPa)': calcs.get('qb01_adop', 'N/A'),
-                    'tf tension (kPa)': calcs.get('tf_tension', 'N/A'),
-                    'tf compression (kPa)': calcs.get('tf_compression', 'N/A'),
-                    'Delta z (m)': calcs.get('delta_z', 'N/A'),
-                    'Shaft Tension Segment (kN)': calcs.get('qs_tension_segment', 'N/A'),
-                    'Shaft Compression Segment (kN)': calcs.get('qs_compression_segment', 'N/A'),
-                    'Cumulative Shaft Tension (kN)': calcs.get('qs_tension_cumulative', 'N/A'),
-                    'Cumulative Shaft Compression (kN)': calcs.get('qs_compression_cumulative', 'N/A')
-                })
+        profile = _lookup(cpt_profile_dict, depth)
+        if profile is not None:
+            row['qb0.1 (MPa)'] = profile.get('qb01_adop', 'N/A')
+            row['Delta z (m)'] = profile.get('delta_z', 'N/A')
+
+        calcs = _lookup(calc_dict, depth)
+        if calcs is not None:
+            row.update({
+                'Casing Coefficient': calcs.get('coe_casing', 'N/A'),
+                'tf tension (kPa)': calcs.get('tf_tension', 'N/A'),
+                'tf compression (kPa)': calcs.get('tf_compression', 'N/A'),
+                'Shaft Tension Segment (kN)': calcs.get('qs_tension_segment', 'N/A'),
+                'Shaft Compression Segment (kN)': calcs.get('qs_compression_segment', 'N/A'),
+                'Cumulative Shaft Tension (kN)': calcs.get('qs_tension_cumulative', 'N/A'),
+                'Cumulative Shaft Compression (kN)': calcs.get('qs_compression_cumulative', 'N/A'),
+            })
         data.append(row)
 
     return pd.DataFrame(data)
 
-def create_driven_data_dataframe(processed_cpt, calc_dict):
+def create_driven_data_dataframe(processed_cpt, calc_dict, cpt_profile_dict=None):
     """Create a DataFrame with CPT data and driven pile calculations.
 
-    Only include rows up to the selected tip depth by filtering to depths
-    that have calculations stored in calc_dict.
+    Tip-INDEPENDENT per-row fields (q1, q10, qp_*, qb1_*, qb_final, delta_z) come
+    from ``cpt_profile_dict`` (keyed by depth). Tip-DEPENDENT fields come from
+    ``calc_dict``.
     """
     data = []
+    cpt_profile_dict = cpt_profile_dict or {}
 
-    # Build a set of depths that have calculations (rounded to avoid float issues)
     calc_depths_set = set(round(float(d), 6) for d in (calc_dict.keys() if calc_dict else []))
 
+    def _lookup(d_map, depth):
+        if not d_map:
+            return None
+        v = d_map.get(depth)
+        if v is None:
+            v = next((vv for kk, vv in d_map.items() if round(float(kk), 6) == round(float(depth), 6)), None)
+        return v
+
     for i, depth in enumerate(processed_cpt['depth']):
-        # If we have calculation depths, skip rows beyond the tip depth
         if calc_depths_set and round(float(depth), 6) not in calc_depths_set:
             continue
 
@@ -234,51 +284,50 @@ def create_driven_data_dataframe(processed_cpt, calc_dict):
             'Depth (m)': depth,
             'qt (MPa)': processed_cpt['qt'][i],
             'qc (MPa)': processed_cpt['qc'][i],
+            'qtc (MPa)': processed_cpt['qtc'][i],
             'fs (kPa)': processed_cpt['fs'][i],
             'Fr (%)': processed_cpt['fr_percent'][i],
             'qtn': processed_cpt['qtn'][i],
             'n': processed_cpt['n'][i],
             'Ic': processed_cpt['lc'][i],
             'gtot (kN/m³)': processed_cpt['gtot'][i],
-            'u0 (kPa)': processed_cpt['u0_kpa'][i]
+            'sig_v0 (kPa)': processed_cpt['sig_v0'][i],
+            'sig_v0_prime (kPa)': processed_cpt['sig_v0_prime'][i],
+            'u0 (kPa)': processed_cpt['u0_kpa'][i],
+            'iz1': processed_cpt['iz1'][i],
         }
 
-        # Add calculation data (present for depths up to tip)
-        if calc_dict:
-            calcs = calc_dict.get(depth)
-            if calcs is None:
-                calcs = next((v for k, v in calc_dict.items() if round(float(k), 6) == round(float(depth), 6)), None)
-            if calcs is not None:
-                row.update({
-                    'qtc (MPa)': calcs.get('qtc', 'N/A'),
-                    'gtot (kN/m³)': calcs.get('gtot', 'N/A'),
-                    'sig_v0 (kPa)': calcs.get('sig_v0', 'N/A'),
-                    'sig_v0_prime (kPa)': calcs.get('sig_v0_prime', 'N/A'),
-                    'u0 (kPa)': calcs.get('u0', 'N/A'),
-                    'iz1': calcs.get('iz1', 'N/A'),
-                    'h (m)': calcs.get('h', 'N/A'),
-                    'q1 (MPa)': calcs.get('q1', 'N/A'),
-                    'q10 (MPa)': calcs.get('q10', 'N/A'),
-                    'qp_sand (MPa)': calcs.get('qp_sand', 'N/A'),
-                    'qp_clay (MPa)': calcs.get('qp_clay', 'N/A'),
-                    'qp_adopted (MPa)': calcs.get('qp_adopted', 'N/A'),
-                    'qb1_sand (MPa)': calcs.get('qb1_sand', 'N/A'),
-                    'qb1_clay (MPa)': calcs.get('qb1_clay', 'N/A'),
-                    'qb1_adopted (MPa)': calcs.get('qb1_adopted', 'N/A'),
-                    'Casing Coefficient': calcs.get('coe_casing', 'N/A'),
-                    'delta_ord (degrees)': calcs.get('delta_ord', 'N/A'),
-                    'orc_val': calcs.get('orc_val', 'N/A'),
-                    'tf_sand (kPa)': calcs.get('tf_sand', 'N/A'),
-                    'tf_clay (kPa)': calcs.get('tf_clay', 'N/A'),
-                    'tf_adop_tension (kPa)': calcs.get('tf_adop_tension', 'N/A'),
-                    'tf_adop_compression (kPa)': calcs.get('tf_adop_compression', 'N/A'),
-                    'Delta z (m)': calcs.get('delta_z', 'N/A'),
-                    'Shaft Tension Segment (kN)': calcs.get('qs_tension_segment', 'N/A'),
-                    'Shaft Compression Segment (kN)': calcs.get('qs_compression_segment', 'N/A'),
-                    'Cumulative Shaft Tension (kN)': calcs.get('qs_tension_cumulative', 'N/A'),
-                    'Cumulative Shaft Compression (kN)': calcs.get('qs_compression_cumulative', 'N/A'),
-                    'Base Resistance (kN)': calcs.get('qb_final', 'N/A')
-                })
+        profile = _lookup(cpt_profile_dict, depth)
+        if profile is not None:
+            row.update({
+                'q1 (MPa)': profile.get('q1', 'N/A'),
+                'q10 (MPa)': profile.get('q10', 'N/A'),
+                'qp_sand (MPa)': profile.get('qp_sand', 'N/A'),
+                'qp_clay (MPa)': profile.get('qp_clay', 'N/A'),
+                'qp_adopted (MPa)': profile.get('qp_adopted', 'N/A'),
+                'qb1_sand (MPa)': profile.get('qb1_sand', 'N/A'),
+                'qb1_clay (MPa)': profile.get('qb1_clay', 'N/A'),
+                'qb1_adopted (MPa)': profile.get('qb1_adopted', 'N/A'),
+                'Base Resistance (kN)': profile.get('qb_final', 'N/A'),
+                'Delta z (m)': profile.get('delta_z', 'N/A'),
+            })
+
+        calcs = _lookup(calc_dict, depth)
+        if calcs is not None:
+            row.update({
+                'h (m)': calcs.get('h', 'N/A'),
+                'Casing Coefficient': calcs.get('coe_casing', 'N/A'),
+                'delta_ord (degrees)': calcs.get('delta_ord', 'N/A'),
+                'orc_val': calcs.get('orc_val', 'N/A'),
+                'tf_sand (kPa)': calcs.get('tf_sand', 'N/A'),
+                'tf_clay (kPa)': calcs.get('tf_clay', 'N/A'),
+                'tf_adop_tension (kPa)': calcs.get('tf_adop_tension', 'N/A'),
+                'tf_adop_compression (kPa)': calcs.get('tf_adop_compression', 'N/A'),
+                'Shaft Tension Segment (kN)': calcs.get('qs_tension_segment', 'N/A'),
+                'Shaft Compression Segment (kN)': calcs.get('qs_compression_segment', 'N/A'),
+                'Cumulative Shaft Tension (kN)': calcs.get('qs_tension_cumulative', 'N/A'),
+                'Cumulative Shaft Compression (kN)': calcs.get('qs_compression_cumulative', 'N/A'),
+            })
         data.append(row)
 
     return pd.DataFrame(data)
@@ -300,7 +349,10 @@ def index():
     session.permanent = True
     session.modified = True
 
-    response = make_response(render_template('index.html', show_modal=show_modal))
+    # Reveal the shallow-foundations demo card only to authorised people.
+    _maybe_grant_shallow_demo()
+    response = make_response(render_template('index.html', show_modal=show_modal,
+                                             shallow_demo=_shallow_demo_allowed()))
     if 'registered' in session and session['registered']:
         response.set_cookie(
             'user_registered',
@@ -331,7 +383,7 @@ def calculator_step(type, step):
     if 'type' in session and session['type'] != type:
         # Clear session data except for user info
         session_data = {}
-        for key in ['user_id', 'email', 'name', 'institution', 'registered', 'user_email', 'affiliation']:
+        for key in ['user_id', 'email', 'name', 'institution', 'registered', 'user_email', 'affiliation', 'shallow_demo_ok']:
             if key in session:
                 session_data[key] = session[key]
         session.clear()
@@ -349,8 +401,14 @@ def calculator_step(type, step):
         'email': session.get('user_email'),
     })
 
-    if type not in ['driven', 'bored', 'helical']:
+    if type not in ['driven', 'bored', 'helical', 'shallow']:
         return redirect(url_for('main.index'))
+
+    # Shallow foundations is a private demo: gate to authorised people only.
+    if type == 'shallow':
+        _maybe_grant_shallow_demo()
+        if not _shallow_demo_allowed():
+            return redirect(url_for('main.index'))
 
     # Show registration modal if user hasn't registered yet
     show_modal = False
@@ -476,8 +534,13 @@ def calculator_step(type, step):
                 return redirect(url_for('main.calculator_step', type=type, step=3))
         elif type == 'driven' and 'debug_id' in session:
             debug_details = load_debug_details(session['debug_id'])
-            if debug_details and isinstance(debug_details, list) and len(debug_details) > 0:
-                detailed_results = debug_details[0]
+            tips = []
+            if isinstance(debug_details, dict):
+                tips = debug_details.get('tips', [])
+            elif isinstance(debug_details, list):
+                tips = debug_details
+            if tips:
+                detailed_results = tips[0]
             else:
                 logger.error("No debug details found for driven piles")
 
@@ -746,6 +809,70 @@ def calculator_step(type, step):
                     return redirect(url_for('main.calculator_step', type=type, step=4))
                 except Exception as e:
                     logger.error(f"Error in bored pile calculation: {str(e)}")
+                    flash(f'Error in calculation: {str(e)}')
+                    return redirect(url_for('main.calculator_step', type=type, step=3))
+            elif type == 'shallow':
+                # Shallow foundations: footing geometry + analysis options.
+                def _opt(name, default):
+                    val = request.form.get(name, '')
+                    try:
+                        return float(val) if val not in (None, '') else default
+                    except (TypeError, ValueError):
+                        return default
+
+                footing_params = {
+                    'water_table': float(session.get('water_table', 0)),
+                    'footing_width': _opt('footing_width', None),
+                    'footing_length': _opt('footing_length', None),
+                    'founding_depth': _opt('founding_depth', None),
+                    'excavation_depth': _opt('excavation_depth', 0),
+                    'design_life_years': _opt('design_life_years', 50),
+                    'initial_ocr': _opt('initial_ocr', 1),
+                    'k0': _opt('k0', 0.5),
+                    'ageing_factor': _opt('ageing_factor', 0.66),
+                    'creep': _opt('creep', 0.02),
+                    'nkt': _opt('nkt', 15),
+                    'site_name': request.form.get('file_name', ''),
+                    'force_soil_model': request.form.get('force_soil_model') or None,
+                }
+
+                errors = []
+                if not footing_params['footing_width'] or footing_params['footing_width'] <= 0:
+                    errors.append('Footing width must be greater than 0')
+                if not footing_params['footing_length'] or footing_params['footing_length'] <= 0:
+                    errors.append('Footing length must be greater than 0')
+                if footing_params['founding_depth'] is None or footing_params['founding_depth'] < 0:
+                    errors.append('Founding depth below excavation cannot be negative')
+                if errors:
+                    for error in errors:
+                        flash(error)
+                    return redirect(url_for('main.calculator_step', type=type, step=3))
+
+                session['pile_params'] = footing_params
+                record_event('calculation', 'shallow_params', {
+                    k: footing_params[k] for k in
+                    ('footing_width', 'footing_length', 'founding_depth',
+                     'excavation_depth', 'design_life_years')
+                })
+
+                if 'cpt_data_id' not in session:
+                    flash('No CPT data available. Please upload data first.')
+                    return redirect(url_for('main.calculator_step', type=type, step=1))
+                cpt_data = load_cpt_data(session['cpt_data_id'])
+                if not cpt_data:
+                    flash('CPT data not found. Please upload data again.')
+                    return redirect(url_for('main.calculator_step', type=type, step=1))
+
+                processed_cpt = pre_input_calc(cpt_data, float(session.get('water_table', 0)))
+                try:
+                    results = calculate_shallow_footing_results(processed_cpt, footing_params)
+                    session['results'] = results
+                    store_analytics_data('calculation_results', 'shallow_summary', results.get('summary'))
+                    logger.info("Shallow footing calculation complete (%s model)",
+                                results.get('soil_decision', {}).get('soil_model_used'))
+                    return redirect(url_for('main.calculator_step', type=type, step=4))
+                except Exception as e:
+                    logger.error(f"Error in shallow footing calculation: {str(e)}")
                     flash(f'Error in calculation: {str(e)}')
                     return redirect(url_for('main.calculator_step', type=type, step=3))
             elif type == 'driven':
@@ -1065,9 +1192,16 @@ def download_debug_params():
         if pile_type == 'bored' and 'debug_id' in session:
             debug_id = session['debug_id']
             debug_details = load_debug_details(debug_id)
-            if debug_details and len(debug_details) > 0:
-                
-                for tip_index, tip_detail in enumerate(debug_details):
+            if isinstance(debug_details, dict):
+                tips = debug_details.get('tips', [])
+                cpt_profile_list = debug_details.get('cpt_profile', [])
+            else:
+                tips = debug_details or []
+                cpt_profile_list = []
+            cpt_profile_dict = {p['depth']: p for p in cpt_profile_list}
+            if tips:
+
+                for tip_index, tip_detail in enumerate(tips):
                     if tip_index > 0:
                         # Add separator between different tip depth data
                         buffer.write('\n\n' + '='*50 + '\n\n')
@@ -1106,9 +1240,9 @@ def download_debug_params():
                     # Process calculations for this tip depth
                     calcs = tip_detail['calculations']
                     calc_dict = {calc['depth']: calc for calc in calcs}
-                    
+
                     # Create and populate DataFrame
-                    df_data = create_data_dataframe(processed, calc_dict)
+                    df_data = create_data_dataframe(processed, calc_dict, cpt_profile_dict)
                     
                     # Add a blank line between constants and data
                     buffer.write('\nCPT DATA AND CALCULATIONS\n')
@@ -1118,9 +1252,16 @@ def download_debug_params():
             if 'debug_id' in session:
                 debug_id = session['debug_id']
                 debug_details = load_debug_details(debug_id)
-                if debug_details and len(debug_details) > 0:
-                    
-                    for tip_index, tip_detail in enumerate(debug_details):
+                if isinstance(debug_details, dict):
+                    tips = debug_details.get('tips', [])
+                    cpt_profile_list = debug_details.get('cpt_profile', [])
+                else:
+                    tips = debug_details or []
+                    cpt_profile_list = []
+                cpt_profile_dict = {p['depth']: p for p in cpt_profile_list}
+                if tips:
+
+                    for tip_index, tip_detail in enumerate(tips):
                         if tip_index > 0:
                             # Add separator between different tip depth data
                             buffer.write('\n\n' + '='*50 + '\n\n')
@@ -1178,7 +1319,7 @@ def download_debug_params():
                         calc_dict = {calc['depth']: calc for calc in calcs}
                         
                         # Create and populate DataFrame for driven piles
-                        df_data = create_driven_data_dataframe(processed, calc_dict)
+                        df_data = create_driven_data_dataframe(processed, calc_dict, cpt_profile_dict)
                         
                         # Add a blank line between constants and data
                         buffer.write('\nCPT DATA AND CALCULATIONS\n')
@@ -2096,8 +2237,12 @@ def export_registrations():
 
 @bp.route('/<type>/description')
 def pile_description(type):
-    if type not in ['driven', 'bored', 'helical']:
+    if type not in ['driven', 'bored', 'helical', 'shallow']:
         return redirect(url_for('main.index'))
+    if type == 'shallow':
+        _maybe_grant_shallow_demo()
+        if not _shallow_demo_allowed():
+            return redirect(url_for('main.index'))
     return render_template(f'{type}/description.html', type=type)
 
 @bp.route('/download_intermediary_calcs')

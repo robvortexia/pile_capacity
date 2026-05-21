@@ -656,113 +656,111 @@ def calculate_bored_pile_results(processed_cpt, params):
     depths = processed_cpt['depth']
     detailed_results = []
     summary_results = []
-    
+
+    # Pre-calculate tip-INDEPENDENT per-row arrays once
+    qt_arr = processed_cpt['qt']
+    lc_arr = processed_cpt['lc']
+    qb01_adop_arr = [get_qb01_adop(lc_arr[i], qt_arr[i]) for i in range(len(depths))]
+
+    delta_z_arr = [depths[0] if len(depths) > 0 else 0]
+    for i in range(1, len(depths)):
+        delta_z_arr.append(depths[i] - depths[i-1])
+
+    cpt_profile = [
+        {
+            'depth': float(depths[i]),
+            'qb01_adop': float(qb01_adop_arr[i]),
+            'delta_z': float(delta_z_arr[i]),
+        }
+        for i in range(len(depths))
+    ]
+
     for tip in params['pile_tip_depths']:
         tip_index = min(range(len(depths)), key=lambda i: abs(depths[i]-tip))
         chosen_tip = depths[tip_index]
-        
+
         depth_calculations = []
         qs_tension_cumulative = 0
         qs_compression_cumulative = 0
-        
+
         # Find the zone for qb0.1 calculation (tip to tip + base_diameter)
         zone_end = chosen_tip + base_diameter
         zone_end_index = min(range(len(depths)), key=lambda i: abs(depths[i]-zone_end))
         qb01_values = []
-        
+
         # Find the index of the tip depth to limit detailed output
         tip_depth_index = min(range(len(depths)), key=lambda i: abs(depths[i]-chosen_tip))
-        
+
         for i in range(len(depths)):
             if depths[i] > chosen_tip:
                 continue
-                
-            qt_val = processed_cpt['qt'][i]
-            lc_val = processed_cpt['lc'][i]
-            fr_val = processed_cpt['fr_percent'][i]
-            
-            # Calculate casing coefficient
+
+            qt_val = qt_arr[i]
+            lc_val = lc_arr[i]
+
             coe_casing = get_coe_casing(depths[i], borehole_depth, chosen_tip)
-            
-            # Calculate qb01_adop
-            qb01_adop = get_qb01_adop(lc_val, qt_val)
-            
-            # Store qb01_adop if in the relevant zone for base resistance
+
+            qb01_adop = qb01_adop_arr[i]
             if tip_index <= i <= zone_end_index:
                 qb01_values.append(qb01_adop)
-            
-            # Calculate compression first since tension depends on it
+
             tf_compression = get_tf_compression_bored(coe_casing, lc_val, qt_val)
             tf_tension = get_tf_tension_bored(coe_casing, lc_val, tf_compression)
-            
-            # Calculate shaft resistance for this segment
-            prev_depth = depths[i-1] if i > 0 else 0
-            delta_z = depths[i] - prev_depth
+
+            delta_z = delta_z_arr[i]
             qs_tension_segment = tf_tension * pile_perimeter * delta_z
             qs_compression_segment = tf_compression * pile_perimeter * delta_z
-            
-            # Update cumulative values
+
             qs_tension_cumulative += qs_tension_segment
             qs_compression_cumulative += qs_compression_segment
-            
-            # Store all calculations for this depth (only up to tip depth)
+
+            # Store ONLY tip-dependent fields per row.
             depth_calculations.append({
-                'depth': np.float64(depths[i]),
-                'qt': np.float64(qt_val),
-                'qc': np.float64(processed_cpt['qc'][i]),
-                'fs': np.float64(processed_cpt['fs'][i]),
-                'lc': np.float64(lc_val),
-                'fr': np.float64(fr_val),
-                'sig_v0_prime': np.float64(processed_cpt['sig_v0_prime'][i]),
-                'u0': np.float64(processed_cpt['u0'][i]),
-                'sig_v0': np.float64(processed_cpt['sig_v0'][i]),
-                'qtn': np.float64(processed_cpt['qtn'][i]),
-                'n': np.float64(processed_cpt['n'][i]),
-                'coe_casing': np.float64(coe_casing),
-                'qb01_adop': np.float64(qb01_adop),
-                'tf_tension': np.float64(tf_tension),
-                'tf_compression': np.float64(tf_compression),
-                'delta_z': np.float64(delta_z),
-                'qs_tension_segment': np.float64(qs_tension_segment),
-                'qs_compression_segment': np.float64(qs_compression_segment),
-                'qs_tension_cumulative': np.float64(qs_tension_cumulative),
-                'qs_compression_cumulative': np.float64(qs_compression_cumulative)
+                'depth': float(depths[i]),
+                'coe_casing': float(coe_casing),
+                'tf_tension': float(tf_tension),
+                'tf_compression': float(tf_compression),
+                'qs_tension_segment': float(qs_tension_segment),
+                'qs_compression_segment': float(qs_compression_segment),
+                'qs_tension_cumulative': float(qs_tension_cumulative),
+                'qs_compression_cumulative': float(qs_compression_cumulative),
             })
-            
-            # Stop storing detailed calculations once we reach the tip depth
+
             if i >= tip_depth_index:
                 break
-        
-        # Calculate base resistance using minimum qb01_adop in the zone
+
         min_qb01 = min(qb01_values) if qb01_values else 0
-        base_resistance = np.float64(min_qb01 * Ab * 1000)  # Convert to kN with full precision
-        
+        base_resistance = float(min_qb01 * Ab * 1000)
+
         detailed_results.append({
-            'tip_depth': chosen_tip,
+            'tip_depth': float(chosen_tip),
             'calculations': depth_calculations,
             'pile_constants': {
-                'shaft_diameter': np.float64(shaft_diameter),
-                'base_diameter': np.float64(base_diameter),
-                'borehole_depth': np.float64(borehole_depth),
-                'pile_perimeter': np.float64(pile_perimeter),
-                'base_area': np.float64(Ab),
-                'min_qb01': np.float64(min_qb01),
-                'base_resistance': np.float64(base_resistance)
+                'shaft_diameter': float(shaft_diameter),
+                'base_diameter': float(base_diameter),
+                'borehole_depth': float(borehole_depth),
+                'pile_perimeter': float(pile_perimeter),
+                'base_area': float(Ab),
+                'min_qb01': float(min_qb01),
+                'base_resistance': float(base_resistance)
             }
         })
-        
+
         summary_results.append({
-            'tipdepth': chosen_tip,
-            'shaft_tension': np.float64(qs_tension_cumulative),
-            'shaft_compression': np.float64(qs_compression_cumulative),
-            'base_compression': np.float64(base_resistance),
-            'tension_capacity': np.float64(qs_tension_cumulative),
-            'compression_capacity': np.float64(qs_compression_cumulative + base_resistance)
+            'tipdepth': float(chosen_tip),
+            'shaft_tension': float(qs_tension_cumulative),
+            'shaft_compression': float(qs_compression_cumulative),
+            'base_compression': float(base_resistance),
+            'tension_capacity': float(qs_tension_cumulative),
+            'compression_capacity': float(qs_compression_cumulative + base_resistance)
         })
-    
+
     return {
         'summary': summary_results,
-        'detailed': detailed_results
+        'detailed': {
+            'cpt_profile': cpt_profile,
+            'tips': detailed_results,
+        }
     }
 
 def get_tf_tension_bored(coe_casing, lc, tf_compression):
@@ -1222,84 +1220,87 @@ def calculate_driven_pile_results(processed_cpt, params):
     pile_perimeter = get_pile_perimeter(pile_shape, nominal_size_don)
 
     depths = processed_cpt['depth']
-    
-    # Pre-calculate arrays outside the loop
+
+    # Pre-calculate tip-INDEPENDENT arrays once (used across all tip depths)
     qp_sand_array = np.array(get_qp_sand_array(depths, processed_cpt['qtc'], nominal_size_don))
     qp_clay_array = np.array(get_qp_clay_array(depths, processed_cpt['qt'], nominal_size_don, nominal_size_t))
-    
+
+    lc_values = np.array(processed_cpt['lc'])
+    qt_values = np.array(processed_cpt['qt'])
+    qtc_values = np.array(processed_cpt['qtc'])
+    fs_values = np.array(processed_cpt['fs'])
+    fr_values = np.array(processed_cpt['fr_percent'])
+
+    qp_values = np.where(lc_values > 2.5, qp_clay_array, qp_sand_array)
+    qb1_sand = get_qb1_sand(are_value, qp_sand_array)
+    qb1_clay = get_qb1_clay(qp_clay_array, dstar_value, nominal_size_don)
+    # For qb1 only, classify sand/clay using Ic threshold 2.6 (per design note)
+    qb1_adop = np.where(lc_values >= 2.6, qb1_clay, qb1_sand)
+
+    # Depth ramp up to 8×D for qb1 adoption (tip-independent — uses depth, not tip)
+    depth_array_np = np.array(depths)
+    ramp_denominator = max(8 * nominal_size_don, 1e-9)
+    ramp_factor = np.clip(depth_array_np / ramp_denominator, 0.0, 1.0)
+    qb1_adop_ramped = qb1_adop * ramp_factor
+    qb_final = get_qb_final(qb1_adop_ramped, area_value)
+
+    q1_values = qt_values * (0.1 ** 0.6)
+    q10_values = qt_values * ((0.01/nominal_size_don) ** 0.6) if nominal_size_don > 0 else np.zeros_like(qt_values)
+
+    delta_z_values = np.empty(len(depths))
+    if len(depths) > 0:
+        delta_z_values[0] = depths[0]
+        if len(depths) > 1:
+            delta_z_values[1:] = np.diff(depths)
+
+    # Build the per-row CPT profile once. Stored alongside (not duplicated per tip).
+    cpt_profile = [
+        {
+            'depth': float(depths[i]),
+            'q1': float(q1_values[i]),
+            'q10': float(q10_values[i]),
+            'qp_sand': float(qp_sand_array[i]),
+            'qp_clay': float(qp_clay_array[i]),
+            'qp_adopted': float(qp_values[i]),
+            'qb1_sand': float(qb1_sand[i]),
+            'qb1_clay': float(qb1_clay[i]),
+            'qb1_adopted': float(qb1_adop_ramped[i]),
+            'qb_final': float(qb_final[i]),
+            'delta_z': float(delta_z_values[i]),
+        }
+        for i in range(len(depths))
+    ]
+
     detailed_results = []
     summary_results = []
-    
+
     # Check data point spacing
     min_spacing = min(np.diff(depths))
     print(f"Minimum spacing between data points: {min_spacing}m")
     needs_interpolation = min_spacing > 0.1
-    
+
     for tip_depth in tip_depths:
         # If we don't need interpolation, find nearest point
         if not needs_interpolation:
             tip_index = min(range(len(depths)), key=lambda i: abs(depths[i]-tip_depth))
             tip_depth = depths[tip_index]
-        
+
         depth_calculations = []
-        
-        # Calculate h values using vectorized operations
-        h = np.maximum(0, tip_depth - np.array(depths))
-        
-        # Initialize arrays
-        qs_tension = np.zeros(len(depths))
-        qs_compression = np.zeros(len(depths))
-        
-        # Vectorized calculations where possible
+
+        # Tip-DEPENDENT vectors
+        h = np.maximum(0, tip_depth - depth_array_np)
         coe_casing = np.array([get_coe_casing(d, borehole, tip_depth) for d in depths])
-        lc_values = np.array(processed_cpt['lc'])
-        qt_values = np.array(processed_cpt['qt'])
-        qtc_values = np.array(processed_cpt['qtc'])
-        fs_values = np.array(processed_cpt['fs'])
-        fr_values = np.array(processed_cpt['fr_percent'])
-        
-        # Calculate qp values using vectorized operations
-        qp_values = np.where(lc_values > 2.5, qp_clay_array, qp_sand_array)
-        
-        # Calculate base resistance components
-        qb1_sand = get_qb1_sand(are_value, qp_sand_array)
-        qb1_clay = get_qb1_clay(qp_clay_array, dstar_value, nominal_size_don)
-        # For qb1 only, classify sand/clay using Ic threshold 2.6 (per design note)
-        qb1_adop = np.where(lc_values >= 2.6, qb1_clay, qb1_sand)
 
-        # Depth ramp up to 8×D for qb1 adoption (Driven piles only)
-        # Evidence/Note (2025-08-10): Per user note, base resistance should
-        # increase linearly with depth for z ≤ 8D: qb1_adopted = qb1 * z/(8D).
-        # Above 8D, full qb1 is adopted. We apply this here using the current
-        # depth array to avoid hard-zeroing in qp functions and to keep the
-        # ramp logic local to the driven pile base resistance.
-        depth_array_np = np.array(depths)
-        ramp_denominator = max(8 * nominal_size_don, 1e-9)
-        ramp_factor = np.clip(depth_array_np / ramp_denominator, 0.0, 1.0)
-        qb1_adop_ramped = qb1_adop * ramp_factor
-
-        qb_final = get_qb_final(qb1_adop_ramped, area_value)
-        
-        # Calculate q1 and q10 values for all depths
-        q1_values = []
-        q10_values = []
-        for qt in qt_values:
-            q1 = qt * (0.1 ** 0.6)
-            q10 = qt * ((0.01/nominal_size_don) ** 0.6) if nominal_size_don > 0 else 0
-            q1_values.append(q1)
-            q10_values.append(q10)
-        
-        # Calculate shaft resistance and store detailed data
         qs_tension_cumulative = 0
         qs_compression_cumulative = 0
-        
+
         # Find the index of the tip depth to limit detailed output
         tip_depth_index = min(range(len(depths)), key=lambda i: abs(depths[i]-tip_depth))
-        
+
         for i in range(len(depths)):
             if depths[i] > tip_depth:
                 continue
-            
+
             # Calculate tf values
             if lc_values[i] < 2.5:
                 delta_ord = get_delta_ord(qtc_values[i], processed_cpt['sig_v0_prime'][i], nominal_size_don)
@@ -1309,66 +1310,38 @@ def calculate_driven_pile_results(processed_cpt, params):
                 delta_ord = 0
                 orc_val = 0
                 tf_sand = 0
-            
+
             tf_clay = get_tf_clay(qt_values[i], coe_casing[i], h[i], dstar_value)
             tf_adop_tension = get_tf_adop_tension(processed_cpt['iz1'][i], tf_clay, tf_sand, lc_values[i])
             tf_adop_compression = get_tf_adop_compression(processed_cpt['iz1'][i], tf_clay, tf_sand, lc_values[i])
-            
-            # Calculate delta_z for this segment
-            if i == 0:
-                delta_z = depths[i]
-            else:
-                delta_z = depths[i] - depths[i-1]
-            
-            # Calculate shaft resistance for this segment
+
+            delta_z = float(delta_z_values[i])
+
             qs_tension_segment = tf_adop_tension * pile_perimeter * delta_z
             qs_compression_segment = tf_adop_compression * pile_perimeter * delta_z
-            
-            # Update cumulative values
+
             qs_tension_cumulative += qs_tension_segment
             qs_compression_cumulative += qs_compression_segment
-            
-            # Store all calculations for this depth (only up to tip depth)
+
+            # Store ONLY tip-dependent fields per row. Tip-independent CPT/profile
+            # data lives in `cpt_profile` (stored once at the top level) and in
+            # `processed_cpt` (recomputable on the consumer side).
             depth_calculations.append({
-                'depth': np.float64(depths[i]),
-                'qt': np.float64(qt_values[i]),
-                'qc': np.float64(processed_cpt['qc'][i]),
-                'qtc': np.float64(qtc_values[i]),
-                'fs': np.float64(fs_values[i]),
-                'fr_percent': np.float64(fr_values[i]),
-                'lc': np.float64(lc_values[i]),
-                'gtot': np.float64(processed_cpt['gtot'][i]),
-                'sig_v0': np.float64(processed_cpt['sig_v0'][i]),
-                'sig_v0_prime': np.float64(processed_cpt['sig_v0_prime'][i]),
-                'u0': np.float64(processed_cpt['u0_kpa'][i]),
-                'qtn': np.float64(processed_cpt['qtn'][i]),
-                'n': np.float64(processed_cpt['n'][i]),
-                'iz1': np.float64(processed_cpt['iz1'][i]),
-                'h': np.float64(h[i]),
-                'q1': np.float64(q1_values[i]),
-                'q10': np.float64(q10_values[i]),
-                'qp_sand': np.float64(qp_sand_array[i]),
-                'qp_clay': np.float64(qp_clay_array[i]),
-                'qp_adopted': np.float64(qp_values[i]),
-                'qb1_sand': np.float64(qb1_sand[i]),
-                'qb1_clay': np.float64(qb1_clay[i]),
-                'qb1_adopted': np.float64(qb1_adop_ramped[i]),
-                'coe_casing': np.float64(coe_casing[i]),
-                'delta_ord': np.float64(delta_ord),
-                'orc_val': np.float64(orc_val),
-                'tf_sand': np.float64(tf_sand),
-                'tf_clay': np.float64(tf_clay),
-                'tf_adop_tension': np.float64(tf_adop_tension),
-                'tf_adop_compression': np.float64(tf_adop_compression),
-                'delta_z': np.float64(delta_z),
-                'qs_tension_segment': np.float64(qs_tension_segment),
-                'qs_compression_segment': np.float64(qs_compression_segment),
-                'qs_tension_cumulative': np.float64(qs_tension_cumulative),
-                'qs_compression_cumulative': np.float64(qs_compression_cumulative),
-                'qb_final': np.float64(qb_final[i])
+                'depth': float(depths[i]),
+                'h': float(h[i]),
+                'coe_casing': float(coe_casing[i]),
+                'delta_ord': float(delta_ord),
+                'orc_val': float(orc_val),
+                'tf_sand': float(tf_sand),
+                'tf_clay': float(tf_clay),
+                'tf_adop_tension': float(tf_adop_tension),
+                'tf_adop_compression': float(tf_adop_compression),
+                'qs_tension_segment': float(qs_tension_segment),
+                'qs_compression_segment': float(qs_compression_segment),
+                'qs_tension_cumulative': float(qs_tension_cumulative),
+                'qs_compression_cumulative': float(qs_compression_cumulative),
             })
-            
-            # Stop storing detailed calculations once we reach the tip depth
+
             if i >= tip_depth_index:
                 break
         
@@ -1384,36 +1357,39 @@ def calculate_driven_pile_results(processed_cpt, params):
             compression_capacity = qs_compression_cumulative + qb_final[tip_index]
         
         detailed_results.append({
-            'tip_depth': tip_depth,
+            'tip_depth': float(tip_depth),
             'calculations': depth_calculations,
             'pile_constants': {
-                'nominal_size_don': np.float64(nominal_size_don),
-                'nominal_size_t': np.float64(nominal_size_t),
-                'diameter': np.float64(diameter),
-                'borehole_depth': np.float64(borehole),
-                'pile_perimeter': np.float64(pile_perimeter),
-                'ifr_value': np.float64(ifr_value),
-                'are_value': np.float64(are_value),
-                'area_value': np.float64(area_value),
-                'dstar_value': np.float64(dstar_value),
+                'nominal_size_don': float(nominal_size_don),
+                'nominal_size_t': float(nominal_size_t),
+                'diameter': float(diameter),
+                'borehole_depth': float(borehole),
+                'pile_perimeter': float(pile_perimeter),
+                'ifr_value': float(ifr_value),
+                'are_value': float(are_value),
+                'area_value': float(area_value),
+                'dstar_value': float(dstar_value),
                 'pile_shape': pile_shape,
                 'pile_end_condition': pile_end_condition
             }
         })
-        
+
         compression_base = qb_final[tip_index] if not needs_interpolation else compression_base
         summary_results.append({
-            'tipdepth': tip_depth,
-            'shaft_tension': np.float64(qs_tension_cumulative),
-            'shaft_compression': np.float64(qs_compression_cumulative),
-            'base_compression': np.float64(compression_base),
-            'tension_capacity': np.float64(tension_capacity),
-            'compression_capacity': np.float64(compression_capacity)
+            'tipdepth': float(tip_depth),
+            'shaft_tension': float(qs_tension_cumulative),
+            'shaft_compression': float(qs_compression_cumulative),
+            'base_compression': float(compression_base),
+            'tension_capacity': float(tension_capacity),
+            'compression_capacity': float(compression_capacity)
         })
 
     return {
         'summary': summary_results,
-        'detailed': detailed_results
+        'detailed': {
+            'cpt_profile': cpt_profile,
+            'tips': detailed_results,
+        }
     }
 
 

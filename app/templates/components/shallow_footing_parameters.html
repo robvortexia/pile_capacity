@@ -1,0 +1,104 @@
+<div class="parameters-container">
+    <form method="POST" action="{{ url_for('main.calculator_step', type=type, step=3) }}">
+        <div class="form-section">
+            <div class="form-field">
+                <label>File Name for Download (not required)</label>
+                <input type="text" name="file_name" class="form-control" placeholder="e.g., UWA Trial">
+            </div>
+
+            <div class="form-field">
+                <label>Footing width, B (m)</label>
+                <input type="number" name="footing_width" step="0.01" min="0" class="form-control" required>
+                <span class="help-text">Shorter plan dimension of the footing.</span>
+            </div>
+
+            <div class="form-field">
+                <label>Footing length, L (m)</label>
+                <input type="number" name="footing_length" step="0.01" min="0" class="form-control" required>
+                <span class="help-text">Longer plan dimension. Equal to B for a square/circular footing.</span>
+            </div>
+
+            <div class="form-field">
+                <label>Founding depth below excavation, D (m)</label>
+                <input type="number" name="founding_depth" step="0.01" min="0" class="form-control" required>
+                <span class="help-text">Depth of the footing base below the excavated surface.</span>
+            </div>
+
+            <div class="form-field">
+                <label>Depth of site excavation, d<sub>ex</sub> (m)</label>
+                <input type="number" name="excavation_depth" step="0.01" min="0" value="0" class="form-control">
+                <span class="help-text">Soil removed across the whole site before founding. Use 0 if none.</span>
+            </div>
+
+            <div class="form-field">
+                <label>Design life for settlement (years)</label>
+                <input type="number" name="design_life_years" step="1" min="0" value="50" class="form-control">
+                <span class="help-text">Creep is accumulated over this period (sand only).</span>
+            </div>
+
+            <div class="form-field">
+                <label>Soil model</label>
+                <select name="force_soil_model" class="form-control">
+                    <option value="">Auto-detect from Ic</option>
+                    <option value="sand">Force sand formulation</option>
+                    <option value="clay">Force clay formulation</option>
+                </select>
+                <span class="help-text">Auto uses the average Ic in the zone of influence. Override for silt.</span>
+            </div>
+
+            <div class="form-field">
+                <label>Water Table Depth (m)</label>
+                <div class="form-control-static">{{ session.get('water_table', 0.0) }}</div>
+                <input type="hidden" name="water_table" value="{{ session.get('water_table', 0.0) }}">
+                <span class="help-text">Depth to water table from original ground surface (set at Step 1).</span>
+            </div>
+        </div>
+
+        <details class="advanced">
+            <summary>Advanced parameters (defaults follow UWA method)</summary>
+            <div class="form-section">
+                <div class="form-field">
+                    <label>Initial OCR in sand</label>
+                    <input type="number" name="initial_ocr" step="0.01" min="0" value="1" class="form-control">
+                </div>
+                <div class="form-field">
+                    <label>K<sub>0</sub></label>
+                    <input type="number" name="k0" step="0.01" min="0" value="0.5" class="form-control">
+                </div>
+                <div class="form-field">
+                    <label>Ageing factor for CPT in sand</label>
+                    <input type="number" name="ageing_factor" step="0.01" min="0" value="0.66" class="form-control">
+                </div>
+                <div class="form-field">
+                    <label>Creep coefficient, c (sand)</label>
+                    <input type="number" name="creep" step="0.001" min="0" value="0.02" class="form-control">
+                </div>
+                <div class="form-field">
+                    <label>Cone factor N<sub>kt</sub> (clay s<sub>u</sub>)</label>
+                    <input type="number" name="nkt" step="0.1" min="1" value="15" class="form-control">
+                </div>
+            </div>
+        </details>
+
+        <div class="button-group">
+            <button type="submit" class="btn btn-primary">Continue to Results</button>
+            <a href="{{ url_for('main.calculator_step', type=type, step=2) }}" class="btn btn-secondary">Back to CPT Data</a>
+        </div>
+    </form>
+</div>
+
+<style>
+.parameters-container { max-width: 520px; margin: 0 auto; background: white; border-radius: 8px; padding: 1rem; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+.form-section { display: flex; flex-direction: column; gap: 0.5rem; }
+.form-field { display: flex; flex-direction: column; gap: 0.15rem; }
+.form-field label { font-weight: 500; color: #374151; font-size: 0.85rem; margin-bottom: -0.15rem; }
+.form-control { width: 100%; padding: 0.35rem 0.5rem; border: 1px solid #e5e7eb; border-radius: 4px; font-size: 0.85rem; }
+.form-control-static { padding: 0.35rem 0.5rem; background-color: #f8f9fa; border: 1px solid #e5e7eb; border-radius: 4px; font-size: 0.85rem; color: #6c757d; }
+.help-text { font-size: 0.75rem; color: #6b7280; margin-top: -0.15rem; }
+.advanced { margin-top: 0.75rem; border: 1px solid #e5e7eb; border-radius: 4px; padding: 0.5rem 0.75rem; }
+.advanced > summary { cursor: pointer; font-size: 0.85rem; font-weight: 500; color: #374151; }
+.advanced .form-section { margin-top: 0.5rem; }
+.button-group { display: flex; gap: 0.5rem; margin-top: 0.75rem; }
+.btn { padding: 0.35rem 1rem; font-size: 0.85rem; }
+@media (max-width: 768px) { .parameters-container { padding: 0.75rem; } }
+</style>
