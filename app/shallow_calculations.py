@@ -72,14 +72,14 @@ def _downsample(idx_lists, max_points=400):
 def _representative_unit_weight(processed_cpt, params, foot_idx):
     """Single unit weight for the post-excavation stress recompute.
 
-    The workbook uses one gamma for the whole profile (its D24). Here we default
-    to the profile value at founding depth, or honour an explicit override.
+    Per Barry's spec, the program uses the FIRST unit weight entered in the
+    CSV (workbook D24 = pileapp!E2). Honours an explicit override if provided.
+    A future upgrade may switch to per-layer integration.
     """
     if params.get('unit_weight') not in (None, '', 0):
         return float(params['unit_weight'])
     gtot = processed_cpt['gtot']
-    idx = foot_idx if foot_idx is not None else 0
-    return float(gtot[idx])
+    return float(gtot[0]) if gtot else 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -180,11 +180,11 @@ def _sand_branch(pc, p, gamma_const):
 def _traditional_bc_sand(pc, p, gamma_const, fp_avg, foot_idx):
     """BC-calc sand: Vesic Nq/Ng with shape & depth factors.
 
-    NOTE - two workbook quirks are NOT reproduced here (they look like stray
-    spreadsheet references): the workbook used sigma'v0 = 0 for the surcharge
-    term (empty Intro!I22) and pulled the unit weight from the clay sample
-    sheet. This uses the real founding-level effective stress and the profile
-    unit weight, so the value will differ from the spreadsheet's 1222 kPa.
+    Surcharge uses the post-excavation effective vertical stress at the
+    footing row (R column in the workbook): gamma * D - u0_at_footing.
+    Unit weight for the N_gamma term is the profile value (workbook C16
+    fix per Barry: 'the value should be the unit weight specified in the
+    CPT data').
     """
     B, L, D = p['B'], p['L'], p['founding_depth']
     phi = math.radians(fp_avg)
@@ -195,8 +195,9 @@ def _traditional_bc_sand(pc, p, gamma_const, fp_avg, foot_idx):
           (d_over_b if d_over_b < 1 else math.atan(d_over_b)))
     nq = math.exp(math.pi * math.tan(phi)) * math.tan(math.pi / 4 + phi / 2) ** 2
     ng = 2 * (nq + 1) * math.tan(phi)
-    # effective surcharge at founding level after excavation
-    sigv0_base = gamma_const * D
+    # effective surcharge at founding level after excavation (R col @ foot)
+    u0_foot = pc['u0_kpa'][foot_idx] if foot_idx is not None else 0.0
+    sigv0_base = max(gamma_const * D - u0_foot, 0.0)
     dw1 = p['water_table'] - p['dex'] - D                   # water depth below footing
     gamma_eff = gamma_const if dw1 > B else gamma_const - 10
     return sq * dq * nq * sigv0_base + 0.5 * ng * gamma_eff * B * sg * 1.0
@@ -357,8 +358,7 @@ def calculate_shallow_footing_results(processed_cpt, params):
     # ---- warnings (workbook B9/B10) ----
     dw1 = p['water_table'] - dex - D
     if dw1 < 1:
-        warnings.append('Water level is at or above footing level. '
-                        'Confirm you wish to continue.')
+        warnings.append('Warning: water level is above footing level.')
     zone_base_below_exc = (D + B ** 0.7) if soil_model == 'sand' else (D + 0.5 * B)
     dt = dex + zone_base_below_exc
     if max(depth) < dt:

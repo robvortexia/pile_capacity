@@ -7,6 +7,12 @@
             </div>
 
             <div class="form-field">
+                <label>Depth of site excavation, d<sub>ex</sub> (m)</label>
+                <input type="number" name="excavation_depth" step="0.01" min="0" value="0" class="form-control">
+                <span class="help-text">Soil removed across the whole site before founding (e.g. for basement construction). Use 0 if none.</span>
+            </div>
+
+            <div class="form-field">
                 <label>Footing width, B (m)</label>
                 <input type="number" name="footing_width" step="0.01" min="0" class="form-control" required>
                 <span class="help-text">Shorter plan dimension of the footing.</span>
@@ -22,12 +28,6 @@
                 <label>Founding depth below excavation, D (m)</label>
                 <input type="number" name="founding_depth" step="0.01" min="0" class="form-control" required>
                 <span class="help-text">Depth of the footing base below the excavated surface.</span>
-            </div>
-
-            <div class="form-field">
-                <label>Depth of site excavation, d<sub>ex</sub> (m)</label>
-                <input type="number" name="excavation_depth" step="0.01" min="0" value="0" class="form-control">
-                <span class="help-text">Soil removed across the whole site before founding. Use 0 if none.</span>
             </div>
 
             <div class="form-field">
@@ -55,7 +55,7 @@
         </div>
 
         <details class="advanced">
-            <summary>Advanced parameters (defaults follow UWA method)</summary>
+            <summary>Advanced parameters (defaults follow associated publications)</summary>
             <div class="form-section">
                 <div class="form-field">
                     <label>Initial OCR in sand</label>

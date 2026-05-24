@@ -130,8 +130,8 @@
                             <tr><td>q<sub>b0.1</sub> (bearing stress at s/B = 0.1)</td><td>{{ '%.0f'|format(sm.qb01_kpa) }} kPa</td></tr>
                             <tr><td>σ'<sub>vy</sub> at footing level</td><td>{{ '%.1f'|format(sm.svy_footing_kpa) }} kPa</td></tr>
                             <tr><td>Design life</td><td>{{ results.inputs.design_life_years }} yr</td></tr>
-                            <tr class="divider"><td>Bearing capacity (CPT, q<sub>b0.1</sub>)</td><td>{{ '%.0f'|format(sm.bearing_capacity_cpt_kpa) }} kPa</td></tr>
-                            <tr><td>Bearing capacity (N<sub>q</sub>, N<sub>γ</sub>)<sup>*</sup></td><td>{{ '%.0f'|format(sm.bearing_capacity_nq_ng_kpa) }} kPa</td></tr>
+                            <tr class="divider"><td>Net bearing capacity (CPT, q<sub>b0.1</sub>)</td><td>{{ '%.0f'|format(sm.bearing_capacity_cpt_kpa) }} kPa</td></tr>
+                            <tr><td>Net bearing capacity (N<sub>q</sub>, N<sub>γ</sub>)</td><td>{{ '%.0f'|format(sm.bearing_capacity_nq_ng_kpa) }} kPa</td></tr>
                             {% else %}
                             <tr><td>q<sub>t,net</sub> in zone</td><td>{{ '%.1f'|format(sm.qt_net_kpa) }} kPa</td></tr>
                             <tr><td>Average s<sub>u</sub></td><td>{{ '%.1f'|format(sm.avg_su_kpa) }} kPa</td></tr>
@@ -139,19 +139,14 @@
                             <tr><td>σ'<sub>vy</sub> at footing level</td><td>{{ '%.1f'|format(sm.svy_footing_kpa) }} kPa</td></tr>
                             <tr><td>A (immediate / long term)</td><td>{{ sm.a_immediate }} / {{ sm.a_longterm }}</td></tr>
                             <tr><td>Ultimate bearing pressure (0.42 q<sub>t,net</sub>)</td><td>{{ '%.0f'|format(sm.ultimate_curve_cap_kpa) }} kPa</td></tr>
-                            <tr class="divider"><td>Bearing capacity (CPT, 0.45 q<sub>t,net</sub>)</td><td>{{ '%.0f'|format(sm.bearing_capacity_cpt_kpa) }} kPa</td></tr>
-                            <tr><td>Bearing capacity (N<sub>c</sub>)</td><td>{{ '%.0f'|format(sm.bearing_capacity_nc_kpa) }} kPa</td></tr>
+                            <tr class="divider"><td>Net bearing capacity (CPT, 0.45 q<sub>t,net</sub>)</td><td>{{ '%.0f'|format(sm.bearing_capacity_cpt_kpa) }} kPa</td></tr>
+                            <tr><td>Net bearing capacity (N<sub>c</sub>)</td><td>{{ '%.0f'|format(sm.bearing_capacity_nc_kpa) }} kPa</td></tr>
                             {% endif %}
                         </table>
-                        {% if sand %}
-                        <p class="footnote"><sup>*</sup> Computed with the founding-level surcharge and the
-                        profile unit weight. The source spreadsheet omitted the surcharge term and used a
-                        different unit weight, giving a lower figure (~1222 kPa for the sample).</p>
-                        {% endif %}
                     </div>
                 </div>
 
-                {% if sand and results.qc_before_after %}
+                {% if sand and results.qc_before_after and results.inputs.excavation_depth_m > 0 %}
                 <div class="result-card">
                     <h3>q<sub>c</sub> before and after excavation</h3>
                     <div id="qc_graph" class="graph-tall"></div>
@@ -238,12 +233,15 @@
         Plotly.relayout('settlement_graph', { 'xaxis.autorange': true, 'yaxis.autorange': true });
     }
     function drawQc() {
-        if (!R.qc_before_after) return;
+        if (!R.qc_before_after || !document.getElementById('qc_graph')) return;
         var q = R.qc_before_after;
         var t1 = { x: q.qc_before, y: q.depth, mode: 'lines', name: 'Before excavation', line: { color: '#9aa0a6', width: 2 } };
         var t2 = { x: q.qc_after, y: q.depth, mode: 'lines', name: 'After excavation', line: { color: '#1a73e8', width: 2 } };
+        // Narrower default x-scale (~half the max qc) so the excavation effect near surface is clearer
+        var xMax = Math.max.apply(null, q.qc_before.filter(v => isFinite(v))) * 0.5;
+        if (!isFinite(xMax) || xMax <= 0) xMax = 1;
         var layout = { margin: { t: 20, r: 20, l: 60, b: 50 }, paper_bgcolor: '#fff', plot_bgcolor: '#fff',
-            xaxis: { title: 'qc (MPa)', side: 'top', zeroline: false, gridcolor: 'rgba(0,0,0,0.06)' },
+            xaxis: { title: 'qc (MPa)', side: 'top', zeroline: false, gridcolor: 'rgba(0,0,0,0.06)', range: [0, xMax] },
             yaxis: { title: 'Depth (m)', autorange: 'reversed', gridcolor: 'rgba(0,0,0,0.06)' },
             legend: { orientation: 'h', y: 1.12 } };
         Plotly.newPlot('qc_graph', [t1, t2], layout, plotConfig);
