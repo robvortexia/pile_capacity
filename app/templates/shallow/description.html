@@ -55,6 +55,15 @@
                 <i class="fas fa-file-pdf"></i> Read the publication (PDF)
             </a>
         </div>
+
+        <div class="description-image">
+            <img src="{{ url_for('static', filename='img/shallow_footing.jpg') }}"
+                 alt="Pad foundation overview illustration">
+            <p class="image-caption">Image:
+                <a href="https://knowledge.fppengineering.com/structural-design-of-pad-foundation-an-overview/"
+                   target="_blank" rel="noopener">FPP Engineering, Structural design of pad foundation - an overview</a>
+            </p>
+        </div>
     </div>
 
     <div class="button-group">
@@ -68,11 +77,15 @@
 </div>
 
 <style>
-.description-container { max-width: 900px; margin: 0 auto; padding: 2rem; }
+.description-container { max-width: 1100px; margin: 0 auto; padding: 2rem; }
 .description-header { margin-bottom: 2rem; text-align: center; }
-.description-content { margin-bottom: 2rem; }
+.description-content { display: grid; grid-template-columns: 3fr 2fr; gap: 2rem; align-items: start; margin-bottom: 2rem; }
 .description-text { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+.description-image img { width: 100%; height: auto; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+.image-caption { font-size: 0.78rem; color: #5f6368; text-align: center; margin: 0.5rem 0 0; }
+.image-caption a { color: #5f6368; text-decoration: underline; }
 .citation { padding: 0.5rem 0 0.5rem 1rem; border-left: 3px solid #1a73e8; color: #3c4043; line-height: 1.6; }
+@media (max-width: 768px) { .description-content { grid-template-columns: 1fr; } }
 .link-to-publication {
     display: inline-block; color: #0066cc;
     text-decoration: none; margin-top: 1rem;
