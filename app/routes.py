@@ -64,11 +64,14 @@ def _maybe_grant_shallow_demo():
 
 
 def _shallow_demo_allowed():
-    """True only for people authorised to see the shallow-foundations demo."""
-    if session.get('shallow_demo_ok'):
-        return True
-    email = (session.get('email') or session.get('user_email') or '').strip().lower()
-    return bool(email) and email in _shallow_demo_emails()
+    """Access gate for the shallow-foundations module.
+
+    The module is public as of release (Barry signed off after the intro
+    page was added). Helpers and the SHALLOW_DEMO_EMAILS/SHALLOW_DEMO_CODE
+    env vars are kept in case re-gating is ever needed: just restore the
+    earlier body that checked session['shallow_demo_ok'] / email allowlist.
+    """
+    return True
 
 
 @bp.route('/googlef2236ffa5d780ee8.html')
