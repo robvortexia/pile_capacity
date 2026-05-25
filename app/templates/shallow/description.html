@@ -1,31 +1,89 @@
 {% extends "base.html" %}
 
-{% block title %}Shallow Foundations (Demo) — Load-settlement from CPT | UWA{% endblock %}
+{% block title %}Bearing pressure-displacement response of footings (CPT method) | UWA{% endblock %}
+{% block meta_description %}Calculate the load-settlement response of shallow footings on sand and clay from CPT data, based on Lehane (2024) 11th James Mitchell Honor Lecture. Free tool from The University of Western Australia.{% endblock %}
+{% block meta_keywords %}shallow footing settlement, footing bearing pressure displacement, CPT shallow foundations, Lehane 2024, James Mitchell Honor Lecture, UWA footing calculator{% endblock %}
+{% block og_title %}Shallow Footing Bearing Pressure vs Displacement — CPT Method | UWA{% endblock %}
+{% block og_description %}Load-settlement response of footings on sand and clay from CPT, based on Lehane (2024). Free tool from UWA.{% endblock %}
+{% block twitter_title %}Shallow Footing Settlement — CPT Method | UWA{% endblock %}
+{% block twitter_description %}Load-settlement of footings from CPT, based on Lehane (2024). Free tool from UWA.{% endblock %}
+
+{% block jsonld %}
+<script type="application/ld+json">
+{
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "UWA Shallow Footing Bearing Pressure-Displacement Calculator",
+    "url": "https://uwa-geotech-cpt-calculator.com/shallow/description",
+    "description": "Calculate the bearing pressure-displacement response of shallow footings on sand and clay from CPT data (Lehane, 2024).",
+    "applicationCategory": "Engineering",
+    "author": {
+        "@type": "Person",
+        "name": "Professor Barry M. Lehane",
+        "jobTitle": "Professor of Geotechnical Engineering",
+        "affiliation": {
+            "@type": "Organization",
+            "name": "The University of Western Australia"
+        },
+        "url": "https://research-repository.uwa.edu.au/en/persons/barry-lehane",
+        "sameAs": [
+            "https://scholar.google.com.au/citations?user=6JOr_LkAAAAJ"
+        ]
+    }
+}
+</script>
+{% endblock %}
 
 {% block content %}
-<div class="description-container" style="max-width: 820px; margin: 2rem auto; padding: 0 1.25rem;">
-    <h1>Shallow foundations: load-settlement from CPT <span style="font-size:0.6em;color:#1a73e8;">(demo)</span></h1>
-    <p>Estimate the bearing-pressure versus settlement response of a pad or strip footing
-    directly from CPT data, using the UWA/Lehane method. The tool reads your CPT, classifies
-    the founding material from the average soil-behaviour-type index I<sub>c</sub> in the zone
-    of influence, then applies the sand or clay formulation:</p>
-    <ul style="line-height: 1.7; color: #3c4043;">
-        <li><strong>Sand</strong> (I<sub>c</sub> &lt; 2.59): relative density and friction angle from q<sub>c</sub>,
-            an excavation-unloading correction to q<sub>c</sub>, then a q–s curve scaled by q<sub>c,avg</sub>
-            with a creep/time factor and an overconsolidation settlement offset.</li>
-        <li><strong>Clay</strong> (I<sub>c</sub> &ge; 2.59): net cone resistance and OCR give immediate and
-            long-term q–s curves, capped at the ultimate bearing pressure.</li>
-    </ul>
-    <p style="color:#5f6368;font-size:0.9rem;">This module is an internal demo and is not yet public.</p>
-    <div style="margin-top: 1.5rem;">
-        <a href="{{ url_for('main.calculator_step', type='shallow', step=1) }}" class="btn btn-primary"
-           style="background:#1a73e8;color:#fff;padding:0.75rem 1.5rem;border-radius:6px;text-decoration:none;">
-            Start Shallow Footing analysis
+<div class="description-container">
+    <div class="description-header">
+        <h1>Calculation of the bearing pressure-displacement response of footings</h1>
+    </div>
+
+    <div class="description-content">
+        <div class="description-text">
+            <p>The formulations adopted by the program are based on the following publication:</p>
+
+            <p class="citation">
+                Lehane, B.M. (2024). Ongoing development of applications of the Cone Penetration Test in
+                interpretation and design. <em>11th James Mitchell Honor Lecture, Proc. 7th Int. Conf. on
+                Geotechnical and Geophysical Site Characterisation</em>, Barcelona, 1, 87-104.
+            </p>
+
+            <a href="{{ url_for('static', filename='pdf/Lehane-ISC7-Mitchell-Lecture-2024.pdf') }}"
+               class="link-to-publication" target="_blank" rel="noopener">
+                <i class="fas fa-file-pdf"></i> Read the publication (PDF)
+            </a>
+        </div>
+    </div>
+
+    <div class="button-group">
+        <a href="{{ url_for('main.calculator_step', type='shallow', step=1) }}" class="btn btn-primary">
+            Continue to Analysis
         </a>
-        <a href="{{ url_for('main.index') }}" class="btn btn-secondary"
-           style="background:#f1f3f4;color:#3c4043;padding:0.75rem 1.5rem;border-radius:6px;text-decoration:none;margin-left:0.5rem;">
+        <a href="{{ url_for('main.index') }}" class="btn btn-secondary">
             Back to Home
         </a>
     </div>
 </div>
+
+<style>
+.description-container { max-width: 900px; margin: 0 auto; padding: 2rem; }
+.description-header { margin-bottom: 2rem; text-align: center; }
+.description-content { margin-bottom: 2rem; }
+.description-text { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+.citation { padding: 0.5rem 0 0.5rem 1rem; border-left: 3px solid #1a73e8; color: #3c4043; line-height: 1.6; }
+.link-to-publication {
+    display: inline-block; color: #0066cc;
+    text-decoration: none; margin-top: 1rem;
+}
+.link-to-publication:hover { text-decoration: underline; }
+.button-group { display: flex; justify-content: center; gap: 1rem; }
+.btn { padding: 0.75rem 1.5rem; border-radius: 6px; font-weight: 500; text-decoration: none; }
+.btn-primary { background: #1a73e8; color: white; border: none; }
+.btn-primary:hover { background: #1557b0; }
+.btn-secondary { background: #f1f3f4; color: #3c4043; border: 1px solid #dadce0; }
+.btn-secondary:hover { background: #e8eaed; }
+h1 { color: var(--primary-color); }
+</style>
 {% endblock %}

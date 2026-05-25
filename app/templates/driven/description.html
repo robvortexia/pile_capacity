@@ -49,6 +49,10 @@
             Rattley M., Gavin K., Gilbert R., Haavik J. and Morgan N. (2020). A new CPT-based axial pile
             capacity design method for driven piles in sand. Proc 4th Int. Symposium on Frontiers in
             Offshore Geotechnics, ISFOG-4, Austin, Texas, 462-477.</p>
+            <a href="{{ url_for('static', filename='pdf/Lehane-etal-ISFOG-2020.pdf') }}"
+               class="link-to-publication" target="_blank" rel="noopener">
+                <i class="fas fa-file-pdf"></i> Read the publication (PDF)
+            </a>
 
             <h3>Clay and silt method</h3>
             <p>Lehane B.M., Liu Z., Bittar E., Nadim F., Lacasse S., Bozorgzadeh N., Jardine R.J., Ballard J-C,
@@ -140,6 +144,17 @@ h3 {
     padding-top: 1rem;
     border-top: 1px solid #eee;
     font-style: italic;
+}
+
+.link-to-publication {
+    display: inline-block;
+    color: #0066cc;
+    text-decoration: none;
+    margin-top: 0.5rem;
+}
+
+.link-to-publication:hover {
+    text-decoration: underline;
 }
 
 @media (max-width: 768px) {
