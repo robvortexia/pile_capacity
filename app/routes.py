@@ -57,11 +57,16 @@ def _shallow_demo_emails():
 
 
 def _maybe_grant_shallow_demo():
-    """Remember demo access in the session if a valid ?code= is supplied."""
+    """Remember demo access in the session if a valid ?code= is supplied.
+
+    Also grants access to the private preview modules (lateral, cantilever)
+    via the same code.
+    """
     code = os.environ.get('SHALLOW_DEMO_CODE') or current_app.config.get('SHALLOW_DEMO_CODE')
     supplied = request.args.get('code') or request.form.get('demo_code')
     if code and supplied and compare_digest(str(supplied), str(code)):
         session['shallow_demo_ok'] = True
+        session['private_demo_ok'] = True
         session.modified = True
 
 
@@ -74,6 +79,24 @@ def _shallow_demo_allowed():
     earlier body that checked session['shallow_demo_ok'] / email allowlist.
     """
     return True
+
+
+def _private_module_allowed():
+    """Access gate for the private "preview" modules (lateral monopile and
+    embedded cantilever wall).
+
+    Granted via the same ``?code=<SHALLOW_DEMO_CODE>`` link that the shallow
+    module used during its private phase. Default deny if the code is not
+    configured.
+    """
+    if session.get('shallow_demo_ok'):
+        return True
+    if session.get('private_demo_ok'):
+        return True
+    email = (session.get('user_email') or session.get('email') or '').strip().lower()
+    if email and email in _shallow_demo_emails():
+        return True
+    return False
 
 
 @bp.route('/googlef2236ffa5d780ee8.html')
@@ -143,6 +166,10 @@ def use_sample_data(type):
     if type == 'shallow':
         _maybe_grant_shallow_demo()
         if not _shallow_demo_allowed():
+            return redirect(url_for('main.index'))
+    if type in ('lateral', 'cantilever'):
+        _maybe_grant_shallow_demo()
+        if not _private_module_allowed():
             return redirect(url_for('main.index'))
 
     # Read sample data file
@@ -355,9 +382,13 @@ def index():
     session.modified = True
 
     # Reveal the shallow-foundations demo card only to authorised people.
+    # The same ?code= URL also opens the gate for the lateral monopile and
+    # embedded cantilever wall preview modules.
     _maybe_grant_shallow_demo()
-    response = make_response(render_template('index.html', show_modal=show_modal,
-                                             shallow_demo=_shallow_demo_allowed()))
+    response = make_response(render_template(
+        'index.html', show_modal=show_modal,
+        shallow_demo=_shallow_demo_allowed(),
+        private_demo=_private_module_allowed()))
     if 'registered' in session and session['registered']:
         response.set_cookie(
             'user_registered',
@@ -413,6 +444,10 @@ def calculator_step(type, step):
     if type == 'shallow':
         _maybe_grant_shallow_demo()
         if not _shallow_demo_allowed():
+            return redirect(url_for('main.index'))
+    if type in ('lateral', 'cantilever'):
+        _maybe_grant_shallow_demo()
+        if not _private_module_allowed():
             return redirect(url_for('main.index'))
 
     # Show registration modal if user hasn't registered yet
@@ -2375,6 +2410,10 @@ def pile_description(type):
     if type == 'shallow':
         _maybe_grant_shallow_demo()
         if not _shallow_demo_allowed():
+            return redirect(url_for('main.index'))
+    if type in ('lateral', 'cantilever'):
+        _maybe_grant_shallow_demo()
+        if not _private_module_allowed():
             return redirect(url_for('main.index'))
     return render_template(f'{type}/description.html', type=type)
 

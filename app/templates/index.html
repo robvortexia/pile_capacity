@@ -54,6 +54,7 @@
             </a>
         </div>
         
+        {% if private_demo %}
         <div class="option-card">
             <h2>Laterally loaded monopiles</h2>
             <p>Lateral load-displacement and rotation response of rigid monopiles in sand</p>
@@ -61,7 +62,9 @@
                 Start Monopile Analysis
             </a>
         </div>
+        {% endif %}
         
+        {% if private_demo %}
         <div class="option-card">
             <h2>Displacement of embedded cantilever wall</h2>
             <p>Maximum deflection and settlement profile for cantilever walls in sand</p>
@@ -69,6 +72,7 @@
                 Start Cantilever Wall Analysis
             </a>
         </div>
+        {% endif %}
     </div>
 
     <!-- 3D PIV Research Advertisement - Subtle placement -->
