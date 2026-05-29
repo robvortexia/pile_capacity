@@ -99,37 +99,35 @@
                     &nbsp;&rarr;&nbsp; calculation applicable.
                 </div>
 
-                <div class="results-grid">
-                    <div class="result-card chart-card">
-                        <div class="scale-controls">
-                            <label>Max distance (m)
-                                <input type="number" id="sxMax" value="{{ '%.2f'|format(results.settlement_profile.default_scale.x_max) }}" step="0.5" min="0.1">
-                            </label>
-                            <label>Max settlement (mm)
-                                <input type="number" id="syMax" value="{{ '%.2f'|format(results.settlement_profile.default_scale.y_max) }}" step="1" min="0.1">
-                            </label>
-                            <button type="button" class="btn btn-secondary btn-sm" onclick="rescaleProfile()">Apply scale</button>
-                            <button type="button" class="btn btn-secondary btn-sm" onclick="autoProfile()">Auto</button>
-                        </div>
-                        <div id="profile_graph" class="graph-tall"></div>
+                <div class="result-card chart-card">
+                    <div class="scale-controls">
+                        <label>Max distance (m)
+                            <input type="number" id="sxMax" value="{{ '%.2f'|format(results.settlement_profile.default_scale.x_max) }}" step="0.5" min="0.1">
+                        </label>
+                        <label>Max settlement (mm)
+                            <input type="number" id="syMax" value="{{ '%.2f'|format(results.settlement_profile.default_scale.y_max) }}" step="1" min="0.1">
+                        </label>
+                        <button type="button" class="btn btn-secondary btn-sm" onclick="rescaleProfile()">Apply scale</button>
+                        <button type="button" class="btn btn-secondary btn-sm" onclick="autoProfile()">Auto</button>
                     </div>
+                    <div id="profile_graph" class="graph-tall"></div>
+                </div>
 
-                    <div class="result-card">
-                        <h3>Summary</h3>
-                        <table class="summary-table">
-                            <tr><td>Wall length L</td><td>{{ inp.wall_length_m }} m</td></tr>
-                            <tr><td>Excavation depth H</td><td>{{ inp.excavation_depth_m }} m</td></tr>
-                            <tr><td>H/L</td><td>{{ '%.3f'|format(sm.hl_ratio) }}{% if inp.hl_ratio_clamped != sm.hl_ratio %} (clamped to {{ '%.3f'|format(inp.hl_ratio_clamped) }}){% endif %}</td></tr>
-                            <tr><td>Wall EI</td><td>{{ '{:,.0f}'.format(inp.EI_kNm2_per_m) }} kNm²/m</td></tr>
-                            <tr><td>EI / (γ<sub>w</sub>·H<sup>4</sup>)</td><td>{{ '%.2f'|format(sm.ei_normalised_raw) }}{% if sm.ei_normalised_used != sm.ei_normalised_raw %} (clamped to {{ '%.2f'|format(sm.ei_normalised_used) }}){% endif %}</td></tr>
-                            <tr class="divider"><td>Average φ'<sub>p</sub> in averaging band</td><td>{{ '%.2f'|format(sm.avg_phi_prime_deg) }}°</td></tr>
-                            <tr><td>dq<sub>c</sub>/dz</td><td>{{ '%.3f'|format(sm.dqc_dz_MN_m3) }} MN/m³</td></tr>
-                            <tr class="divider"><td>d/H</td><td>{{ '%.5f'|format(sm.d_over_H) }}</td></tr>
-                            <tr><td>Maximum wall deflection, d<sub>max</sub></td><td><strong>{{ '%.2f'|format(sm.dmax_mm) }} mm</strong></td></tr>
-                            <tr><td>Maximum settlement, s<sub>max</sub></td><td>{{ '%.2f'|format(sm.smax_mm) }} mm</td></tr>
-                            <tr><td>Settlement at x = H/2</td><td>{{ '%.2f'|format(sm.s_at_x_H_over_2_mm) }} mm</td></tr>
-                        </table>
-                    </div>
+                <div class="result-card summary-card">
+                    <h3>Summary</h3>
+                    <table class="summary-table">
+                        <tr class="headline-row"><td>Maximum wall deflection, d<sub>max</sub></td><td><strong>{{ '%.0f'|format(sm.dmax_mm) }} mm</strong></td></tr>
+                        <tr><td>Wall length L</td><td>{{ inp.wall_length_m }} m</td></tr>
+                        <tr><td>Excavation depth H</td><td>{{ inp.excavation_depth_m }} m</td></tr>
+                        <tr><td>H/L</td><td>{{ '%.3f'|format(sm.hl_ratio) }}{% if inp.hl_ratio_clamped != sm.hl_ratio %} (clamped to {{ '%.3f'|format(inp.hl_ratio_clamped) }}){% endif %}</td></tr>
+                        <tr><td>Wall EI</td><td>{{ '{:,.0f}'.format(inp.EI_kNm2_per_m) }} kNm²/m</td></tr>
+                        <tr><td>EI / (γ<sub>w</sub>·H<sup>4</sup>)</td><td>{{ '%.2f'|format(sm.ei_normalised_raw) }}{% if sm.ei_normalised_used != sm.ei_normalised_raw %} (clamped to {{ '%.2f'|format(sm.ei_normalised_used) }}){% endif %}</td></tr>
+                        <tr class="divider"><td>Average φ'<sub>p</sub> in averaging band</td><td>{{ '%.2f'|format(sm.avg_phi_prime_deg) }}°</td></tr>
+                        <tr><td>dq<sub>c</sub>/dz</td><td>{{ '%.3f'|format(sm.dqc_dz_MN_m3) }} MN/m³</td></tr>
+                        <tr><td>d/H</td><td>{{ '%.5f'|format(sm.d_over_H) }}</td></tr>
+                        <tr class="divider"><td>Maximum settlement, s<sub>max</sub></td><td>{{ '%.0f'|format(sm.smax_mm) }} mm</td></tr>
+                        <tr><td>Settlement at x = H/2</td><td>{{ '%.0f'|format(sm.s_at_x_H_over_2_mm) }} mm</td></tr>
+                    </table>
                 </div>
 
                 <div class="button-group">
@@ -227,10 +225,14 @@
 .scale-controls { display: flex; gap: 0.75rem; align-items: end; flex-wrap: wrap; margin-bottom: 0.5rem; font-size: 0.8rem; color: #5f6368; }
 .scale-controls input { width: 90px; padding: 0.3rem 0.4rem; border: 1px solid #e5e7eb; border-radius: 4px; display: block; }
 .btn-sm { padding: 0.3rem 0.7rem; font-size: 0.8rem; }
+.summary-card { max-width: 720px; margin: 0 auto; }
 .summary-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
 .summary-table td { padding: 0.35rem 0.25rem; border-bottom: 1px solid #f1f3f4; }
 .summary-table td:last-child { text-align: right; font-weight: 600; color: #202124; white-space: nowrap; }
 .summary-table tr.divider td { border-top: 2px solid #e0e0e0; padding-top: 0.5rem; }
+.summary-table tr.headline-row td { background: #e8f0fe; padding: 0.65rem 0.5rem; font-size: 0.95rem; border-bottom: 2px solid #1a73e8; }
+.summary-table tr.headline-row td:first-child { color: #1a73e8; font-weight: 600; }
+.summary-table tr.headline-row td:last-child { color: #1a73e8; font-size: 1.05rem; }
 .button-group { margin-top: 1.5rem; display: flex; gap: 1rem; flex-wrap: wrap; }
 .btn { padding: 0.75rem 1.5rem; border-radius: 6px; font-weight: 500; }
 .btn-primary { background: #1a73e8; color: #fff; border: none; }
