@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+
+{% block title %}Embedded Cantilever Wall Deflection (CPT method) | UWA{% endblock %}
+{% block meta_description %}Predict maximum deflection and settlement profile of an embedded cantilever wall in sand from CPT data. Free tool from The University of Western Australia.{% endblock %}
+{% block meta_keywords %}cantilever wall deflection, embedded wall sand, CPT wall design, UWA cantilever calculator{% endblock %}
+{% block og_title %}Cantilever Wall Deflection — CPT Method | UWA{% endblock %}
+{% block og_description %}Maximum deflection and settlement of cantilever walls in sand from CPT. Free tool from UWA.{% endblock %}
+{% block twitter_title %}Cantilever Wall Deflection — CPT Method | UWA{% endblock %}
+{% block twitter_description %}Cantilever wall response from CPT. Free tool from UWA.{% endblock %}
+
+{% block jsonld %}
+<script type="application/ld+json">
+{
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "UWA Embedded Cantilever Wall Calculator",
+    "url": "https://uwa-geotech-cpt-calculator.com/cantilever/description",
+    "description": "Maximum deflection and settlement profile of embedded cantilever walls in sand from CPT data.",
+    "applicationCategory": "Engineering",
+    "author": {
+        "@type": "Person",
+        "name": "Professor Barry M. Lehane",
+        "jobTitle": "Professor of Geotechnical Engineering",
+        "affiliation": {"@type": "Organization", "name": "The University of Western Australia"},
+        "url": "https://research-repository.uwa.edu.au/en/persons/barry-lehane"
+    }
+}
+</script>
+{% endblock %}
+
+{% block content %}
+<div class="description-container">
+    <div class="description-header">
+        <h1>Deflection of an embedded cantilever wall in sand</h1>
+    </div>
+
+    <div class="description-content">
+        <div class="description-text">
+            <p>This program predicts the maximum lateral deflection of an
+            embedded cantilever sheet-pile wall in sand and the corresponding
+            settlement profile behind it. The wall response is read from a
+            calibrated lookup table indexed by the average peak friction
+            angle, the depth-gradient of qc, the H/L geometry ratio and the
+            normalised wall flexural rigidity EI/(γ<sub>w</sub>·H<sup>4</sup>).</p>
+
+            <p>Soil parameters are derived from CPT data over a depth band
+            of 1.5·H (clamped by the H/L bounds of the calibration). The
+            settlement profile decays exponentially behind the wall with the
+            maximum 0.6·d<sub>max</sub> (H/L > 0.5) or 0.5·d<sub>max</sub>,
+            and 0.135·s<sub>max</sub> at distance H/2 behind the wall.</p>
+
+            <p><strong>Scope and limits:</strong></p>
+            <ul>
+                <li>Sand profiles only — the average I<sub>c</sub> over the
+                    averaging band must be below 2.2.</li>
+                <li>H/L in [0.2, 0.671]; EI/(γ<sub>w</sub>·H<sup>4</sup>) in [5, 4500].</li>
+                <li>Water table at least 2·H below ground.</li>
+                <li>q<sub>c</sub> must increase with depth (dq<sub>c</sub>/dz &gt; 0).</li>
+                <li>CPT data must reach the base of the wall.</li>
+                <li>No load or material factors. Bending stresses in the wall
+                    section are not checked.</li>
+            </ul>
+        </div>
+
+        <div class="description-image">
+            <img src="{{ url_for('static', filename='img/cantilever_wall.jpg') }}"
+                 alt="Cantilever wall schematic"
+                 onerror="this.style.display='none'">
+        </div>
+    </div>
+
+    <div class="button-group">
+        <a href="{{ url_for('main.calculator_step', type='cantilever', step=1) }}" class="btn btn-primary">Continue to Analysis</a>
+        <a href="{{ url_for('main.index') }}" class="btn btn-secondary">Back to Home</a>
+    </div>
+</div>
+
+<style>
+.description-container { max-width: 1100px; margin: 0 auto; padding: 2rem; }
+.description-header { margin-bottom: 2rem; text-align: center; }
+.description-content { display: grid; grid-template-columns: 3fr 2fr; gap: 2rem; align-items: start; margin-bottom: 2rem; }
+.description-text { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+.description-image img { width: 100%; height: auto; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+.button-group { display: flex; justify-content: center; gap: 1rem; }
+.btn { padding: 0.75rem 1.5rem; border-radius: 6px; font-weight: 500; text-decoration: none; }
+.btn-primary { background: #1a73e8; color: white; border: none; }
+.btn-primary:hover { background: #1557b0; }
+.btn-secondary { background: #f1f3f4; color: #3c4043; border: 1px solid #dadce0; }
+.btn-secondary:hover { background: #e8eaed; }
+h1 { color: var(--primary-color); }
+@media (max-width: 768px) { .description-content { grid-template-columns: 1fr; } }
+</style>
+{% endblock %}

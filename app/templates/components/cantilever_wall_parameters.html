@@ -1,0 +1,53 @@
+<div class="parameters-container">
+    <form method="POST" action="{{ url_for('main.calculator_step', type=type, step=3) }}">
+        <div class="form-section">
+            <div class="form-field">
+                <label>Wall Name (optional)</label>
+                <input type="text" name="wall_name" class="form-control" placeholder="e.g., Basement A">
+            </div>
+
+            <div class="form-field">
+                <label>Wall length, L (m)</label>
+                <input type="number" name="wall_length" step="0.01" min="0" class="form-control" required>
+                <span class="help-text">Total embedded depth of the wall, measured from ground level.</span>
+            </div>
+
+            <div class="form-field">
+                <label>Excavation depth, H (m)</label>
+                <input type="number" name="excavation_depth" step="0.01" min="0" class="form-control" required>
+                <span class="help-text">Depth of the excavation. H/L must be between 0.2 and 0.671.</span>
+            </div>
+
+            <div class="form-field">
+                <label>Wall flexural rigidity, EI (kNm²/m)</label>
+                <input type="number" name="EI_kNm2_per_m" step="100" min="0" class="form-control" required>
+                <span class="help-text">Per unit run of wall. EI/(γ<sub>w</sub>·H<sup>4</sup>) must be in [5, 4500].</span>
+            </div>
+
+            <div class="form-field">
+                <label>Water Table Depth (m)</label>
+                <div class="form-control-static">{{ session.get('water_table', 0.0) }}</div>
+                <input type="hidden" name="water_table" value="{{ session.get('water_table', 0.0) }}">
+                <span class="help-text">Set at Step 1. Must be at least 2·H below ground.</span>
+            </div>
+        </div>
+
+        <div class="button-group">
+            <button type="submit" class="btn btn-primary">Continue to Results</button>
+            <a href="{{ url_for('main.calculator_step', type=type, step=2) }}" class="btn btn-secondary">Back to CPT Data</a>
+        </div>
+    </form>
+</div>
+
+<style>
+.parameters-container { max-width: 520px; margin: 0 auto; background: white; border-radius: 8px; padding: 1rem; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+.form-section { display: flex; flex-direction: column; gap: 0.5rem; }
+.form-field { display: flex; flex-direction: column; gap: 0.15rem; }
+.form-field label { font-weight: 500; color: #374151; font-size: 0.85rem; margin-bottom: -0.15rem; }
+.form-control { width: 100%; padding: 0.35rem 0.5rem; border: 1px solid #e5e7eb; border-radius: 4px; font-size: 0.85rem; }
+.form-control-static { padding: 0.35rem 0.5rem; background-color: #f8f9fa; border: 1px solid #e5e7eb; border-radius: 4px; font-size: 0.85rem; color: #6c757d; }
+.help-text { font-size: 0.75rem; color: #6b7280; margin-top: -0.15rem; }
+.button-group { display: flex; gap: 0.5rem; margin-top: 0.75rem; }
+.btn { padding: 0.35rem 1rem; font-size: 0.85rem; }
+@media (max-width: 768px) { .parameters-container { padding: 0.75rem; } }
+</style>

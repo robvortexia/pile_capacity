@@ -29,6 +29,7 @@ import io
 from .helical_calculations import calculate_helical_pile_results
 from .shallow_calculations import calculate_shallow_footing_results
 from .lateral_calculations import calculate_lateral_monopile_results
+from .cantilever_calculations import calculate_cantilever_results
 from .analytics import record_page_visit, store_analytics_data, get_or_create_user_id, get_page_visit_stats, get_analytics_data_stats, record_event, get_recent_users, get_user_details
 
 # Set pandas options for full precision 
@@ -137,7 +138,7 @@ def sitemap_xml():
 @bp.route('/sample/<type>')
 def use_sample_data(type):
     """Load sample CPT data for demo purposes."""
-    if type not in ['driven', 'bored', 'helical', 'shallow', 'lateral']:
+    if type not in ['driven', 'bored', 'helical', 'shallow', 'lateral', 'cantilever']:
         return redirect(url_for('main.index'))
     if type == 'shallow':
         _maybe_grant_shallow_demo()
@@ -405,7 +406,7 @@ def calculator_step(type, step):
         'email': session.get('user_email'),
     })
 
-    if type not in ['driven', 'bored', 'helical', 'shallow', 'lateral']:
+    if type not in ['driven', 'bored', 'helical', 'shallow', 'lateral', 'cantilever']:
         return redirect(url_for('main.index'))
 
     # Shallow foundations is a private demo: gate to authorised people only.
@@ -877,6 +878,63 @@ def calculator_step(type, step):
                     return redirect(url_for('main.calculator_step', type=type, step=4))
                 except Exception as e:
                     logger.error(f"Error in shallow footing calculation: {str(e)}")
+                    flash(f'Error in calculation: {str(e)}')
+                    return redirect(url_for('main.calculator_step', type=type, step=3))
+            elif type == 'cantilever':
+                # Embedded cantilever wall in sand.
+                def _optc(name, default):
+                    val = request.form.get(name, '')
+                    try:
+                        return float(val) if val not in (None, '') else default
+                    except (TypeError, ValueError):
+                        return default
+
+                wall_params = {
+                    'water_table': float(session.get('water_table', 0)),
+                    'wall_length': _optc('wall_length', None),
+                    'excavation_depth': _optc('excavation_depth', None),
+                    'EI_kNm2_per_m': _optc('EI_kNm2_per_m', None),
+                    'wall_name': request.form.get('wall_name', ''),
+                }
+                errors = []
+                if not wall_params['wall_length'] or wall_params['wall_length'] <= 0:
+                    errors.append('Wall length must be greater than 0')
+                if not wall_params['excavation_depth'] or wall_params['excavation_depth'] <= 0:
+                    errors.append('Excavation depth must be greater than 0')
+                if not wall_params['EI_kNm2_per_m'] or wall_params['EI_kNm2_per_m'] <= 0:
+                    errors.append('Wall flexural rigidity EI must be greater than 0')
+                if errors:
+                    for error in errors:
+                        flash(error)
+                    return redirect(url_for('main.calculator_step', type=type, step=3))
+
+                session['pile_params'] = wall_params
+                record_event('calculation', 'cantilever_params', {
+                    k: wall_params[k] for k in ('wall_length', 'excavation_depth', 'EI_kNm2_per_m')
+                })
+                if 'cpt_data_id' not in session:
+                    flash('No CPT data available. Please upload data first.')
+                    return redirect(url_for('main.calculator_step', type=type, step=1))
+                cpt_data = load_cpt_data(session['cpt_data_id'])
+                if not cpt_data:
+                    flash('CPT data not found. Please upload data again.')
+                    return redirect(url_for('main.calculator_step', type=type, step=1))
+
+                processed_cpt = pre_input_calc(cpt_data, float(session.get('water_table', 0)))
+                try:
+                    results = calculate_cantilever_results(processed_cpt, wall_params)
+                    session['results'] = results
+                    if results.get('aborted'):
+                        store_analytics_data('calculation_results', 'cantilever_aborted',
+                                             results.get('checks'))
+                    else:
+                        store_analytics_data('calculation_results', 'cantilever_summary',
+                                             results.get('summary'))
+                    logger.info("Cantilever wall calculation complete (aborted=%s)",
+                                results.get('aborted'))
+                    return redirect(url_for('main.calculator_step', type=type, step=4))
+                except Exception as e:
+                    logger.error(f"Error in cantilever wall calculation: {str(e)}")
                     flash(f'Error in calculation: {str(e)}')
                     return redirect(url_for('main.calculator_step', type=type, step=3))
             elif type == 'lateral':
@@ -2312,7 +2370,7 @@ def export_registrations():
 
 @bp.route('/<type>/description')
 def pile_description(type):
-    if type not in ['driven', 'bored', 'helical', 'shallow', 'lateral']:
+    if type not in ['driven', 'bored', 'helical', 'shallow', 'lateral', 'cantilever']:
         return redirect(url_for('main.index'))
     if type == 'shallow':
         _maybe_grant_shallow_demo()
