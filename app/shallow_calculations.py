@@ -1,28 +1,73 @@
 """
-Shallow foundations (Step 4) - load-settlement of footings on sand and clay
-from CPT data, following the UWA/Lehane method captured in the workbook
-"Footing-settlement-forcoding.xlsx".
+Shallow foundations (Step 4) — load-settlement of footings on sand, sandy
+silt, silt / clayey silt, and clay from CPT data.
 
-Step 1-3 are shared with the pile modules. This module consumes the step-3
-output (``processed_cpt`` from ``pre_input_calc``) plus footing geometry and
-returns the bearing-pressure vs settlement curve(s) and a summary box.
+Follows the rev1 spec captured in ``Footing-settlement-forcoding-rev1.xlsx``
+(Barry Lehane, 28-May-2026). The settlement app is now applicable across
+the full SBT range. Key changes from the previous revision:
 
-Methodology verified to machine precision against every computed cell in the
-workbook for both the sand sample (From pileapp-1) and clay sample
-(From pileapp-2): all summary cells, the per-row post-excavation qc, and the
-full settlement curves agree to ~1e-13 or better.
+* Four Ic bands replace the previous three:
+    - Ic <= 2.05          -> sand (workbook sand formulation)
+    - 2.05 < Ic < 2.35    -> sandy silt (sand formulation with Kc on qc,avg)
+    - 2.35 <= Ic < 2.60   -> silt or clayey silt (modified clay)
+    - Ic >= 2.60          -> clay (workbook clay formulation)
+* Sand-form C8: Kc = 3.93*Ic^2 - 14.78*Ic + 14.78 (clamped to 1 for Ic<=2.05),
+  applied to the zone-averaged qc.
+* Clay-form A factors gain two Ic-dependent multipliers:
+    CF1 = 3.93*Ic^2 - 14.78*Ic + 14.78
+    CF2 = 1 + 1.18*(Ic - 2.05)
+    A_immediate = (0.46 if OCR < 3 else 0.58) * CF1 * CF2
+    A_longterm  = (0.30 if OCR < 3 else 0.41) * CF1 * CF2
+* BC-calc sand: average phi' is reduced by 20*(Ic - 2.05) degrees when
+  2.05 < Ic <= 2.35 (the Kp used in the qc-after-excavation column still
+  uses the unreduced phi', per the workbook).
+* BC-calc clay: su correction = 0.66 (OCR <= 3) or 1 (OCR > 3).
 
-Excel cell references are given in comments for traceability:
-  Intro+sand-calc  -> sand branch
-  Clay-calc        -> clay branch
-  Sand-output / Clay-output -> the plotted curves
-  BC-calc          -> traditional bearing-capacity box
+Excel cell references are kept inline for traceability:
+  Intro+sand-calc -> sand branch and Ic decision
+  Clay-calc       -> clay branch
+  Sand-form       -> sand load-settlement curve
+  Clay-form       -> clay load-settlement curves
+  BC-calc         -> traditional bearing-capacity comparison
 """
 import math
 
-# Soil-behaviour-type Ic thresholds for the founding material (workbook B6).
-IC_SAND_MAX = 2.25     # below -> sand/silty sand
-IC_CLAY_MIN = 2.59     # at or above -> clay; between the two -> silt (ask user)
+# Ic band boundaries (workbook B6).
+IC_SAND_MAX = 2.05         # <= this  -> sand
+IC_SANDY_SILT_MAX = 2.35   # <= this  -> sandy silt (modified sand)
+IC_CLAY_MIN = 2.60         # >= this  -> clay; (2.35..2.60) is silt/clayey silt
+
+
+# ---------------------------------------------------------------------------
+# Ic-dependent correction factors
+# ---------------------------------------------------------------------------
+def _kc_silt_correction(ic_avg):
+    """Sand-form C8 silt correction factor on qc,avg.
+
+    Ic <= 2.05         -> Kc = 1 (clean sand)
+    2.05 < Ic <= 2.35  -> Kc = 3.93*Ic^2 - 14.78*Ic + 14.78 (~1 at 2.05, ~1.75 at 2.35)
+    """
+    if ic_avg <= IC_SAND_MAX:
+        return 1.0
+    return 3.93 * ic_avg ** 2 - 14.78 * ic_avg + 14.78
+
+
+def _cf_clay(ic_avg):
+    """Clay-form G8 (CF1) and G9 (CF2). Applied for all Ic > 2.35."""
+    cf1 = 3.93 * ic_avg ** 2 - 14.78 * ic_avg + 14.78
+    cf2 = 1 + 1.18 * (ic_avg - IC_SAND_MAX)
+    return cf1, cf2
+
+
+def _phi_reduction_for_silt(ic_avg):
+    """BC-calc J3: phi reduction for sandy silt (degrees).
+
+    Ic <= 2.05         -> 0 (no reduction; clean sand)
+    2.05 < Ic <= 2.35  -> 20 * (Ic - 2.05)
+    """
+    if ic_avg <= IC_SAND_MAX:
+        return 0.0
+    return 20.0 * (ic_avg - IC_SAND_MAX)
 
 
 # ---------------------------------------------------------------------------
@@ -31,9 +76,9 @@ IC_CLAY_MIN = 2.59     # at or above -> clay; between the two -> silt (ask user)
 def _zone_indices(depth, dex, founding_depth, zone_base_below_exc):
     """Rows of the zone of influence, footing base down to base of influence.
 
-    Mirrors the workbook's MATCH(value, depth-below-excavation, 1): the largest
-    row whose depth-below-excavation is <= the threshold, inclusive both ends.
-    Depths here are below ORIGINAL ground level, so we add ``dex``.
+    Mirrors the workbook's MATCH(value, depth-below-excavation, 1): the
+    largest row whose depth-below-excavation is <= the threshold, inclusive
+    both ends. Depths here are below ORIGINAL ground level, so we add dex.
     """
     foot_orig = dex + founding_depth
     zone_orig = dex + zone_base_below_exc
@@ -72,9 +117,9 @@ def _downsample(idx_lists, max_points=400):
 def _representative_unit_weight(processed_cpt, params, foot_idx):
     """Single unit weight for the post-excavation stress recompute.
 
-    Per Barry's spec, the program uses the FIRST unit weight entered in the
-    CSV (workbook D24 = pileapp!E2). Honours an explicit override if provided.
-    A future upgrade may switch to per-layer integration.
+    Per Barry's spec the program uses the FIRST unit weight entered in the
+    CSV (workbook D24 = pileapp!E2). An explicit override is honoured if
+    provided.
     """
     if params.get('unit_weight') not in (None, '', 0):
         return float(params['unit_weight'])
@@ -82,10 +127,38 @@ def _representative_unit_weight(processed_cpt, params, foot_idx):
     return float(gtot[0]) if gtot else 0.0
 
 
+def _classify(avg_ic):
+    """Return (classification_slug, branch, message) for the four-band model."""
+    if avg_ic <= IC_SAND_MAX:
+        return (
+            'sand', 'sand',
+            'The material in the zone of influence of the footing is assessed '
+            'to be a sand and the analysis will use the sand formulation.'
+        )
+    if avg_ic < IC_SANDY_SILT_MAX:
+        return (
+            'sandy_silt', 'sand',
+            'The material in the zone of influence beneath the footing is '
+            'assessed to be a sandy silt and the analysis will use a modified '
+            'form of the sand formulation.'
+        )
+    if avg_ic < IC_CLAY_MIN:
+        return (
+            'silt_clayey_silt', 'clay',
+            'The material in the zone of influence is assessed to be silt or '
+            'clayey silt and a modified form of clay formulations will be used.'
+        )
+    return (
+        'clay', 'clay',
+        'The material in the zone of influence of the footing is assessed to '
+        'be a clay and the analysis will use the clay formulation.'
+    )
+
+
 # ---------------------------------------------------------------------------
-# sand branch  (Intro+sand-calc + Sand-output + BC-calc)
+# sand branch  (Intro+sand-calc + Sand-form + BC-calc)
 # ---------------------------------------------------------------------------
-def _sand_branch(pc, p, gamma_const):
+def _sand_branch(pc, p, gamma_const, ic_avg):
     depth = pc['depth']
     n = len(depth)
     B, L = p['B'], p['L']
@@ -104,11 +177,11 @@ def _sand_branch(pc, p, gamma_const):
         k_pre = (svp + 2 * K0 * svp) / 3.0                   # K col mean stress
         m = (1 / 2.93) * math.log((ageing * pc['qt'][i] * 1000) / (205 * k_pre ** 0.5))
         dr_clamped[i] = min(max(m, 0.1), 0.99)
-        fp[i] = 32 + 3 * (5 * m - 1)                         # = 29 + 15*Dr
+        fp[i] = 32 + 3 * (4.7 * m - 1)                       # AC col (workbook uses 4.7*Dr)
         svy[i] = OCR0 * svp
 
     fp_avg = sum(fp[foot_idx:zone_idx + 1]) / (zone_idx - foot_idx + 1)   # AC34
-    kp = (1 + math.sin(math.radians(fp_avg))) / (1 - math.sin(math.radians(fp_avg)))  # AC37
+    kp = (1 + math.sin(math.radians(fp_avg))) / (1 - math.sin(math.radians(fp_avg)))  # AC37 — uses raw fp_avg
 
     qc_post = [0.0] * n      # W col: qc after excavation unloading
     for i in range(n):
@@ -123,17 +196,19 @@ def _sand_branch(pc, p, gamma_const):
         qc_post[i] = min(qc_from_dr, pc['qt'][i])
 
     span = range(foot_idx, zone_idx + 1)
-    qc_avg = sum(qc_post[i] for i in span) / (zone_idx - foot_idx + 1)    # AC31 (MPa)
-    ic_avg = sum(pc['lc'][i] for i in span) / (zone_idx - foot_idx + 1)   # AC36
+    cnt = zone_idx - foot_idx + 1
+    qc_avg_raw = sum(qc_post[i] for i in span) / cnt                      # AC31 (MPa)
+    kc = _kc_silt_correction(ic_avg)                                       # Sand-form C8
+    qc_avg = kc * qc_avg_raw                                              # Sand-form C20
     svy_foot = svy[foot_idx]                                              # AC33
-    qb01 = 1000 * 0.16 * qc_avg                                          # AC32 (kPa)
+    qb01 = 1000 * 0.16 * qc_avg                                           # Sand-form C21
 
-    # ---- settlement curve (Sand-output) ----
-    t_init = float(p.get('t_initial_days', 0.05))           # C8
-    t_final = 365.0 * p['design_life_years']                # C9
-    x = 3 + 70 * creep * math.log10(t_final / t_init)       # C23 time factor
-    trans_sb = (svy_foot / (1000 * qc_avg)) ** 2 * x        # C24
-    s_ocr_mm = 0.666 * trans_sb * 1000 * beq                # C25 settlement offset
+    # ---- settlement curve (Sand-form N..Q) ----
+    t_init = float(p.get('t_initial_days', 0.05))           # Sand-form C9
+    t_final = 365.0 * p['design_life_years']                # Sand-form C10
+    x = 3 + 70 * creep * math.log10(t_final / t_init)       # Sand-form C24 time factor
+    trans_sb = (svy_foot / (1000 * qc_avg)) ** 2 * x        # Sand-form C25
+    s_ocr_mm = 0.666 * trans_sb * 1000 * beq                # Sand-form C26 settlement offset
 
     series = []
     for sb in _geometric_sb(beq=beq):
@@ -144,16 +219,22 @@ def _sand_branch(pc, p, gamma_const):
     if not series or series[0][0] > 0:
         series.insert(0, [0.0, 0.0])
 
-    bc = _traditional_bc_sand(pc, p, gamma_const, fp_avg, foot_idx)
+    phi_red = _phi_reduction_for_silt(ic_avg)               # BC-calc J3
+    fp_bc = fp_avg - phi_red                                # BC-calc J4
+    bc = _traditional_bc_sand(pc, p, gamma_const, fp_bc, foot_idx)
 
     qd, qb, qa = _downsample([list(depth), list(pc['qt']), qc_post])
 
     return {
         'summary': {
             'qc_avg_mpa': qc_avg,
+            'qc_avg_raw_mpa': qc_avg_raw,
+            'kc_silt_correction': kc,
             'qb01_kpa': qb01,
             'svy_footing_kpa': svy_foot,
             'avg_friction_angle_deg': fp_avg,
+            'phi_reduction_deg': phi_red,
+            'phi_used_in_bc_deg': fp_bc,
             'avg_ic': ic_avg,
             'kp': kp,
             'time_factor_x': x,
@@ -177,36 +258,46 @@ def _sand_branch(pc, p, gamma_const):
     }
 
 
-def _traditional_bc_sand(pc, p, gamma_const, fp_avg, foot_idx):
-    """BC-calc sand: Vesic Nq/Ng with shape & depth factors.
+def _traditional_bc_sand(pc, p, gamma_const, fp_used_deg, foot_idx):
+    """BC-calc sand: net Vesic Nq / Ng with shape and depth factors (C24).
 
+    ``fp_used_deg`` is already reduced for sandy silt per BC-calc J4.
     Surcharge uses the post-excavation effective vertical stress at the
-    footing row (R column in the workbook): gamma * D - u0_at_footing.
-    Unit weight for the N_gamma term is the profile value (workbook C16
-    fix per Barry: 'the value should be the unit weight specified in the
-    CPT data').
+    matched footing-base row (R column = gamma*(z-dex) - u0), so it lines up
+    with intro AC32 to numerical precision rather than relying on the nominal
+    founding depth D. The workbook subtracts C15 (= sigma'v0 at footing) at
+    the end to give a NET capacity.
+
+    Note: the rev1 workbook BC-calc C16 references 'From pileapp-2'!E2 for the
+    sand unit weight, which is a wiring bug — the sand sample's gamma should
+    come from pileapp-1. We use the analysed sample's own gamma here, so the
+    BC sand number can differ from the workbook's printed C24 for the sand
+    test case while still using the same formula structure.
     """
     B, L, D = p['B'], p['L'], p['founding_depth']
-    phi = math.radians(fp_avg)
+    phi = math.radians(fp_used_deg)
     b_over_l, d_over_b = B / L, D / B
-    sq = 1 + b_over_l * math.tan(phi)
-    sg = 1 - 0.2 * b_over_l
-    dq = (1 + 2 * math.tan(phi) * (1 - math.sin(phi)) ** 2 *
+    sq = 1 + b_over_l * math.tan(phi)                         # C10
+    sg = 1 - 0.2 * b_over_l                                   # C18
+    dq = (1 + 2 * math.tan(phi) * (1 - math.sin(phi)) ** 2 *  # C14
           (d_over_b if d_over_b < 1 else math.atan(d_over_b)))
-    nq = math.exp(math.pi * math.tan(phi)) * math.tan(math.pi / 4 + phi / 2) ** 2
-    ng = 2 * (nq + 1) * math.tan(phi)
-    # effective surcharge at founding level after excavation (R col @ foot)
+    nq = math.exp(math.pi * math.tan(phi)) * math.tan(math.pi / 4 + phi / 2) ** 2  # C20
+    ng = 2 * (nq + 1) * math.tan(phi)                         # C21
+    # Surcharge at founding level after excavation (R col @ matched row).
+    z_foot = pc['depth'][foot_idx] if foot_idx is not None else (p['dex'] + D)
     u0_foot = pc['u0_kpa'][foot_idx] if foot_idx is not None else 0.0
-    sigv0_base = max(gamma_const * D - u0_foot, 0.0)
-    dw1 = p['water_table'] - p['dex'] - D                   # water depth below footing
-    gamma_eff = gamma_const if dw1 > B else gamma_const - 10
-    return sq * dq * nq * sigv0_base + 0.5 * ng * gamma_eff * B * sg * 1.0
+    sigv0_base = max(gamma_const * (z_foot - p['dex']) - u0_foot, 0.0)  # C15 = AC32
+    dw1 = p['water_table'] - p['dex'] - D                     # water depth below footing
+    gamma_eff = gamma_const if dw1 > B else gamma_const - 10  # C17 (buoyant if WT within B)
+    return (sq * dq * nq * sigv0_base                         # term1: Nq*sigv0 etc.
+            + 0.5 * ng * gamma_eff * B * sg * 1.0             # term2: Ng*gamma'*B/2
+            - sigv0_base)                                     # NET (workbook -C15)
 
 
 # ---------------------------------------------------------------------------
-# clay branch  (Clay-calc + Clay-output + BC-calc)
+# clay branch  (Clay-calc + Clay-form + BC-calc)
 # ---------------------------------------------------------------------------
-def _clay_branch(pc, p, gamma_const):
+def _clay_branch(pc, p, gamma_const, ic_avg):
     depth = pc['depth']
     n = len(depth)
     B, L = p['B'], p['L']
@@ -234,8 +325,14 @@ def _clay_branch(pc, p, gamma_const):
     qf = 0.45 * qt_net                                       # AC34
     ocr_avg = sum(ocr[i] for i in span) / cnt                # AC35
     svy_foot = svy[foot_idx]                                 # AC32
-    a_imm = 2.8 if ocr_avg >= 3 else 2.2                     # G4
-    a_lt = 2.0 if ocr_avg >= 3 else 1.4                      # G5
+
+    # Clay-form A factors. C1, C2 are OCR-dependent base coefficients;
+    # CF1, CF2 are Ic-dependent multipliers (apply for all Ic > 2.35).
+    c1 = 0.58 if ocr_avg >= 3 else 0.46                      # G10
+    c2 = 0.41 if ocr_avg >= 3 else 0.30                      # G11
+    cf1, cf2 = _cf_clay(ic_avg)                              # G8, G9
+    a_imm = c1 * cf1 * cf2                                   # G4
+    a_lt = c2 * cf1 * cf2                                    # G5
 
     cap = 0.42 * qt_net
     imm, lt = [], []
@@ -251,7 +348,10 @@ def _clay_branch(pc, p, gamma_const):
             'qt_net_kpa': qt_net,
             'avg_su_kpa': su_avg,
             'avg_ocr': ocr_avg,
+            'avg_ic': ic_avg,
             'svy_footing_kpa': svy_foot,
+            'cf1': cf1, 'cf2': cf2,
+            'c1_base': c1, 'c2_base': c2,
             'a_immediate': a_imm,
             'a_longterm': a_lt,
             'bearing_capacity_cpt_kpa': qf,
@@ -273,7 +373,10 @@ def _clay_branch(pc, p, gamma_const):
 
 
 def _traditional_bc_clay(p, su_avg, ocr_avg):
-    """BC-calc clay: qnet = 5.14 * sc * dc * correction * su (matches workbook)."""
+    """BC-calc clay: qnet = 5.14 * sc * dc * correction * su.
+
+    correction is 1 for OCR > 3 and 0.66 otherwise (BC-calc C28).
+    """
     B, L, D = p['B'], p['L'], p['founding_depth']
     sc = 1 + (B / L) * 0.2
     dc = 1 + 0.4 * (D / B)
@@ -305,7 +408,7 @@ def _read_params(params):
 
 
 def calculate_shallow_footing_results(processed_cpt, params):
-    """Step 4 for shallow foundations.
+    """Step 4 for shallow foundations (rev1 — four Ic bands).
 
     Args:
         processed_cpt: dict from ``pre_input_calc`` (per-depth arrays incl.
@@ -314,7 +417,7 @@ def calculate_shallow_footing_results(processed_cpt, params):
 
     Returns:
         dict with ``soil_decision``, ``warnings``, ``summary``, ``curve`` and,
-        for sand, ``qc_before_after``.
+        for the sand branch, ``qc_before_after``.
     """
     print(f"Params received in calculate_shallow_footing_results: {params}")
     p = _read_params(params)
@@ -325,7 +428,10 @@ def calculate_shallow_footing_results(processed_cpt, params):
     B, dex, D = p['B'], p['dex'], p['founding_depth']
     warnings = []
 
-    # ---- soil decision: average Ic over the (sand) zone of influence ----
+    # ---- soil decision: average Ic over the sand zone of influence ----
+    # Per the workbook, Ic for classification is averaged over the SAND zone
+    # (D + B^0.7) below the footing. The clay branch then re-zones to D + 0.5B
+    # for its own averages.
     sand_zone_base = D + B ** 0.7
     foot_idx, zone_idx = _zone_indices(depth, dex, D, sand_zone_base)
     if foot_idx is None:
@@ -336,30 +442,20 @@ def calculate_shallow_footing_results(processed_cpt, params):
                         'influence averaging is truncated.')
 
     avg_ic = sum(processed_cpt['lc'][foot_idx:zone_idx + 1]) / (zone_idx - foot_idx + 1)
+    classification, default_branch, message = _classify(avg_ic)
 
-    if avg_ic < IC_SAND_MAX:
-        classification, default_model, message = (
-            'sand', 'sand',
-            'The material in the zone of influence of the footing is a sand or silty sand.')
-    elif avg_ic < IC_CLAY_MIN:
-        classification, default_model, message = (
-            'silt', 'sand',
-            'The material in the zone of influence beneath the footing is silt. '
-            'Continue the analysis assuming the sand formulation?')
+    # Advanced override: user can still force 'sand' or 'clay' regardless of Ic.
+    forced = p['force_soil_model']
+    if forced in ('sand', 'clay'):
+        branch = forced
     else:
-        classification, default_model, message = (
-            'clay', 'clay',
-            'The material in the zone of influence is clay; the clay formulation will be used.')
+        branch = default_branch
 
-    soil_model = p['force_soil_model'] or default_model
-    if soil_model not in ('sand', 'clay'):
-        soil_model = default_model
-
-    # ---- warnings (workbook B9/B10) ----
+    # ---- warnings (workbook B9 / B10) ----
     dw1 = p['water_table'] - dex - D
     if dw1 < 1:
         warnings.append('Warning: water level is above footing level.')
-    zone_base_below_exc = (D + B ** 0.7) if soil_model == 'sand' else (D + 0.5 * B)
+    zone_base_below_exc = (D + B ** 0.7) if branch == 'sand' else (D + 0.5 * B)
     dt = dex + zone_base_below_exc
     if max(depth) < dt:
         warnings.append('The CPT data do not extend as far as the base of the '
@@ -367,16 +463,16 @@ def calculate_shallow_footing_results(processed_cpt, params):
 
     gamma_const = _representative_unit_weight(processed_cpt, p, foot_idx)
 
-    if soil_model == 'sand':
-        result = _sand_branch(processed_cpt, p, gamma_const)
+    if branch == 'sand':
+        result = _sand_branch(processed_cpt, p, gamma_const, avg_ic)
     else:
-        result = _clay_branch(processed_cpt, p, gamma_const)
+        result = _clay_branch(processed_cpt, p, gamma_const, avg_ic)
 
     result['soil_decision'] = {
         'avg_ic': avg_ic,
         'classification': classification,
-        'soil_model_used': soil_model,
-        'requires_user_confirmation': classification == 'silt' and not p['force_soil_model'],
+        'soil_model_used': branch,
+        'requires_user_confirmation': False,
         'message': message,
     }
     result['warnings'] = warnings
