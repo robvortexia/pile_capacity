@@ -28,6 +28,7 @@ import logging
 import io
 from .helical_calculations import calculate_helical_pile_results
 from .shallow_calculations import calculate_shallow_footing_results
+from .lateral_calculations import calculate_lateral_monopile_results
 from .analytics import record_page_visit, store_analytics_data, get_or_create_user_id, get_page_visit_stats, get_analytics_data_stats, record_event, get_recent_users, get_user_details
 
 # Set pandas options for full precision 
@@ -136,7 +137,7 @@ def sitemap_xml():
 @bp.route('/sample/<type>')
 def use_sample_data(type):
     """Load sample CPT data for demo purposes."""
-    if type not in ['driven', 'bored', 'helical', 'shallow']:
+    if type not in ['driven', 'bored', 'helical', 'shallow', 'lateral']:
         return redirect(url_for('main.index'))
     if type == 'shallow':
         _maybe_grant_shallow_demo()
@@ -404,7 +405,7 @@ def calculator_step(type, step):
         'email': session.get('user_email'),
     })
 
-    if type not in ['driven', 'bored', 'helical', 'shallow']:
+    if type not in ['driven', 'bored', 'helical', 'shallow', 'lateral']:
         return redirect(url_for('main.index'))
 
     # Shallow foundations is a private demo: gate to authorised people only.
@@ -876,6 +877,77 @@ def calculator_step(type, step):
                     return redirect(url_for('main.calculator_step', type=type, step=4))
                 except Exception as e:
                     logger.error(f"Error in shallow footing calculation: {str(e)}")
+                    flash(f'Error in calculation: {str(e)}')
+                    return redirect(url_for('main.calculator_step', type=type, step=3))
+            elif type == 'lateral':
+                # Laterally loaded monopiles in sand.
+                def _opt(name, default):
+                    val = request.form.get(name, '')
+                    try:
+                        return float(val) if val not in (None, '') else default
+                    except (TypeError, ValueError):
+                        return default
+
+                lateral_params = {
+                    'water_table': float(session.get('water_table', 0)),
+                    'gamma_above': _opt('gamma_above', 17.1),
+                    'gamma_below': _opt('gamma_below', 19.9),
+                    'diameter': _opt('diameter', None),
+                    'embedded_length': _opt('embedded_length', None),
+                    'pile_type': request.form.get('pile_type', 'Pipe'),
+                    'wall_thickness_mm': _opt('wall_thickness_mm', 10),
+                    'load_height_above_ground': _opt('load_height_above_ground', 0),
+                    'youngs_modulus_GPa': _opt('youngs_modulus_GPa', 210),
+                    'hult_coefficient': _opt('hult_coefficient', 0.3),
+                    'hult_exp_qc': _opt('hult_exp_qc', 0.7),
+                    'hult_exp_sigv': _opt('hult_exp_sigv', 0.1),
+                    'pile_name': request.form.get('pile_name', ''),
+                    'force_g0_profile': request.form.get('force_g0_profile') or None,
+                }
+
+                errors = []
+                if not lateral_params['diameter'] or lateral_params['diameter'] <= 0:
+                    errors.append('Pile diameter must be greater than 0')
+                if not lateral_params['embedded_length'] or lateral_params['embedded_length'] <= 0:
+                    errors.append('Embedded length must be greater than 0')
+                if lateral_params['load_height_above_ground'] is None or lateral_params['load_height_above_ground'] < 0:
+                    errors.append('Load height above ground cannot be negative')
+                if errors:
+                    for error in errors:
+                        flash(error)
+                    return redirect(url_for('main.calculator_step', type=type, step=3))
+
+                session['pile_params'] = lateral_params
+                record_event('calculation', 'lateral_params', {
+                    k: lateral_params[k] for k in
+                    ('diameter', 'embedded_length', 'pile_type',
+                     'load_height_above_ground', 'youngs_modulus_GPa')
+                })
+
+                if 'cpt_data_id' not in session:
+                    flash('No CPT data available. Please upload data first.')
+                    return redirect(url_for('main.calculator_step', type=type, step=1))
+                cpt_data = load_cpt_data(session['cpt_data_id'])
+                if not cpt_data:
+                    flash('CPT data not found. Please upload data again.')
+                    return redirect(url_for('main.calculator_step', type=type, step=1))
+
+                processed_cpt = pre_input_calc(cpt_data, float(session.get('water_table', 0)))
+                try:
+                    results = calculate_lateral_monopile_results(processed_cpt, lateral_params)
+                    session['results'] = results
+                    if results.get('aborted'):
+                        # Show the abort/warning page directly at step 4
+                        store_analytics_data('calculation_results', 'lateral_aborted',
+                                             results.get('checks'))
+                    else:
+                        store_analytics_data('calculation_results', 'lateral_summary',
+                                             results.get('summary'))
+                    logger.info("Lateral monopile calculation complete (aborted=%s)",
+                                results.get('aborted'))
+                    return redirect(url_for('main.calculator_step', type=type, step=4))
+                except Exception as e:
+                    logger.error(f"Error in lateral monopile calculation: {str(e)}")
                     flash(f'Error in calculation: {str(e)}')
                     return redirect(url_for('main.calculator_step', type=type, step=3))
             elif type == 'driven':
@@ -2240,7 +2312,7 @@ def export_registrations():
 
 @bp.route('/<type>/description')
 def pile_description(type):
-    if type not in ['driven', 'bored', 'helical', 'shallow']:
+    if type not in ['driven', 'bored', 'helical', 'shallow', 'lateral']:
         return redirect(url_for('main.index'))
     if type == 'shallow':
         _maybe_grant_shallow_demo()

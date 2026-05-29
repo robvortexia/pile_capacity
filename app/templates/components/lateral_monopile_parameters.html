@@ -1,0 +1,110 @@
+<div class="parameters-container">
+    <form method="POST" action="{{ url_for('main.calculator_step', type=type, step=3) }}">
+        <div class="form-section">
+            <div class="form-field">
+                <label>Pile Name (optional)</label>
+                <input type="text" name="pile_name" class="form-control" placeholder="e.g., UWA Trial">
+            </div>
+
+            <div class="form-field">
+                <label>Diameter, D (m)</label>
+                <input type="number" name="diameter" step="0.001" min="0" class="form-control" required>
+            </div>
+
+            <div class="form-field">
+                <label>Embedded length, L (m)</label>
+                <input type="number" name="embedded_length" step="0.01" min="0" class="form-control" required>
+                <span class="help-text">L/D must be below 5 for the rigid-monopile formulation.</span>
+            </div>
+
+            <div class="form-field">
+                <label>Pile Type</label>
+                <select name="pile_type" class="form-control" onchange="document.getElementById('wt_row').style.display = this.value==='Pipe' ? 'flex':'none'">
+                    <option value="Pipe" selected>Pipe</option>
+                    <option value="Solid">Solid</option>
+                </select>
+            </div>
+
+            <div class="form-field" id="wt_row">
+                <label>Wall thickness, t (mm)</label>
+                <input type="number" name="wall_thickness_mm" step="0.1" min="0" value="10" class="form-control">
+            </div>
+
+            <div class="form-field">
+                <label>Height of lateral load above ground, h (m)</label>
+                <input type="number" name="load_height_above_ground" step="0.01" min="0" value="0" class="form-control">
+            </div>
+
+            <div class="form-field">
+                <label>Young's modulus of pile material, E (GPa)</label>
+                <input type="number" name="youngs_modulus_GPa" step="1" min="0" value="210" class="form-control">
+                <span class="help-text">Default 210 GPa (steel).</span>
+            </div>
+
+            <div class="form-field">
+                <label>Sand unit weight above water table, γ (kN/m³)</label>
+                <input type="number" name="gamma_above" step="0.1" min="0" value="17.1" class="form-control">
+            </div>
+
+            <div class="form-field">
+                <label>Sand unit weight below water table, γ (kN/m³)</label>
+                <input type="number" name="gamma_below" step="0.1" min="0" value="19.9" class="form-control">
+            </div>
+
+            <div class="form-field">
+                <label>Water table depth (m)</label>
+                <div class="form-control-static">{{ session.get('water_table', 0.0) }}</div>
+                <input type="hidden" name="water_table" value="{{ session.get('water_table', 0.0) }}">
+                <span class="help-text">Set at Step 1.</span>
+            </div>
+        </div>
+
+        <details class="advanced">
+            <summary>Advanced (G0 profile override and H<sub>u</sub> coefficients)</summary>
+            <div class="form-section">
+                <div class="form-field">
+                    <label>G<sub>0</sub> profile override</label>
+                    <select name="force_g0_profile" class="form-control">
+                        <option value="">Auto (pick the best fit by CoV)</option>
+                        <option value="Linear">Force Linear (G<sub>0</sub> = a·z)</option>
+                        <option value="Power of 0.5">Force Power of 0.5 (G<sub>0</sub> = a·z<sup>0.5</sup>)</option>
+                        <option value="Homogeneous">Force Homogeneous (G<sub>0</sub> = const)</option>
+                    </select>
+                </div>
+                <div class="form-field">
+                    <label>H<sub>u</sub> coefficient (default 0.3)</label>
+                    <input type="number" name="hult_coefficient" step="0.01" min="0" value="0.3" class="form-control">
+                </div>
+                <div class="form-field">
+                    <label>H<sub>u</sub> exponent of q<sub>c</sub> (default 0.7)</label>
+                    <input type="number" name="hult_exp_qc" step="0.01" min="0" value="0.7" class="form-control">
+                </div>
+                <div class="form-field">
+                    <label>H<sub>u</sub> exponent of σ'<sub>v0</sub> (default 0.1)</label>
+                    <input type="number" name="hult_exp_sigv" step="0.01" min="0" value="0.1" class="form-control">
+                </div>
+            </div>
+        </details>
+
+        <div class="button-group">
+            <button type="submit" class="btn btn-primary">Continue to Results</button>
+            <a href="{{ url_for('main.calculator_step', type=type, step=2) }}" class="btn btn-secondary">Back to CPT Data</a>
+        </div>
+    </form>
+</div>
+
+<style>
+.parameters-container { max-width: 520px; margin: 0 auto; background: white; border-radius: 8px; padding: 1rem; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+.form-section { display: flex; flex-direction: column; gap: 0.5rem; }
+.form-field { display: flex; flex-direction: column; gap: 0.15rem; }
+.form-field label { font-weight: 500; color: #374151; font-size: 0.85rem; margin-bottom: -0.15rem; }
+.form-control { width: 100%; padding: 0.35rem 0.5rem; border: 1px solid #e5e7eb; border-radius: 4px; font-size: 0.85rem; }
+.form-control-static { padding: 0.35rem 0.5rem; background-color: #f8f9fa; border: 1px solid #e5e7eb; border-radius: 4px; font-size: 0.85rem; color: #6c757d; }
+.help-text { font-size: 0.75rem; color: #6b7280; margin-top: -0.15rem; }
+.advanced { margin-top: 0.75rem; border: 1px solid #e5e7eb; border-radius: 4px; padding: 0.5rem 0.75rem; }
+.advanced > summary { cursor: pointer; font-size: 0.85rem; font-weight: 500; color: #374151; }
+.advanced .form-section { margin-top: 0.5rem; }
+.button-group { display: flex; gap: 0.5rem; margin-top: 0.75rem; }
+.btn { padding: 0.35rem 1rem; font-size: 0.85rem; }
+@media (max-width: 768px) { .parameters-container { padding: 0.75rem; } }
+</style>

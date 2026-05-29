@@ -1,0 +1,292 @@
+{% extends "base.html" %}
+
+{% block extra_head %}
+<script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="page-container">
+    <div class="side-stepper">
+        {% include 'components/step_indicator.html' %}
+    </div>
+
+    <div class="main-content-with-stepper">
+        {% with messages = get_flashed_messages() %}
+            {% if messages %}
+                <div class="flash-messages" style="padding: 0 1rem;">
+                    {% for message in messages %}
+                        <div class="alert alert-error">{{ message }}</div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        {% endwith %}
+        <div class="stepper">
+            {% if step == 1 %}
+            <div class="step active">
+                <h2>Step 1: CPT Data</h2>
+                {% include 'components/upload_form.html' %}
+                <div class="button-group">
+                    <a href="{{ url_for('main.index') }}" class="btn btn-secondary">Back to Home</a>
+                </div>
+            </div>
+            {% endif %}
+
+            {% if step == 2 %}
+            <div class="step active">
+                <h2>Step 2: View CPT Data</h2>
+                {% if graphs %}
+                <div class="graphs-container">
+                    <div class="graph-wrapper"><div id="qt_graph" class="graph"></div></div>
+                    <div class="graph-wrapper"><div id="fr_graph" class="graph"></div></div>
+                    <div class="graph-wrapper"><div id="ic_graph" class="graph"></div></div>
+                    <div class="graph-wrapper"><div id="sbt_graph" class="graph"></div></div>
+                </div>
+                <div class="debug-section">
+                    <div class="button-group">
+                        <a href="{{ url_for('main.download_intermediary_calcs') }}" class="btn btn-info">
+                            <i class="fas fa-download"></i> Download Intermediary Calculations
+                        </a>
+                    </div>
+                </div>
+                <div class="button-group">
+                    <form method="POST" action="{{ url_for('main.calculator_step', type=type, step=2) }}">
+                        <button type="submit" class="btn btn-primary">Continue to Step 3</button>
+                    </form>
+                    <a href="{{ url_for('main.calculator_step', type=type, step=1) }}" class="btn btn-secondary">Back to Step 1</a>
+                </div>
+                {% else %}
+                <p>No CPT data available. Please go back to step 1 and upload your data.</p>
+                <div class="button-group">
+                    <a href="{{ url_for('main.calculator_step', type=type, step=1) }}" class="btn btn-secondary">Back to Step 1</a>
+                </div>
+                {% endif %}
+            </div>
+            {% endif %}
+
+            {% if step == 3 %}
+            <div class="step active">
+                <h2>Step 3: Monopile Parameters</h2>
+                {% include 'components/lateral_monopile_parameters.html' %}
+                <div class="button-group">
+                    <a href="{{ url_for('main.calculator_step', type=type, step=2) }}" class="btn btn-secondary">Back to Step 2</a>
+                </div>
+            </div>
+            {% endif %}
+
+            {% if step == 4 and results %}
+            {% set chk = results.checks %}
+            <div class="step active">
+                <h2>Step 4: Lateral Response</h2>
+
+                <div class="soil-banner {% if chk.sand_check_pass %}sand{% else %}clay{% endif %}">
+                    <strong>Average I<sub>c</sub> over embedded length = {{ '%.2f'|format(chk.avg_ic_in_embedded_length) }}</strong>
+                    {% if chk.sand_check_pass %}
+                      &nbsp;&rarr;&nbsp; consistent with a sand profile (threshold {{ chk.sand_check_threshold }}).
+                    {% else %}
+                      &nbsp;&rarr;&nbsp; <strong>not a sand profile</strong> (threshold {{ chk.sand_check_threshold }}). {{ chk.message }}
+                    {% endif %}
+                </div>
+
+                {% if not chk.rigidity_check_pass %}
+                <div class="alert alert-warn">
+                    L/D &ge; {{ chk.rigidity_check_threshold }} — the rigid-monopile formulation may not be valid for this geometry.
+                </div>
+                {% endif %}
+
+                {% if results.aborted %}
+                <div class="alert alert-warn">
+                    Analysis stopped: {{ chk.message }}
+                </div>
+                <div class="button-group">
+                    <a href="{{ url_for('main.calculator_step', type=type, step=3) }}" class="btn btn-secondary">Back to Step 3</a>
+                    <a href="{{ url_for('main.index') }}" class="btn btn-primary">Return to Home</a>
+                </div>
+                {% else %}
+
+                {% set sm = results.summary %}
+                {% set inp = results.inputs %}
+                {% set fit = results.g0_fit %}
+
+                <div class="results-grid">
+                    <div class="result-card chart-card">
+                        <div class="scale-controls">
+                            <label>Max displacement (mm)
+                                <input type="number" id="ldXMax" value="{{ '%.2f'|format(results.curve_load_disp.default_scale.x_max) }}" step="1" min="0.01">
+                            </label>
+                            <label>Max load (kN)
+                                <input type="number" id="ldYMax" value="{{ '%.0f'|format(results.curve_load_disp.default_scale.y_max) }}" step="10" min="1">
+                            </label>
+                            <button type="button" class="btn btn-secondary btn-sm" onclick="rescaleLD()">Apply scale</button>
+                            <button type="button" class="btn btn-secondary btn-sm" onclick="autoLD()">Auto</button>
+                        </div>
+                        <div id="ld_graph" class="graph-tall"></div>
+                    </div>
+
+                    <div class="result-card">
+                        <h3>Summary</h3>
+                        <table class="summary-table">
+                            <tr><td>Pile D &times; L</td><td>{{ inp.D_m }} &times; {{ inp.L_m }} m</td></tr>
+                            <tr><td>L/D</td><td>{{ '%.2f'|format(inp.L_over_D) }}</td></tr>
+                            <tr><td>Pile type</td><td>{{ inp.pile_type }}{% if inp.pile_type == 'Pipe' %} (t = {{ inp.t_mm }} mm){% endif %}</td></tr>
+                            <tr><td>Load height above ground, h</td><td>{{ inp.h_m }} m</td></tr>
+                            <tr><td>EI</td><td>{{ '{:,.0f}'.format(inp.EI_kNm2) }} kNm²</td></tr>
+                            <tr><td>γ' (effective, averaged)</td><td>{{ '%.2f'|format(sm.gamma_effective_kNm3) }} kN/m³</td></tr>
+                            <tr class="divider"><td>Best-fit G<sub>0</sub> profile</td><td>{{ fit.name }}</td></tr>
+                            <tr><td>CoV of fit</td><td>{{ '%.3f'|format(fit.cov) }}</td></tr>
+                            <tr><td>G<sub>0</sub> at 0.75L</td><td>{{ '%.1f'|format(sm.G0_at_0_75L_MPa) }} MPa</td></tr>
+                            <tr><td>C<sub>k</sub></td><td>{{ '%.3f'|format(sm.C_k) }}</td></tr>
+                            <tr><td>K<sub>R,0</sub></td><td>{{ '%.0f'|format(sm.K_R0_MNm_rad) }} MNm/rad</td></tr>
+                            <tr><td>θ<sub>ref</sub></td><td>{{ '%.2e'|format(sm.theta_ref_rad) }} rad</td></tr>
+                            <tr><td>C<sub>R,θ</sub> / C<sub>R,y</sub></td><td>{{ '%.3f'|format(sm.C_R_theta) }} / {{ '%.3f'|format(sm.C_R_y) }}</td></tr>
+                            <tr class="divider"><td>Ultimate lateral capacity H<sub>u</sub></td><td>{{ '%.2f'|format(sm.Hu_kN / 1000) }} MN ({{ '%.0f'|format(sm.Hu_kN) }} kN)</td></tr>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="result-card">
+                    <div class="scale-controls">
+                        <label>Max rotation (rad)
+                            <input type="number" id="mrXMax" value="{{ '%.4f'|format(results.curve_moment_rotation.default_scale.x_max) }}" step="0.001" min="0.0001">
+                        </label>
+                        <label>Max moment (kNm)
+                            <input type="number" id="mrYMax" value="{{ '%.0f'|format(results.curve_moment_rotation.default_scale.y_max) }}" step="10" min="1">
+                        </label>
+                        <button type="button" class="btn btn-secondary btn-sm" onclick="rescaleMR()">Apply scale</button>
+                        <button type="button" class="btn btn-secondary btn-sm" onclick="autoMR()">Auto</button>
+                    </div>
+                    <div id="mr_graph" class="graph-tall"></div>
+                </div>
+
+                <div class="button-group">
+                    <a href="{{ url_for('main.calculator_step', type=type, step=3) }}" class="btn btn-secondary">Back to Step 3</a>
+                    <a href="{{ url_for('main.index') }}" class="btn btn-primary">Return to Home</a>
+                </div>
+                {% endif %}
+            </div>
+            {% elif step == 4 %}
+            <div class="step active">
+                <h2>Step 4: Results</h2>
+                <p>No results available. Please complete Step 3 first.</p>
+                <a href="{{ url_for('main.calculator_step', type=type, step=3) }}" class="btn btn-secondary">Back to Step 3</a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+
+{% if step == 2 and graphs %}
+<script>
+    var config = { responsive: true, displayModeBar: false, displaylogo: false,
+        modeBarButtonsToRemove: ['zoom2d','pan2d','select2d','lasso2d','zoomIn2d','zoomOut2d','autoScale2d','resetScale2d'] };
+    var qtGraph = JSON.parse('{{ graphs.qt | safe }}');
+    var frGraph = JSON.parse('{{ graphs.fr | safe }}');
+    var icGraph = JSON.parse('{{ graphs.ic | safe }}');
+    var sbtGraph = JSON.parse('{{ graphs.sbt | safe }}');
+    const modernStyle = { font: { family: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif', size: 12 },
+        plot_bgcolor: '#ffffff', paper_bgcolor: '#ffffff', margin: { t: 40, r: 30, l: 60, b: 30 } };
+    function configureGraph(graph, xRange, xDtick) {
+        let depths = (graph.data && graph.data.length > 0 && graph.data[0].y) ? graph.data[0].y : [];
+        graph.layout = { ...graph.layout, ...modernStyle, title: { text: '' },
+            xaxis: { showgrid: true, gridcolor: 'rgba(0,0,0,0.05)', tickfont: { size: 11 },
+                title: { text: graph === qtGraph ? 'qt (MPa)' : graph === frGraph ? 'Fr (%)' : 'Ic', standoff: 15 },
+                side: 'top', zeroline: false, showline: true, range: xRange, dtick: xDtick },
+            yaxis: { showgrid: true, gridcolor: 'rgba(0,0,0,0.05)', tickfont: { size: 11 },
+                title: { text: 'Depth (m)', standoff: 15 }, autorange: false,
+                range: depths.length > 0 ? [Math.max(...depths) + 0.5, 0] : [90, 0], zeroline: false, showline: true } };
+        if (graph.data && graph.data.length > 0) { graph.data[0].line = { ...graph.data[0].line, width: 2, shape: 'spline' }; }
+    }
+    configureGraph(qtGraph, [0, 40], 10);
+    configureGraph(frGraph, [0, 10], 2);
+    configureGraph(icGraph, [0, 4], 1);
+    Plotly.newPlot('qt_graph', qtGraph.data, qtGraph.layout, config);
+    Plotly.newPlot('fr_graph', frGraph.data, frGraph.layout, config);
+    Plotly.newPlot('ic_graph', icGraph.data, icGraph.layout, config);
+    Plotly.newPlot('sbt_graph', sbtGraph.data, sbtGraph.layout, config);
+    function resizeGraphs() { ['qt_graph','fr_graph','ic_graph','sbt_graph'].forEach(d => Plotly.Plots.resize(document.getElementById(d))); }
+    window.addEventListener('resize', resizeGraphs);
+    setTimeout(resizeGraphs, 100);
+</script>
+{% endif %}
+
+{% if step == 4 and results and not results.aborted %}
+<script>
+    var R = {{ results | tojson }};
+    var plotConfig = { responsive: true, displaylogo: false };
+
+    function drawLD() {
+        var s = R.curve_load_disp.series[0];
+        var trace = { x: s.points.map(p => p[0]), y: s.points.map(p => p[1]),
+            mode: 'lines+markers', name: s.name, line: { width: 2.5, color: '#1a73e8' }, marker: {size: 3} };
+        var layout = {
+            margin: { t: 20, r: 20, l: 60, b: 50 }, paper_bgcolor: '#fff', plot_bgcolor: '#fff',
+            xaxis: { title: R.curve_load_disp.x_label, range: [0, R.curve_load_disp.default_scale.x_max], zeroline: true, showline: true, gridcolor: 'rgba(0,0,0,0.06)' },
+            yaxis: { title: R.curve_load_disp.y_label, range: [0, R.curve_load_disp.default_scale.y_max], zeroline: true, showline: true, gridcolor: 'rgba(0,0,0,0.06)' }
+        };
+        Plotly.newPlot('ld_graph', [trace], layout, plotConfig);
+    }
+    function drawMR() {
+        var s = R.curve_moment_rotation.series[0];
+        var trace = { x: s.points.map(p => p[0]), y: s.points.map(p => p[1]),
+            mode: 'lines+markers', name: s.name, line: { width: 2.5, color: '#e8710a' }, marker: {size: 3} };
+        var layout = {
+            margin: { t: 20, r: 20, l: 60, b: 50 }, paper_bgcolor: '#fff', plot_bgcolor: '#fff',
+            xaxis: { title: R.curve_moment_rotation.x_label, range: [0, R.curve_moment_rotation.default_scale.x_max], zeroline: true, showline: true, gridcolor: 'rgba(0,0,0,0.06)' },
+            yaxis: { title: R.curve_moment_rotation.y_label, range: [0, R.curve_moment_rotation.default_scale.y_max], zeroline: true, showline: true, gridcolor: 'rgba(0,0,0,0.06)' }
+        };
+        Plotly.newPlot('mr_graph', [trace], layout, plotConfig);
+    }
+    function rescaleLD() {
+        var x = parseFloat(document.getElementById('ldXMax').value);
+        var y = parseFloat(document.getElementById('ldYMax').value);
+        Plotly.relayout('ld_graph', { 'xaxis.range': [0, x], 'yaxis.range': [0, y] });
+    }
+    function autoLD() { Plotly.relayout('ld_graph', { 'xaxis.autorange': true, 'yaxis.autorange': true }); }
+    function rescaleMR() {
+        var x = parseFloat(document.getElementById('mrXMax').value);
+        var y = parseFloat(document.getElementById('mrYMax').value);
+        Plotly.relayout('mr_graph', { 'xaxis.range': [0, x], 'yaxis.range': [0, y] });
+    }
+    function autoMR() { Plotly.relayout('mr_graph', { 'xaxis.autorange': true, 'yaxis.autorange': true }); }
+    drawLD(); drawMR();
+    window.addEventListener('resize', function () {
+        Plotly.Plots.resize(document.getElementById('ld_graph'));
+        Plotly.Plots.resize(document.getElementById('mr_graph'));
+    });
+</script>
+{% endif %}
+
+<style>
+.page-container { margin-top: -8px; }
+.main-content-with-stepper { max-width: 100%; padding: 0; margin-left: calc(var(--side-nav-width) - 1px); box-sizing: border-box; }
+.step { background: white; padding: 1rem; }
+.graphs-container { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem; width: 100%; margin: 0 auto; padding: 1rem 0; }
+.graph-wrapper { background: white; border-radius: 12px; padding: 1rem; box-shadow: 0 4px 6px rgba(0,0,0,0.05); height: 500px; }
+.graph { width: 100% !important; height: 100% !important; }
+.graph-tall { width: 100%; height: 460px; }
+.soil-banner { padding: 0.85rem 1rem; border-radius: 8px; margin: 0.5rem 0 1rem; background: #e8f0fe; border-left: 4px solid #1a73e8; }
+.soil-banner.sand { background: #e8f0fe; border-left-color: #1a73e8; }
+.soil-banner.clay { background: #fef7e0; border-left-color: #f29900; }
+.results-grid { display: grid; grid-template-columns: 1.4fr 1fr; gap: 1.25rem; align-items: start; }
+.result-card { background: #fff; border: 1px solid #eceff1; border-radius: 12px; padding: 1rem 1.25rem; box-shadow: 0 2px 8px rgba(0,0,0,0.04); margin-bottom: 1.25rem; }
+.result-card h3 { margin: 0 0 0.75rem; font-size: 1rem; color: #202124; }
+.scale-controls { display: flex; gap: 0.75rem; align-items: end; flex-wrap: wrap; margin-bottom: 0.5rem; font-size: 0.8rem; color: #5f6368; }
+.scale-controls input { width: 90px; padding: 0.3rem 0.4rem; border: 1px solid #e5e7eb; border-radius: 4px; display: block; }
+.btn-sm { padding: 0.3rem 0.7rem; font-size: 0.8rem; }
+.summary-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+.summary-table td { padding: 0.35rem 0.25rem; border-bottom: 1px solid #f1f3f4; }
+.summary-table td:last-child { text-align: right; font-weight: 600; color: #202124; white-space: nowrap; }
+.summary-table tr.divider td { border-top: 2px solid #e0e0e0; padding-top: 0.5rem; }
+.button-group { margin-top: 1.5rem; display: flex; gap: 1rem; flex-wrap: wrap; }
+.btn { padding: 0.75rem 1.5rem; border-radius: 6px; font-weight: 500; }
+.btn-primary { background: #1a73e8; color: #fff; border: none; }
+.btn-secondary { background: #f1f3f4; color: #3c4043; border: 1px solid #dadce0; }
+.btn-info { background: #17a2b8; color: #fff; border: none; }
+.alert { margin-top: 1rem; padding: 0.85rem 1rem; border-radius: 4px; }
+.alert-error { background: #fde8e8; color: #c53030; border-left: 4px solid #c53030; }
+.alert-warn { background: #fff8e1; color: #8a6d00; border-left: 4px solid #f4b400; }
+@media (max-width: 900px) { .results-grid { grid-template-columns: 1fr; } }
+@media (max-width: 768px) { .main-content-with-stepper { margin-left: 0; padding: 1rem; } .graphs-container { grid-template-columns: 1fr; } .graph-wrapper { height: 400px; } }
+</style>
+{% endblock %}
