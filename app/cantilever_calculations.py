@@ -72,6 +72,13 @@ def _per_row(depth, qt_mpa, sig_v0_prime_kpa, ic):
 
     Mirrors Test Calculations columns J (Dr) and O (phi'_p). Uses the
     fixed K0 and ageing factor.
+
+    Note vs. workbook: Test Calculations O28 in the rev1 file uses
+    32 + 3*(5*Dr - 1). Barry confirmed (29 May email) that the multiplier
+    should be 4.7 not 5 (matching AC45 in the shallow / monopile
+    workbooks). The corrected value is used here, so the printed phi'_p
+    values can differ from Test Calculations by ~0.03 deg on the
+    average for typical sands.
     """
     n = len(depth)
     dr = [0.0] * n
@@ -86,7 +93,7 @@ def _per_row(depth, qt_mpa, sig_v0_prime_kpa, ic):
         else:
             m = 0.1
         dr[i] = max(0.1, m)
-        phi_p[i] = PHI_CV_DEG + 3.0 * (5.0 * dr[i] - 1.0)   # O col
+        phi_p[i] = PHI_CV_DEG + 3.0 * (4.7 * dr[i] - 1.0)   # O col (4.7 per Barry's correction)
     return dr, phi_p
 
 

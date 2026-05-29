@@ -72,16 +72,23 @@ def _g0_from_cpt(depth, qt_mpa, sig_v0_kpa, ic, gamma):
 
     G0_i = alpha_G_i * (qt_i - sigma_v0_i)  with qt in MPa, sigma_v0 in MPa
            (workbook divides sigma_v0_kpa by 1000 to convert).
-    alpha_G_i = (gamma_{i-1} / 9.81 / 100) * 10^(0.55*Ic_i + 1.68)
+    alpha_G_i = (gamma_i / 9.81 / 100) * 10^(0.55*Ic_i + 1.68)
 
-    The "i-1" gamma is a workbook quirk worth honouring for bit-for-bit
-    parity. Row 0 (the surface) is set to 0.
+    Note vs. workbook: G0-fromCPT row r in the rev1 file references the
+    PREVIOUS row's gamma (G3 uses C2, etc.). Barry confirmed (29 May
+    email) that's a spreadsheet copy-paste bug; the correct formula
+    uses the current row's gamma. We use the corrected formula, so the
+    per-row G0 values can differ from the workbook by a percent or so
+    where gamma changes (typically at the water table); typical sand
+    profiles with near-constant gamma are essentially unchanged.
+
+    Row 0 (the surface) is set to 0.
     """
     n = len(depth)
     g0 = [0.0] * n
     for i in range(1, n):
         alpha_vs = 10 ** (0.55 * ic[i] + 1.68)
-        alpha_g = (gamma[i - 1] / 9.81 / 100.0) * alpha_vs
+        alpha_g = (gamma[i] / 9.81 / 100.0) * alpha_vs
         g0[i] = alpha_g * (qt_mpa[i] - sig_v0_kpa[i] / 1000.0)
     return g0
 
