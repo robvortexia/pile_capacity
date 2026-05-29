@@ -1,12 +1,16 @@
 """
 Laterally loaded monopiles in sand (Step 4) — load-displacement, rotation,
-and moment response of a rigid monopile from CPT data.
+and moment response of a monopile from CPT data.
 
 Follows the workbook ``Laterally-loaded-monopile-in-sand-forcoding.xlsx``
-(Barry Lehane, 28-May-2026). The method covers sand-type profiles
-(average Ic < 2.2 over the embedded length) and rigid piles (L/D < 5).
-For non-sand or non-rigid geometry the call returns a structured warning
-instead of a result.
+(Barry Lehane, 28-May-2026), with the description on the intro page
+updated to cite Wang et al. (2023, Ocean Engineering 277, 114334) for
+the load-displacement and moment-rotation response and Wang et al.
+(2020, Geotechnique Letters 10, 429-435) for the ultimate lateral
+geotechnical capacity. The method covers sand-type profiles (average
+Ic < 2.2 over the embedded length) and short piles (L/D < 5). For
+non-sand or longer piles the call returns a structured warning instead
+of a result.
 
 High-level flow:
 
@@ -350,8 +354,8 @@ def calculate_lateral_monopile_results(processed_cpt, params):
         return {'checks': checks, 'aborted': True}
     if not is_rigid:
         checks['message'] = (
-            f"L/D = {L_over_D:.2f} >= 5. The rigid-monopile formulation "
-            "may not be valid for this geometry."
+            f"L/D = {L_over_D:.2f} >= 5. The short-pile assumption underlying "
+            "this module may not be valid for this geometry."
         )
         # not a hard abort — Barry's wording is "WARNING"; we still compute
 

@@ -1,12 +1,12 @@
 {% extends "base.html" %}
 
 {% block title %}Laterally Loaded Monopile in Sand (CPT method) | UWA{% endblock %}
-{% block meta_description %}Predict the lateral load-displacement and rotation response of a rigid monopile in sand from CPT data. Free tool from The University of Western Australia.{% endblock %}
-{% block meta_keywords %}laterally loaded monopile, rigid monopile sand, CPT lateral capacity, UWA monopile calculator{% endblock %}
-{% block og_title %}Laterally Loaded Monopile in Sand — CPT Method | UWA{% endblock %}
-{% block og_description %}Lateral load-displacement of rigid monopiles in sand from CPT. Free tool from UWA.{% endblock %}
+{% block meta_description %}Predict the lateral load-displacement and moment-rotation response of a monopile (L/D<5) in sand from CPT data, after Wang et al. (2023, 2020). Free tool from The University of Western Australia.{% endblock %}
+{% block meta_keywords %}laterally loaded monopile, short monopile sand, CPT lateral capacity, Wang Lehane 2020 2023, UWA monopile calculator{% endblock %}
+{% block og_title %}Laterally Loaded Monopile — CPT Method | UWA{% endblock %}
+{% block og_description %}Lateral load-displacement and moment-rotation of monopiles (L/D<5) in sand from CPT, after Wang et al. (2020, 2023). Free tool from UWA.{% endblock %}
 {% block twitter_title %}Laterally Loaded Monopile — CPT Method | UWA{% endblock %}
-{% block twitter_description %}Lateral response of rigid monopiles from CPT. Free tool from UWA.{% endblock %}
+{% block twitter_description %}Lateral response of monopiles from CPT, after Wang et al. (2020, 2023). Free tool from UWA.{% endblock %}
 
 {% block jsonld %}
 <script type="application/ld+json">
@@ -15,7 +15,7 @@
     "@type": "WebApplication",
     "name": "UWA Laterally Loaded Monopile Calculator",
     "url": "https://uwa-geotech-cpt-calculator.com/lateral/description",
-    "description": "Lateral load-displacement and rotation response of a rigid monopile in sand from CPT data.",
+    "description": "Lateral load-displacement and moment-rotation response of a monopile (L/D<5) in sand from CPT data, after Wang et al. (2020, 2023).",
     "applicationCategory": "Engineering",
     "author": {
         "@type": "Person",
@@ -31,37 +31,53 @@
 {% block content %}
 <div class="description-container">
     <div class="description-header">
-        <h1>Lateral response of a rigid monopile in sand</h1>
+        <h1>Lateral response of a monopile in sand</h1>
     </div>
 
     <div class="description-content">
         <div class="description-text">
-            <p>This program predicts the lateral displacement, rotation and moment-rotation response
-            of a rigid monopile in sand subjected to a lateral load applied at or above ground level.
-            The method uses CPT data to derive the small-strain shear modulus profile and idealises
-            it as one of three best-fit forms (linear, power of 0.5, or constant). A hyperbolic
-            stiffness reduction with rotation captures the non-linear response, with closed-form
-            pile-flexibility corrections from Mindlin / Euler-Bernoulli added on top.</p>
+            <p>The program predicts the load-displacement and moment-rotation response of a
+            monopile (with L/D &lt; 5) subjected to an eccentric lateral load. The methodology
+            follows that outlined in:</p>
 
-            <p>The ultimate geotechnical lateral capacity at very large rotation follows the
-            Wang et al. (2020) p-y integration along the embedded length, split at the rotation
-            point at 0.75L.</p>
+            <p class="citation">
+                Wang, H., Lehane B.M., Bransby, M.F., Wang, L.Z., Hong, Y. and Askarinejad, A.
+                (2023). Lateral behavior of monopiles in sand under monotonic loading.
+                <em>Ocean Engineering</em>, 277, 114334.
+            </p>
+            <a href="{{ url_for('static', filename='pdf/Wang-etal-OceanEngineering-2023.pdf') }}"
+               class="link-to-publication" target="_blank" rel="noopener">
+                <i class="fas fa-file-pdf"></i> Read the publication (PDF)
+            </a>
 
-            <p><strong>Scope and limits:</strong></p>
+            <p style="margin-top: 1.5rem;">The ultimate lateral geotechnical capacity is also
+            computed using the formulation in the following publication:</p>
+
+            <p class="citation">
+                Wang, H., Lehane B.M., Bransby, M.F., Wang, L.Z. and Hong, Y. (2020).
+                A simple approach for predicting the ultimate lateral capacity of a rigid pile
+                in sand. <em>Geotechnique Letters</em>, 10, 429-435.
+            </p>
+            <a href="{{ url_for('static', filename='pdf/Wang-etal-GeotechLetters-2020.pdf') }}"
+               class="link-to-publication" target="_blank" rel="noopener">
+                <i class="fas fa-file-pdf"></i> Read the publication (PDF)
+            </a>
+
+            <h3 style="margin-top: 1.5rem;">Scope and limits</h3>
             <ul>
-                <li>Sand or sandy soils — the average I<sub>c</sub> over the embedded length must
-                    be below 2.2. The program rejects clay or silty profiles automatically.</li>
-                <li>Rigid monopiles — L/D below 5. For higher aspect ratios the program issues a
-                    warning and the rigid-pile assumption may not hold.</li>
+                <li>Sand or sandy soils — the average I<sub>c</sub> over the embedded length
+                    must be below 2.2. The program rejects clay or silty profiles
+                    automatically.</li>
+                <li>Short piles with L/D less than 5. For higher aspect ratios, the program
+                    issues a warning as the assumption of a short pile may be invalid.</li>
                 <li>No load or material factors are applied. Bending stresses in the monopile
                     section are not checked.</li>
             </ul>
         </div>
 
         <div class="description-image">
-            <img src="{{ url_for('static', filename='img/monopile.jpg') }}"
-                 alt="Lateral monopile schematic"
-                 onerror="this.style.display='none'">
+            <img src="{{ url_for('static', filename='img/monopile.png') }}"
+                 alt="Monopile schematic showing lateral load H at height h above mudline, embedded length L and diameter B">
         </div>
     </div>
 
@@ -78,7 +94,13 @@
 .description-header { margin-bottom: 2rem; text-align: center; }
 .description-content { display: grid; grid-template-columns: 3fr 2fr; gap: 2rem; align-items: start; margin-bottom: 2rem; }
 .description-text { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-.description-image img { width: 100%; height: auto; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+.description-text h3 { color: var(--primary-color); margin-bottom: 0.5rem; }
+.description-text ul { margin: 0; padding-left: 1.25rem; }
+.description-text li { margin-bottom: 0.4rem; }
+.description-image img { width: 100%; height: auto; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); background: #fff; padding: 0.5rem; }
+.citation { padding: 0.5rem 0 0.5rem 1rem; border-left: 3px solid #1a73e8; color: #3c4043; line-height: 1.6; margin: 0.5rem 0 0.25rem; }
+.link-to-publication { display: inline-block; color: #0066cc; text-decoration: none; margin-top: 0.25rem; font-size: 0.9rem; }
+.link-to-publication:hover { text-decoration: underline; }
 .button-group { display: flex; justify-content: center; gap: 1rem; }
 .btn { padding: 0.75rem 1.5rem; border-radius: 6px; font-weight: 500; text-decoration: none; }
 .btn-primary { background: #1a73e8; color: white; border: none; }

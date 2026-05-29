@@ -89,7 +89,7 @@
 
                 {% if not chk.rigidity_check_pass %}
                 <div class="alert alert-warn">
-                    L/D &ge; {{ chk.rigidity_check_threshold }} — the rigid-monopile formulation may not be valid for this geometry.
+                    L/D &ge; {{ chk.rigidity_check_threshold }} — the short-pile assumption may not be valid for this geometry.
                 </div>
                 {% endif %}
 
@@ -105,9 +105,8 @@
 
                 {% set sm = results.summary %}
                 {% set inp = results.inputs %}
-                {% set fit = results.g0_fit %}
 
-                <div class="results-grid">
+                <div class="charts-row">
                     <div class="result-card chart-card">
                         <div class="scale-controls">
                             <label>Max displacement (mm)
@@ -122,39 +121,29 @@
                         <div id="ld_graph" class="graph-tall"></div>
                     </div>
 
-                    <div class="result-card">
-                        <h3>Summary</h3>
-                        <table class="summary-table">
-                            <tr><td>Pile D &times; L</td><td>{{ inp.D_m }} &times; {{ inp.L_m }} m</td></tr>
-                            <tr><td>L/D</td><td>{{ '%.2f'|format(inp.L_over_D) }}</td></tr>
-                            <tr><td>Pile type</td><td>{{ inp.pile_type }}{% if inp.pile_type == 'Pipe' %} (t = {{ inp.t_mm }} mm){% endif %}</td></tr>
-                            <tr><td>Load height above ground, h</td><td>{{ inp.h_m }} m</td></tr>
-                            <tr><td>EI</td><td>{{ '{:,.0f}'.format(inp.EI_kNm2) }} kNm²</td></tr>
-                            <tr><td>γ' (effective, averaged)</td><td>{{ '%.2f'|format(sm.gamma_effective_kNm3) }} kN/m³</td></tr>
-                            <tr class="divider"><td>Best-fit G<sub>0</sub> profile</td><td>{{ fit.name }}</td></tr>
-                            <tr><td>CoV of fit</td><td>{{ '%.3f'|format(fit.cov) }}</td></tr>
-                            <tr><td>G<sub>0</sub> at 0.75L</td><td>{{ '%.1f'|format(sm.G0_at_0_75L_MPa) }} MPa</td></tr>
-                            <tr><td>C<sub>k</sub></td><td>{{ '%.3f'|format(sm.C_k) }}</td></tr>
-                            <tr><td>K<sub>R,0</sub></td><td>{{ '%.0f'|format(sm.K_R0_MNm_rad) }} MNm/rad</td></tr>
-                            <tr><td>θ<sub>ref</sub></td><td>{{ '%.2e'|format(sm.theta_ref_rad) }} rad</td></tr>
-                            <tr><td>C<sub>R,θ</sub> / C<sub>R,y</sub></td><td>{{ '%.3f'|format(sm.C_R_theta) }} / {{ '%.3f'|format(sm.C_R_y) }}</td></tr>
-                            <tr class="divider"><td>Ultimate lateral capacity H<sub>u</sub></td><td>{{ '%.2f'|format(sm.Hu_kN / 1000) }} MN ({{ '%.0f'|format(sm.Hu_kN) }} kN)</td></tr>
-                        </table>
+                    <div class="result-card chart-card">
+                        <div class="scale-controls">
+                            <label>Max rotation (rad)
+                                <input type="number" id="mrXMax" value="{{ '%.4f'|format(results.curve_moment_rotation.default_scale.x_max) }}" step="0.001" min="0.0001">
+                            </label>
+                            <label>Max moment (kNm)
+                                <input type="number" id="mrYMax" value="{{ '%.0f'|format(results.curve_moment_rotation.default_scale.y_max) }}" step="10" min="1">
+                            </label>
+                            <button type="button" class="btn btn-secondary btn-sm" onclick="rescaleMR()">Apply scale</button>
+                            <button type="button" class="btn btn-secondary btn-sm" onclick="autoMR()">Auto</button>
+                        </div>
+                        <div id="mr_graph" class="graph-tall"></div>
                     </div>
                 </div>
 
-                <div class="result-card">
-                    <div class="scale-controls">
-                        <label>Max rotation (rad)
-                            <input type="number" id="mrXMax" value="{{ '%.4f'|format(results.curve_moment_rotation.default_scale.x_max) }}" step="0.001" min="0.0001">
-                        </label>
-                        <label>Max moment (kNm)
-                            <input type="number" id="mrYMax" value="{{ '%.0f'|format(results.curve_moment_rotation.default_scale.y_max) }}" step="10" min="1">
-                        </label>
-                        <button type="button" class="btn btn-secondary btn-sm" onclick="rescaleMR()">Apply scale</button>
-                        <button type="button" class="btn btn-secondary btn-sm" onclick="autoMR()">Auto</button>
-                    </div>
-                    <div id="mr_graph" class="graph-tall"></div>
+                <div class="result-card summary-card">
+                    <h3>Summary</h3>
+                    <table class="summary-table">
+                        <tr><td>Pile diameter, D</td><td>{{ '%.3f'|format(inp.D_m) }} m</td></tr>
+                        <tr><td>Pile length, L</td><td>{{ '%.3f'|format(inp.L_m) }} m</td></tr>
+                        <tr><td>EI</td><td>{{ '{:,.0f}'.format(inp.EI_kNm2) }} kNm²</td></tr>
+                        <tr><td>H<sub>u</sub>, geotechnical</td><td>{{ '%.2f'|format(sm.Hu_kN / 1000) }} MN</td></tr>
+                    </table>
                 </div>
 
                 <div class="button-group">
@@ -268,6 +257,9 @@
 .soil-banner { padding: 0.85rem 1rem; border-radius: 8px; margin: 0.5rem 0 1rem; background: #e8f0fe; border-left: 4px solid #1a73e8; }
 .soil-banner.sand { background: #e8f0fe; border-left-color: #1a73e8; }
 .soil-banner.clay { background: #fef7e0; border-left-color: #f29900; }
+.charts-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; align-items: stretch; }
+.summary-card { max-width: 520px; margin: 0 auto; }
+.summary-card .summary-table td { padding: 0.5rem 0.4rem; }
 .results-grid { display: grid; grid-template-columns: 1.4fr 1fr; gap: 1.25rem; align-items: start; }
 .result-card { background: #fff; border: 1px solid #eceff1; border-radius: 12px; padding: 1rem 1.25rem; box-shadow: 0 2px 8px rgba(0,0,0,0.04); margin-bottom: 1.25rem; }
 .result-card h3 { margin: 0 0 0.75rem; font-size: 1rem; color: #202124; }
@@ -286,6 +278,7 @@
 .alert { margin-top: 1rem; padding: 0.85rem 1rem; border-radius: 4px; }
 .alert-error { background: #fde8e8; color: #c53030; border-left: 4px solid #c53030; }
 .alert-warn { background: #fff8e1; color: #8a6d00; border-left: 4px solid #f4b400; }
+@media (max-width: 1100px) { .charts-row { grid-template-columns: 1fr; } }
 @media (max-width: 900px) { .results-grid { grid-template-columns: 1fr; } }
 @media (max-width: 768px) { .main-content-with-stepper { margin-left: 0; padding: 1rem; } .graphs-container { grid-template-columns: 1fr; } .graph-wrapper { height: 400px; } }
 </style>
