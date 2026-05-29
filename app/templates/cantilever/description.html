@@ -36,20 +36,33 @@
 
     <div class="description-content">
         <div class="description-text">
-            <p>This program predicts the maximum lateral deflection of an
-            embedded cantilever sheet-pile wall in sand and the corresponding
-            settlement profile behind it. The wall response is read from a
-            calibrated lookup table indexed by the average peak friction
-            angle, the depth-gradient of qc, the H/L geometry ratio and the
-            normalised wall flexural rigidity EI/(γ<sub>w</sub>·H<sup>4</sup>).</p>
+            <p>The program predicts the maximum lateral deflection of an embedded
+            cantilever sheet-pile wall in unsaturated sand and the corresponding
+            settlement profile behind it. The methodology follows the design
+            charts presented in:</p>
 
-            <p>Soil parameters are derived from CPT data over a depth band
-            of 1.5·H (clamped by the H/L bounds of the calibration). The
-            settlement profile decays exponentially behind the wall with the
-            maximum 0.6·d<sub>max</sub> (H/L > 0.5) or 0.5·d<sub>max</sub>,
-            and 0.135·s<sub>max</sub> at distance H/2 behind the wall.</p>
+            <p class="citation">
+                Lehane, B.M., Bagbag, A., Durham, C. and Pine, T. (2019).
+                Design charts for lateral deflection of embedded cantilever walls
+                in unsaturated Perth sands. <em>Proceedings of the 13th
+                Australia-New Zealand Conference on Geomechanics</em>, Perth.
+            </p>
+            <a href="{{ url_for('static', filename='pdf/Lehane-etal-ANZ2019-cantilever-walls.pdf') }}"
+               class="link-to-publication" target="_blank" rel="noopener">
+                <i class="fas fa-file-pdf"></i> Read the publication (PDF)
+            </a>
 
-            <p><strong>Scope and limits:</strong></p>
+            <p style="margin-top: 1.25rem;">The charts are entered with the
+            average peak friction angle, the depth-gradient of q<sub>c</sub>,
+            the H/L geometry ratio and the normalised wall flexural rigidity
+            EI/(γ<sub>w</sub>·H<sup>4</sup>), all derived from the CPT over a
+            depth band of 1.5·H (clamped by the H/L bounds of the calibration).
+            The settlement profile decays exponentially behind the wall with
+            s<sub>max</sub> = 0.6·d<sub>max</sub> (H/L &gt; 0.5) or
+            0.5·d<sub>max</sub>, and s ≈ 0.61·s<sub>max</sub> at a distance H/2
+            behind the wall.</p>
+
+            <h3 style="margin-top: 1.25rem;">Scope and limits</h3>
             <ul>
                 <li>Sand profiles only — the average I<sub>c</sub> over the
                     averaging band must be below 2.2.</li>
@@ -81,6 +94,12 @@
 .description-content { display: grid; grid-template-columns: 3fr 2fr; gap: 2rem; align-items: start; margin-bottom: 2rem; }
 .description-text { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
 .description-image img { width: 100%; height: auto; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+.description-text h3 { color: var(--primary-color); margin-bottom: 0.5rem; }
+.description-text ul { margin: 0; padding-left: 1.25rem; }
+.description-text li { margin-bottom: 0.4rem; }
+.citation { padding: 0.5rem 0 0.5rem 1rem; border-left: 3px solid #1a73e8; color: #3c4043; line-height: 1.6; margin: 0.5rem 0 0.25rem; }
+.link-to-publication { display: inline-block; color: #0066cc; text-decoration: none; margin-top: 0.25rem; font-size: 0.9rem; }
+.link-to-publication:hover { text-decoration: underline; }
 .button-group { display: flex; justify-content: center; gap: 1rem; }
 .btn { padding: 0.75rem 1.5rem; border-radius: 6px; font-weight: 500; text-decoration: none; }
 .btn-primary { background: #1a73e8; color: white; border: none; }
