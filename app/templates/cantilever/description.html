@@ -88,11 +88,16 @@
 </div>
 
 <style>
-.description-container { max-width: 1100px; margin: 0 auto; padding: 2rem; }
+.description-container { max-width: 1200px; margin: 0 auto; padding: 2rem; }
 .description-header { margin-bottom: 2rem; text-align: center; }
-.description-content { display: grid; grid-template-columns: 3fr 2fr; gap: 2rem; align-items: start; margin-bottom: 2rem; }
+/* Image-first split: the cantilever schematic carries labelled
+   annotations that need horizontal room, so give it the larger
+   column. The text panel still has enough width for a comfortable
+   reading line at typical screen sizes. */
+.description-content { display: grid; grid-template-columns: 1fr 1.25fr; gap: 2rem; align-items: start; margin-bottom: 2rem; }
 .description-text { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-.description-image img { width: 100%; height: auto; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+.description-image { position: sticky; top: 1rem; }
+.description-image img { width: 100%; height: auto; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); background: #fff; padding: 0.5rem; }
 .description-text h3 { color: var(--primary-color); margin-bottom: 0.5rem; font-size: 1rem; }
 .description-text ul { margin: 0; padding-left: 1.1rem; font-size: 0.82rem; line-height: 1.4; color: #3c4043; }
 .description-text li { margin-bottom: 0.3rem; }
