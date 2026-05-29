@@ -76,9 +76,8 @@
         </div>
 
         <div class="description-image">
-            <img src="{{ url_for('static', filename='img/cantilever_wall.jpg') }}"
-                 alt="Cantilever wall schematic"
-                 onerror="this.style.display='none'">
+            <img src="{{ url_for('static', filename='img/cantilever_wall.png') }}"
+                 alt="Embedded cantilever wall schematic in dry sand showing wall length L, excavation depth H, and maximum wall deflection at the top">
         </div>
     </div>
 
@@ -94,9 +93,9 @@
 .description-content { display: grid; grid-template-columns: 3fr 2fr; gap: 2rem; align-items: start; margin-bottom: 2rem; }
 .description-text { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
 .description-image img { width: 100%; height: auto; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-.description-text h3 { color: var(--primary-color); margin-bottom: 0.5rem; }
-.description-text ul { margin: 0; padding-left: 1.25rem; }
-.description-text li { margin-bottom: 0.4rem; }
+.description-text h3 { color: var(--primary-color); margin-bottom: 0.5rem; font-size: 1rem; }
+.description-text ul { margin: 0; padding-left: 1.1rem; font-size: 0.82rem; line-height: 1.4; color: #3c4043; }
+.description-text li { margin-bottom: 0.3rem; }
 .citation { padding: 0.5rem 0 0.5rem 1rem; border-left: 3px solid #1a73e8; color: #3c4043; line-height: 1.6; margin: 0.5rem 0 0.25rem; }
 .link-to-publication { display: inline-block; color: #0066cc; text-decoration: none; margin-top: 0.25rem; font-size: 0.9rem; }
 .link-to-publication:hover { text-decoration: underline; }
