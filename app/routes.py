@@ -121,6 +121,78 @@ def _private_module_allowed():
     return False
 
 
+def _sanity_check_cpt(data_dict):
+    """Return human-readable warnings about likely column-order or units
+    errors in the parsed CPT data.
+
+    All checks are advisory; the user can still proceed. Heuristics are
+    chosen to fire only on data that is clearly inconsistent with real
+    CPT readings.
+    """
+    warnings = []
+    if not data_dict:
+        return warnings
+    n = len(data_dict)
+
+    # 1. Sleeve friction can never exceed tip resistance physically. qc is
+    #    uploaded in MPa and fs in kPa, so fs > qc*1000 means fs (kPa)
+    #    exceeds qc converted to kPa. If many rows trip this, the qt and
+    #    fs columns are almost certainly swapped.
+    swap_rows = sum(1 for r in data_dict
+                    if r['qc'] > 0 and r['fs'] > r['qc'] * 1000.0)
+    if swap_rows > 0.3 * n:
+        warnings.append(
+            'Sleeve friction (fs) exceeds tip resistance (qt) in %d of %d '
+            'rows. The qt and fs columns may be in the wrong order — qt '
+            'should be column 2 in MPa, fs column 3 in kPa.' % (swap_rows, n))
+
+    # 2. Unit weight should sit in roughly [10, 25] kN/m^3 for soils. If
+    #    the median is well outside that, column 4 is probably misaligned
+    #    or in the wrong units.
+    gammas = sorted(r['gtot'] for r in data_dict if r['gtot'] > 0)
+    if gammas:
+        median_g = gammas[len(gammas) // 2]
+        if median_g < 10 or median_g > 25:
+            warnings.append(
+                'Median unit weight is %.1f kN/m^3, outside the typical '
+                '10-25 kN/m^3 range. Check that column 4 is unit weight '
+                'in kN/m^3.' % median_g)
+
+    # 3. qc should be in MPa. Values in the hundreds-of-MPa range are
+    #    rarely physical (Bedrock CPT refusal aside) and usually mean qc
+    #    was uploaded in kPa.
+    qcs = [r['qc'] for r in data_dict if r['qc'] > 0]
+    if qcs and sum(1 for q in qcs if q > 100) > 0.7 * len(qcs):
+        warnings.append(
+            'Most qt values exceed 100 MPa, which is unusually high. '
+            'Check that qt is uploaded in MPa rather than kPa.')
+
+    # 4. Friction ratio sanity. Median Fr should sit between ~0.1% and
+    #    ~10% for soils. Outside that strongly suggests a units / column
+    #    mistake we haven't already flagged.
+    frs = []
+    for r in data_dict:
+        if r['qc'] > 0 and r['fs'] >= 0:
+            qt_kpa = r['qc'] * 1000.0
+            if qt_kpa > 0:
+                frs.append(100.0 * r['fs'] / qt_kpa)
+    if frs:
+        frs.sort()
+        median_fr = frs[len(frs) // 2]
+        if median_fr < 0.05 and not warnings:
+            warnings.append(
+                'Median friction ratio Fr is %.3f%%, which is unusually '
+                'low. Check the fs (kPa) and qt (MPa) columns and units.'
+                % median_fr)
+        elif median_fr > 20 and not any('qt and fs' in w for w in warnings):
+            warnings.append(
+                'Median friction ratio Fr is %.1f%%, which is unusually '
+                'high. Check the fs (kPa) and qt (MPa) columns and units.'
+                % median_fr)
+
+    return warnings
+
+
 @bp.after_request
 def _attach_demo_cookie(response):
     """Persist the demo-code grant as a long-lived cookie.
@@ -716,7 +788,14 @@ def calculator_step(type, step):
                     if not data_dict:
                         flash('No valid data found in file')
                         return redirect(request.url)
-                    
+
+                    # Flag likely column-order / units mistakes before we
+                    # commit the data. Non-blocking so the user can override.
+                    for _w in _sanity_check_cpt(data_dict):
+                        flash(_w)
+                        record_event('upload', f'{type}_cpt_sanity_warning',
+                                     {'warning': _w[:200]})
+
                     processed_data = process_cpt_data(data_dict)
                     logger.debug("process_cpt_data completed")
                     
