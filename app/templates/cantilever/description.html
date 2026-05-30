@@ -36,48 +36,44 @@
 
     <div class="description-content">
         <div class="description-text">
-            <p>The program predicts the maximum lateral deflection of an embedded
-            cantilever sheet-pile wall in unsaturated sand and the corresponding
-            settlement profile behind it. The methodology follows the design
-            charts presented in:</p>
+            <p>The program provides estimates of long-term wall deflection
+            and associated settlement for a cantilever wall in dry sand. The
+            estimations are derived using pre-calculated movements determined
+            by calibration of Finite Element predictions with movements
+            measured in case histories (mostly in Perth's sandy soils). The
+            methodology employed builds on the approach described in the
+            following publication:</p>
 
             <p class="citation">
-                Lehane, B.M., Bagbag, A., Durham, C. and Pine, T. (2019).
-                Design charts for lateral deflection of embedded cantilever walls
-                in unsaturated Perth sands. <em>Proceedings of the 13th
-                Australia-New Zealand Conference on Geomechanics</em>, Perth.
+                Lehane, B.M., Bagbag, A., Durham, C., &amp; Pine, T. (2019).
+                Design charts for lateral deflection of embedded cantilever
+                walls in unsaturated Perth sands. In H. E. Acosta-Martínez,
+                &amp; B. M. Lehane (Eds.), <em>Proceedings of the 13th
+                Australia New Zealand Conference on Geomechanics</em>
+                (pp. 441-446). Australian Geomechanics Society.
             </p>
             <a href="{{ url_for('static', filename='pdf/Lehane-etal-ANZ2019-cantilever-walls.pdf') }}"
                class="link-to-publication" target="_blank" rel="noopener">
                 <i class="fas fa-file-pdf"></i> Read the publication (PDF)
             </a>
 
-            <p style="margin-top: 1.25rem;">The charts are entered with the
-            average peak friction angle, the depth-gradient of q<sub>c</sub>,
-            the H/L geometry ratio and the normalised wall flexural rigidity
-            EI/(γ<sub>w</sub>·H<sup>4</sup>), all derived from the CPT over a
-            depth band of 1.5·H (clamped by the H/L bounds of the calibration).
-            The settlement profile decays exponentially behind the wall with
-            s<sub>max</sub> = 0.6·d<sub>max</sub> (H/L &gt; 0.5) or
-            0.5·d<sub>max</sub>, and s ≈ 0.61·s<sub>max</sub> at a distance H/2
-            behind the wall.</p>
-
             <h3 style="margin-top: 1.25rem;">Scope and limits</h3>
             <ul>
                 <li>Sand profiles only — the average I<sub>c</sub> over the
                     averaging band must be below 2.2.</li>
-                <li>H/L in [0.2, 0.671]; EI/(γ<sub>w</sub>·H<sup>4</sup>) in [5, 4500].</li>
-                <li>Water table at least 2·H below ground.</li>
-                <li>q<sub>c</sub> must increase with depth (dq<sub>c</sub>/dz &gt; 0).</li>
-                <li>CPT data must reach the base of the wall.</li>
-                <li>No load or material factors. Bending stresses in the wall
-                    section are not checked.</li>
+                <li>Water table at least 2·H below ground (where H is the
+                    excavation depth).</li>
+                <li>The program idealises the input CPT q<sub>c</sub> data
+                    to the best-fitting linearly increasing q<sub>c</sub>
+                    with depth (dq<sub>c</sub>/dz).</li>
+                <li>No load or material factors. Bending stresses in the
+                    wall section are not checked.</li>
             </ul>
         </div>
 
         <div class="description-image">
             <img src="{{ url_for('static', filename='img/cantilever_wall.png') }}"
-                 alt="Embedded cantilever wall schematic in dry sand showing wall length L, excavation depth H, and maximum wall deflection at the top">
+                 alt="Contiguous bored-pile cantilever retaining wall in a Perth basement excavation">
         </div>
     </div>
 
