@@ -56,18 +56,27 @@ def _shallow_demo_emails():
     return {e.strip().lower() for e in raw.split(',') if e.strip()}
 
 
+_DEMO_COOKIE_NAME = 'uwa_demo_ok'
+_DEMO_COOKIE_MAX_AGE = 60 * 60 * 24 * 365  # 1 year
+
+
 def _maybe_grant_shallow_demo():
     """Remember demo access in the session if a valid ?code= is supplied.
 
     Also grants access to the private preview modules (lateral, cantilever)
-    via the same code.
+    via the same code. Sets ``g.set_demo_cookie`` so the response handler
+    persists a long-lived cookie backing the session flag — this keeps the
+    gate open even after a server-side session is invalidated (e.g. by a
+    Render redeploy).
     """
+    from flask import g
     code = os.environ.get('SHALLOW_DEMO_CODE') or current_app.config.get('SHALLOW_DEMO_CODE')
     supplied = request.args.get('code') or request.form.get('demo_code')
     if code and supplied and compare_digest(str(supplied), str(code)):
         session['shallow_demo_ok'] = True
         session['private_demo_ok'] = True
         session.modified = True
+        g.set_demo_cookie = True
 
 
 def _shallow_demo_allowed():
@@ -86,17 +95,57 @@ def _private_module_allowed():
     embedded cantilever wall).
 
     Granted via the same ``?code=<SHALLOW_DEMO_CODE>`` link that the shallow
-    module used during its private phase. Default deny if the code is not
-    configured.
+    module used during its private phase. We accept any of:
+
+    * the in-session ``shallow_demo_ok`` / ``private_demo_ok`` flag;
+    * the long-lived ``uwa_demo_ok`` cookie set when the code was supplied
+      (survives Flask-Session resets and Render redeploys);
+    * the user's registered email being in the allowlist.
+
+    Default deny if none of the above match.
     """
     if session.get('shallow_demo_ok'):
         return True
     if session.get('private_demo_ok'):
         return True
+    # Cookie fallback — survives session resets.
+    if request.cookies.get(_DEMO_COOKIE_NAME) == 'ok':
+        # Re-hydrate the session so downstream checks in this request
+        # tree (e.g. template renders) don't have to look at cookies.
+        session['private_demo_ok'] = True
+        session.modified = True
+        return True
     email = (session.get('user_email') or session.get('email') or '').strip().lower()
     if email and email in _shallow_demo_emails():
         return True
     return False
+
+
+@bp.after_request
+def _attach_demo_cookie(response):
+    """Persist the demo-code grant as a long-lived cookie.
+
+    Set when ``_maybe_grant_shallow_demo`` validates a fresh ?code= and sets
+    ``g.set_demo_cookie``. The cookie is signed-by-name only (the value is
+    a constant 'ok'); the security boundary is still that the user had to
+    supply the correct SHALLOW_DEMO_CODE once to set it. This survives
+    Flask-Session resets and Render redeploys, which was the failure mode
+    behind the "click Continue and get bounced to home" report.
+    """
+    try:
+        from flask import g
+        if getattr(g, 'set_demo_cookie', False):
+            response.set_cookie(
+                _DEMO_COOKIE_NAME, 'ok',
+                max_age=_DEMO_COOKIE_MAX_AGE,
+                httponly=True,
+                samesite='Lax',
+                path='/',
+            )
+    except Exception:
+        # Never fail a response because of cookie bookkeeping.
+        pass
+    return response
 
 
 @bp.route('/googlef2236ffa5d780ee8.html')
@@ -419,7 +468,7 @@ def calculator_step(type, step):
     if 'type' in session and session['type'] != type:
         # Clear session data except for user info
         session_data = {}
-        for key in ['user_id', 'email', 'name', 'institution', 'registered', 'user_email', 'affiliation', 'shallow_demo_ok']:
+        for key in ['user_id', 'email', 'name', 'institution', 'registered', 'user_email', 'affiliation', 'shallow_demo_ok', 'private_demo_ok']:
             if key in session:
                 session_data[key] = session[key]
         session.clear()
