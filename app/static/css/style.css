@@ -146,6 +146,7 @@ body {
     margin-bottom: 1rem;
     border-radius: var(--border-radius);
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    box-sizing: border-box;
 }
 
 .step.active {
@@ -564,6 +565,7 @@ input[type="text"] {
     color: var(--secondary-color);
     border-top: 1px solid #eee;
     width: 100%;
+    box-sizing: border-box;
 }
 
 .footer p {

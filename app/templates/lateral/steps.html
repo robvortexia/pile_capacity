@@ -239,10 +239,12 @@
     }
     function autoMR() { Plotly.relayout('mr_graph', { 'xaxis.autorange': true, 'yaxis.autorange': true }); }
     drawLD(); drawMR();
-    window.addEventListener('resize', function () {
+    function resizeCharts() {
         Plotly.Plots.resize(document.getElementById('ld_graph'));
         Plotly.Plots.resize(document.getElementById('mr_graph'));
-    });
+    }
+    setTimeout(resizeCharts, 100);
+    window.addEventListener('resize', resizeCharts);
 </script>
 {% endif %}
 
@@ -257,7 +259,8 @@
 .soil-banner { padding: 0.85rem 1rem; border-radius: 8px; margin: 0.5rem 0 1rem; background: #e8f0fe; border-left: 4px solid #1a73e8; }
 .soil-banner.sand { background: #e8f0fe; border-left-color: #1a73e8; }
 .soil-banner.clay { background: #fef7e0; border-left-color: #f29900; }
-.charts-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; align-items: stretch; }
+.charts-row { display: flex; flex-wrap: wrap; gap: 1.25rem; justify-content: center; align-items: stretch; }
+.charts-row > .result-card { flex: 1 1 0; min-width: 0; max-width: 600px; box-sizing: border-box; }
 .summary-card { max-width: 520px; margin: 0 auto; }
 .summary-card .summary-table td { padding: 0.5rem 0.4rem; }
 .results-grid { display: grid; grid-template-columns: 1.4fr 1fr; gap: 1.25rem; align-items: start; }
@@ -278,7 +281,7 @@
 .alert { margin-top: 1rem; padding: 0.85rem 1rem; border-radius: 4px; }
 .alert-error { background: #fde8e8; color: #c53030; border-left: 4px solid #c53030; }
 .alert-warn { background: #fff8e1; color: #8a6d00; border-left: 4px solid #f4b400; }
-@media (max-width: 1100px) { .charts-row { grid-template-columns: 1fr; } }
+@media (max-width: 1100px) { .charts-row > .result-card { flex-basis: 100%; max-width: 600px; } }
 @media (max-width: 900px) { .results-grid { grid-template-columns: 1fr; } }
 @media (max-width: 768px) { .main-content-with-stepper { margin-left: 0; padding: 1rem; } .graphs-container { grid-template-columns: 1fr; } .graph-wrapper { height: 400px; } }
 </style>
