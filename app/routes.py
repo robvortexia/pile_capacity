@@ -1124,6 +1124,7 @@ def calculator_step(type, step):
                     'hult_exp_sigv': _opt('hult_exp_sigv', 0.1),
                     'pile_name': request.form.get('pile_name', ''),
                     'force_g0_profile': request.form.get('force_g0_profile') or None,
+                    'g0_075L_override': _opt('g0_075L_override', None),
                 }
 
                 errors = []

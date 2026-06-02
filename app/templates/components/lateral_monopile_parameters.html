@@ -71,6 +71,12 @@
                         <option value="Homogeneous">Force Homogeneous (G<sub>0</sub> = const)</option>
                     </select>
                 </div>
+
+                <div class="form-field">
+                    <label>G<sub>0</sub> at 0.75L (MPa)</label>
+                    <input type="number" name="g0_075L_override" step="0.1" min="0" class="form-control" placeholder="Optional. Leave blank to use the profile fit">
+                    <span class="help-text">If set, this value of G<sub>0</sub> at 0.75L is used directly in the calculations instead of the value from the best-fit profile.</span>
+                </div>
                 <div class="form-field">
                     <label>H<sub>u</sub> coefficient (default 0.3)</label>
                     <input type="number" name="hult_coefficient" step="0.01" min="0" value="0.3" class="form-control">

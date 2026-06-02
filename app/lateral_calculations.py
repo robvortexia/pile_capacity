@@ -300,7 +300,16 @@ def _read_params(params):
         'hult_exp_sigv': float(params.get('hult_exp_sigv', 0.1)),   # Main B99
         # B100 = 1 - B98 - B99
         'force_g0_profile': params.get('force_g0_profile'),         # 'Linear'|'Power of 0.5'|'Homogeneous'|None
+        'g0_075L_override': _opt_float(params.get('g0_075L_override')),  # user-supplied G0 at 0.75L (MPa), or None
     }
+
+
+def _opt_float(val):
+    """Parse an optional float; return None for blank/invalid."""
+    try:
+        return float(val) if val not in (None, '') else None
+    except (TypeError, ValueError):
+        return None
 
 
 def calculate_lateral_monopile_results(processed_cpt, params):
@@ -381,6 +390,11 @@ def calculate_lateral_monopile_results(processed_cpt, params):
             g0_075 = coef
         fit = dict(fit, name=forced, coefficient=coef,
                    g0_at_0_75L_mpa=g0_075, cov=fit['all_fits'][forced]['cov'])
+
+    # User-supplied G0 at 0.75L (MPa) overrides the profile-derived value and
+    # feeds the rigid-pile stiffness K_R0 directly.
+    if p['g0_075L_override'] and p['g0_075L_override'] > 0:
+        fit = dict(fit, g0_at_0_75L_mpa=p['g0_075L_override'])
 
     # ---- C_k, K_R0, theta_ref ----
     c_k = _c_k(fit['name'], L_over_D)                              # Calc H20..H22
