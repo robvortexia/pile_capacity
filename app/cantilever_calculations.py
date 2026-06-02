@@ -385,7 +385,7 @@ def calculate_cantilever_results(processed_cpt, params):
         'settlement_profile': {
             'x_label': 'Distance behind wall, x (m)',
             'y_label': 'Settlement (mm)',
-            'default_scale': {'x_max': 3.0 * H, 'y_max': max(smax_mm * 1.05, 1.0)},
+            'default_scale': {'x_max': 2.0 * H, 'y_max': max(smax_mm * 1.05, 1.0)},
             'series': [{'name': 'Settlement', 'points': profile}],
         },
     }
