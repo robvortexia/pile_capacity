@@ -172,8 +172,7 @@
 
 {% if step == 2 and graphs %}
 <script>
-    var config = { responsive: true, displayModeBar: false, displaylogo: false,
-        modeBarButtonsToRemove: ['zoom2d','pan2d','select2d','lasso2d','zoomIn2d','zoomOut2d','autoScale2d','resetScale2d'] };
+    var config = window.UWA_PLOTLY_CONFIG.cpt;
     var qtGraph = JSON.parse('{{ graphs.qt | safe }}');
     var frGraph = JSON.parse('{{ graphs.fr | safe }}');
     var icGraph = JSON.parse('{{ graphs.ic | safe }}');
@@ -207,7 +206,7 @@
 {% if step == 4 and results and not results.aborted %}
 <script>
     var R = {{ results | tojson }};
-    var plotConfig = { responsive: true, displaylogo: false };
+    var plotConfig = window.UWA_PLOTLY_CONFIG.result;
 
     function drawLD() {
         var s = R.curve_load_disp.series[0];

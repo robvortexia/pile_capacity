@@ -68,6 +68,27 @@
     {% block extra_head %}{% endblock %}
 </head>
 <body>
+    <script>
+    // Shared Plotly chart configs. Defined before the per-step chart scripts
+    // run so every module gets a consistent, exportable mode bar (engineers
+    // can save charts as PNG/SVG). Shown on hover to keep the default view clean.
+    window.UWA_PLOTLY_CONFIG = {
+        cpt: {
+            responsive: true,
+            displaylogo: false,
+            displayModeBar: 'hover',
+            modeBarButtonsToRemove: ['select2d', 'lasso2d', 'zoomIn2d', 'zoomOut2d'],
+            toImageButtonOptions: { format: 'png', scale: 2 }
+        },
+        result: {
+            responsive: true,
+            displaylogo: false,
+            displayModeBar: 'hover',
+            modeBarButtonsToRemove: ['select2d', 'lasso2d'],
+            toImageButtonOptions: { format: 'png', scale: 2 }
+        }
+    };
+    </script>
     <div id="registrationModal" class="modal" {% if show_modal %}style="display: flex"{% else %}style="display: none"{% endif %}>
         <div class="modal-content">
             <h2>Registration</h2>
@@ -162,5 +183,47 @@
         <p style="margin-bottom: 0.5rem;">Developed by <a href="https://www.vortexiasolutions.com.au/" target="_blank" style="color: var(--primary-color); text-decoration: none;">Vortexia Solutions</a></p>
         <img src="{{ url_for('static', filename='img/vortexialogo.png') }}" alt="Vortexia Logo" class="footer-logo">
     </footer>
+
+    <!-- Calculation loading overlay: shown while the (sometimes slow) step-3
+         capacity calculation runs server-side before redirecting to results. -->
+    <div id="calcLoadingOverlay" class="calc-loading-overlay" role="status" aria-live="polite" aria-hidden="true">
+        <div class="calc-loading-box">
+            <div class="calc-loading-spinner"></div>
+            <p class="calc-loading-title">Running calculation</p>
+            <p class="calc-loading-sub">Crunching the CPT profile. This can take up to about 30 seconds for large datasets.</p>
+        </div>
+    </div>
+    <style>
+    .calc-loading-overlay { position: fixed; inset: 0; z-index: 3000; display: none; align-items: center; justify-content: center; background: rgba(255,255,255,0.85); }
+    .calc-loading-overlay.show { display: flex; }
+    .calc-loading-box { background: #fff; border-radius: 12px; padding: 2rem 2.5rem; box-shadow: 0 8px 30px rgba(0,0,0,0.18); text-align: center; max-width: 380px; margin: 1rem; }
+    .calc-loading-spinner { width: 44px; height: 44px; margin: 0 auto 1rem; border: 4px solid #e3f2fd; border-top-color: #003087; border-radius: 50%; animation: calc-spin 0.9s linear infinite; }
+    @keyframes calc-spin { to { transform: rotate(360deg); } }
+    .calc-loading-title { margin: 0 0 0.4rem; font-weight: 600; color: #202124; font-size: 1.05rem; }
+    .calc-loading-sub { margin: 0; color: #5f6368; font-size: 0.9rem; line-height: 1.45; }
+    </style>
+    <script>
+    (function () {
+        var overlay = document.getElementById('calcLoadingOverlay');
+        if (!overlay) return;
+        // The step-3 parameter forms POST to /<type>/calculator/3 and run the
+        // capacity calculation before navigating to step 4. Show the overlay on
+        // submit so the page does not look frozen during a long calc.
+        document.querySelectorAll('form[action*="/calculator/3"]').forEach(function (form) {
+            form.addEventListener('submit', function () {
+                overlay.classList.add('show');
+                overlay.setAttribute('aria-hidden', 'false');
+                var btn = form.querySelector('button[type="submit"]');
+                if (btn) { btn.disabled = true; }
+            });
+        });
+        // Hide the overlay if the user comes back via the bfcache (back button).
+        window.addEventListener('pageshow', function () {
+            overlay.classList.remove('show');
+            overlay.setAttribute('aria-hidden', 'true');
+            document.querySelectorAll('form[action*="/calculator/3"] button[type="submit"]').forEach(function (b) { b.disabled = false; });
+        });
+    })();
+    </script>
 </body>
 </html> 

@@ -197,11 +197,8 @@
                         width: 600
                     };
                     
-                    var config = {
-                        responsive: true,
-                        displayModeBar: false
-                    };
-                    
+                    var config = window.UWA_PLOTLY_CONFIG.result;
+
                     Plotly.newPlot('helical_deflection_graph', [trace1, trace2], layout, config);
                 } else {
                     // Try again in 100ms
@@ -453,12 +450,7 @@
                 width: 600
             };
 
-            var config = {
-                responsive: true,
-                displayModeBar: false,
-                displaylogo: false,
-                scrollZoom: false
-            };
+            var config = window.UWA_PLOTLY_CONFIG.result;
 
             Plotly.newPlot('capacity_vs_depth', traces, layout, config).then(function() {
                 var gd = document.getElementById('capacity_vs_depth');
