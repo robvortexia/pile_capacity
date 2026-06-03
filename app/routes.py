@@ -117,6 +117,34 @@ def _private_module_allowed():
     # return False
 
 
+def _demo_access():
+    """True only for users who arrived via the ?code= demo link.
+
+    Used to gate experimental/preview features (currently the flexible CPT
+    file importer) to demo users while the rest of the site stays public. This
+    is the original private-preview check (session flag set by the code link,
+    backed by the long-lived ``uwa_demo_ok`` cookie, plus the email allowlist).
+    """
+    if session.get('shallow_demo_ok') or session.get('private_demo_ok'):
+        return True
+    if request.cookies.get(_DEMO_COOKIE_NAME) == 'ok':
+        session['private_demo_ok'] = True
+        session.modified = True
+        return True
+    email = (session.get('user_email') or session.get('email') or '').strip().lower()
+    return bool(email and email in _shallow_demo_emails())
+
+
+@bp.app_context_processor
+def _inject_demo_flag():
+    """Expose ``demo_access`` to every template (e.g. to show the demo-only
+    "contractor file" note on the upload form)."""
+    try:
+        return {'demo_access': _demo_access()}
+    except Exception:
+        return {'demo_access': False}
+
+
 def _sanity_check_cpt(data_dict):
     """Return human-readable warnings about likely column-order or units
     errors in the parsed CPT data.
@@ -557,6 +585,10 @@ def calculator_step(type, step):
     if type not in ['driven', 'bored', 'helical', 'shallow', 'lateral', 'cantilever']:
         return redirect(url_for('main.index'))
 
+    # Honour the ?code= demo link on any calculator URL so demo-only features
+    # (e.g. the flexible CPT importer) are available wherever the user lands.
+    _maybe_grant_shallow_demo()
+
     # Shallow foundations is a private demo: gate to authorised people only.
     if type == 'shallow':
         _maybe_grant_shallow_demo()
@@ -748,39 +780,57 @@ def calculator_step(type, step):
                     
                     # Initialize data structures
                     data_dict = []
-                    delimiter = None
-                    
-                    # Process file line by line
-                    for line in file:
+                    delimiter = None  # set by the legacy parser; kept None for the demo importer
+
+                    if _demo_access():
+                        # Demo: flexible importer that also reads AGS4 and
+                        # vendor/contractor CPT exports, and derives the unit
+                        # weight column from the CPT when the file lacks it.
+                        from .cpt_import import parse_cpt_file
                         try:
-                            decoded_line = line.decode('utf-8').strip()
-                            if not decoded_line:  # Skip empty lines
-                                continue
-                            
-                            # Try to determine the delimiter from first line
-                            if delimiter is None:
-                                if '\t' in decoded_line:
-                                    delimiter = '\t'
-                                elif ',' in decoded_line:
-                                    delimiter = ','
-                                else:
-                                    delimiter = ' '
-                            
-                            # Split and process each line directly
-                            values = decoded_line.split(delimiter)
-                            if len(values) >= 4:  # Ensure we have all required columns
-                                try:
-                                    data_dict.append({
-                                        'z': float(values[0]),
-                                        'qc': float(values[1]),
-                                        'fs': float(values[2]),
-                                        'gtot': float(values[3])
-                                    })
-                                except (ValueError, IndexError):
+                            data_dict, _import_note = parse_cpt_file(file.read(), file.filename)
+                        except Exception as _imp_err:
+                            logger.error(f"CPT import failed: {_imp_err}")
+                            flash(f'Could not read that CPT file: {_imp_err}')
+                            return redirect(request.url)
+                        if _import_note:
+                            flash(_import_note)
+                        record_event('upload', f'{type}_cpt_import',
+                                     {'note': (_import_note or '')[:200], 'filename': file.filename})
+                    else:
+                        # Standard parser: clean four-column file
+                        # (depth, qt, fs, unit weight), auto-detected delimiter.
+                        delimiter = None
+                        for line in file:
+                            try:
+                                decoded_line = line.decode('utf-8').strip()
+                                if not decoded_line:  # Skip empty lines
                                     continue
-                        except UnicodeDecodeError:
-                            continue
-                    
+
+                                # Try to determine the delimiter from first line
+                                if delimiter is None:
+                                    if '\t' in decoded_line:
+                                        delimiter = '\t'
+                                    elif ',' in decoded_line:
+                                        delimiter = ','
+                                    else:
+                                        delimiter = ' '
+
+                                # Split and process each line directly
+                                values = decoded_line.split(delimiter)
+                                if len(values) >= 4:  # Ensure we have all required columns
+                                    try:
+                                        data_dict.append({
+                                            'z': float(values[0]),
+                                            'qc': float(values[1]),
+                                            'fs': float(values[2]),
+                                            'gtot': float(values[3])
+                                        })
+                                    except (ValueError, IndexError):
+                                        continue
+                            except UnicodeDecodeError:
+                                continue
+
                     if not data_dict:
                         flash('No valid data found in file')
                         return redirect(request.url)

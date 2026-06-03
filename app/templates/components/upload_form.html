@@ -21,6 +21,13 @@
         </div>
     </div>
 
+    {% if demo_access %}
+    <div class="import-note">
+        <i class="fas fa-flask"></i>
+        <span><strong>Demo:</strong> you can also upload a raw contractor CPT file. AGS4 (.ags) files and vendor exports with a header row are accepted. Columns are matched by heading, and if the file has no unit weight column it is estimated from the CPT (Robertson &amp; Cabal, 2010). Check the import message after uploading.</span>
+    </div>
+    {% endif %}
+
     {% if sample_data %}
     <div class="sample-loaded-banner">
         <i class="fas fa-check-circle"></i>
@@ -666,6 +673,27 @@ document.addEventListener('DOMContentLoaded', function() {
 .sample-loaded-banner i {
     font-size: 1.4rem;
     color: #28a745;
+    flex-shrink: 0;
+}
+
+.import-note {
+    background: #eef2ff;
+    border: 1px solid #c7d2fe;
+    border-left: 4px solid #4f46e5;
+    border-radius: 8px;
+    padding: 0.85rem 1rem;
+    margin-bottom: 1.5rem;
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    color: #3730a3;
+    font-size: 0.9rem;
+    line-height: 1.45;
+}
+
+.import-note i {
+    font-size: 1.1rem;
+    margin-top: 0.1rem;
     flex-shrink: 0;
 }
 </style> 
