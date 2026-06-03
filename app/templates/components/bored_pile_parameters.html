@@ -3,24 +3,24 @@
         <div class="form-section">
             <div class="form-field">
                 <label>File Name for Download (not required)</label>
-                <input type="text" name="file_name" class="form-control" placeholder="e.g., UWA Trial">
+                <input type="text" name="file_name" class="form-control" placeholder="e.g., UWA Trial" value="{{ session.get('pile_params', {}).get('site_name', '') }}">
             </div>
 
             <div class="form-field">
                 <label>Pile shaft diameter (m)</label>
-                <input type="number" name="shaft_diameter" step="0.001" class="form-control" required>
+                <input type="number" name="shaft_diameter" step="0.001" class="form-control" required value="{{ session.get('pile_params', {}).get('shaft_diameter', '') }}">
                 <span class="help-text">Diameter of the drilled shaft above the base.</span>
             </div>
 
             <div class="form-field">
                 <label>Pile base diameter (m)</label>
-                <input type="number" name="base_diameter" step="0.001" class="form-control" required>
+                <input type="number" name="base_diameter" step="0.001" class="form-control" required value="{{ session.get('pile_params', {}).get('base_diameter', '') }}">
                 <span class="help-text">Diameter at the pile tip. Same as shaft diameter if no base enlargement.</span>
             </div>
 
             <div class="form-field">
                 <label>Tip depth of cased borehole</label>
-                <input type="number" name="cased_depth" step="0.1" class="form-control" required>
+                <input type="number" name="cased_depth" step="0.1" class="form-control" required value="{{ session.get('pile_params', {}).get('cased_depth', '') }}">
                 <span class="help-text">Friction is ignored from ground level to this depth</span>
             </div>
 
@@ -33,11 +33,12 @@
 
             <div class="form-field">
                 <label>Pile tip depths (m) for analysis</label>
-                <input type="text" 
-                       name="pile_tip_depths" 
-                       class="form-control" 
-                       required 
-                       placeholder="e.g., 5, 10, 15">
+                <input type="text"
+                       name="pile_tip_depths"
+                       class="form-control"
+                       required
+                       placeholder="e.g., 5, 10, 15"
+                       value="{{ session.get('pile_params', {}).get('pile_tip_depths', []) | join(', ') }}">
                 <span class="help-text">Separate depths by commas. Maximum depth must be less than CPT depth.</span>
             </div>
         </div>
