@@ -10,6 +10,18 @@
     --side-nav-width: 140px;
 }
 
+/* Accessible keyboard focus: a visible ring for keyboard users (Tab),
+   suppressed on mouse click. Restores WCAG 2.4.7 after older outline:none rules. */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible {
+    outline: 2px solid var(--primary-color);
+    outline-offset: 2px;
+}
+
 html {
     /* Force 100% zoom level as baseline */
     zoom: 100%;
@@ -922,9 +934,13 @@ input[type="text"] {
     background: #f8f9fa;
     border-radius: var(--border-radius);
     transition: all 0.3s ease;
-    cursor: pointer;
     position: relative;
 }
+
+/* Only completed steps (rendered as <a>) are clickable. */
+a.vertical-step { text-decoration: none; color: inherit; cursor: pointer; }
+a.vertical-step:hover { box-shadow: 0 3px 10px rgba(0,0,0,0.18); }
+a.vertical-step.completed:hover { background: #d6ecd8; }
 
 .vertical-step::before {
     content: '';

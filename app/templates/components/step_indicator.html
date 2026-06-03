@@ -1,6 +1,13 @@
-<!-- Vertical Stepper -->
+<!-- Vertical Stepper. Completed steps (step > N) are links back to that step so
+     users can jump back to edit; the current and upcoming steps stay plain
+     (non-clickable). Session data (CPT, parameters) is preserved, so navigating
+     back re-renders the earlier step correctly. -->
 <div class="vertical-stepper">
-    <div class="vertical-step {% if step >= 1 %}active{% endif %} {% if step > 1 %}completed{% endif %}">
+    {% if step > 1 %}
+    <a href="{{ url_for('main.calculator_step', type=type, step=1) }}" class="vertical-step active completed" title="Back to Step 1">
+    {% else %}
+    <div class="vertical-step {% if step >= 1 %}active{% endif %}">
+    {% endif %}
         <div class="vertical-step-icon">
             <i class="fas fa-file-upload"></i>
         </div>
@@ -8,9 +15,13 @@
             <div class="vertical-step-number">Step 1</div>
             <div class="vertical-step-text">Input CPT Data</div>
         </div>
-    </div>
-    
-    <div class="vertical-step {% if step >= 2 %}active{% endif %} {% if step > 2 %}completed{% endif %}">
+    {% if step > 1 %}</a>{% else %}</div>{% endif %}
+
+    {% if step > 2 %}
+    <a href="{{ url_for('main.calculator_step', type=type, step=2) }}" class="vertical-step active completed" title="Back to Step 2">
+    {% else %}
+    <div class="vertical-step {% if step >= 2 %}active{% endif %}">
+    {% endif %}
         <div class="vertical-step-icon">
             <i class="fas fa-chart-line"></i>
         </div>
@@ -18,9 +29,13 @@
             <div class="vertical-step-number">Step 2</div>
             <div class="vertical-step-text">View CPT Data</div>
         </div>
-    </div>
-    
-    <div class="vertical-step {% if step >= 3 %}active{% endif %} {% if step > 3 %}completed{% endif %}">
+    {% if step > 2 %}</a>{% else %}</div>{% endif %}
+
+    {% if step > 3 %}
+    <a href="{{ url_for('main.calculator_step', type=type, step=3) }}" class="vertical-step active completed" title="Back to Step 3">
+    {% else %}
+    <div class="vertical-step {% if step >= 3 %}active{% endif %}">
+    {% endif %}
         <div class="vertical-step-icon">
             <i class="fas fa-ruler-vertical"></i>
         </div>
@@ -28,8 +43,8 @@
             <div class="vertical-step-number">Step 3</div>
             <div class="vertical-step-text">Enter Pile Info</div>
         </div>
-    </div>
-    
+    {% if step > 3 %}</a>{% else %}</div>{% endif %}
+
     <div class="vertical-step {% if step >= 4 %}active{% endif %}">
         <div class="vertical-step-icon">
             <i class="fas fa-calculator"></i>

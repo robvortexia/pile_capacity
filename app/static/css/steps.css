@@ -143,7 +143,6 @@ h2 {
 
 .form-control:focus {
     border-color: var(--primary-color);
-    outline: none;
 }
 
 .step-indicator {
