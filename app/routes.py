@@ -91,34 +91,30 @@ def _shallow_demo_allowed():
 
 
 def _private_module_allowed():
-    """Access gate for the private "preview" modules (lateral monopile and
-    embedded cantilever wall).
+    """Access gate for the lateral monopile and embedded cantilever wall
+    modules.
 
-    Granted via the same ``?code=<SHALLOW_DEMO_CODE>`` link that the shallow
-    module used during its private phase. We accept any of:
-
-    * the in-session ``shallow_demo_ok`` / ``private_demo_ok`` flag;
-    * the long-lived ``uwa_demo_ok`` cookie set when the code was supplied
-      (survives Flask-Session resets and Render redeploys);
-    * the user's registered email being in the allowlist.
-
-    Default deny if none of the above match.
+    These are public as of release (Barry signed off on both modules). The
+    earlier private-preview logic is kept here, commented, in case re-gating
+    is ever needed: the in-session ``shallow_demo_ok`` / ``private_demo_ok``
+    flag, the long-lived ``uwa_demo_ok`` cookie set by
+    ``?code=<SHALLOW_DEMO_CODE>``, or the registered email being in the
+    allowlist. To re-gate, restore the body below instead of ``return True``.
     """
-    if session.get('shallow_demo_ok'):
-        return True
-    if session.get('private_demo_ok'):
-        return True
-    # Cookie fallback — survives session resets.
-    if request.cookies.get(_DEMO_COOKIE_NAME) == 'ok':
-        # Re-hydrate the session so downstream checks in this request
-        # tree (e.g. template renders) don't have to look at cookies.
-        session['private_demo_ok'] = True
-        session.modified = True
-        return True
-    email = (session.get('user_email') or session.get('email') or '').strip().lower()
-    if email and email in _shallow_demo_emails():
-        return True
-    return False
+    return True
+    # --- private-preview gate (restore to re-gate) ---
+    # if session.get('shallow_demo_ok'):
+    #     return True
+    # if session.get('private_demo_ok'):
+    #     return True
+    # if request.cookies.get(_DEMO_COOKIE_NAME) == 'ok':
+    #     session['private_demo_ok'] = True
+    #     session.modified = True
+    #     return True
+    # email = (session.get('user_email') or session.get('email') or '').strip().lower()
+    # if email and email in _shallow_demo_emails():
+    #     return True
+    # return False
 
 
 def _sanity_check_cpt(data_dict):
