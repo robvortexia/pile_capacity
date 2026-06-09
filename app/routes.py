@@ -782,12 +782,14 @@ def calculator_step(type, step):
                     data_dict = []
                     delimiter = None  # set by the legacy parser; kept None for the demo importer
 
-                    # Step 1 offers two ways to provide CPT data:
-                    #   'contractor' -> flexible importer (AGS4 / vendor exports;
-                    #                   unit weight derived from the CPT), or
-                    #   'user'       -> clean four-column file the user supplies.
+                    # The flexible contractor-file importer is demo-gated for now
+                    # (?code= link). Demo users get a two-option Step 1:
+                    #   'contractor' -> importer (AGS4 / vendor exports; unit
+                    #                   weight derived from the CPT), or
+                    #   'user'       -> clean four-column file they supply.
+                    # Public users always use the standard four-column parser.
                     cpt_source = request.form.get('cpt_source', 'contractor')
-                    if cpt_source != 'user':
+                    if _demo_access() and cpt_source != 'user':
                         # Contractor file: flexible importer that reads AGS4 and
                         # vendor/contractor CPT exports (and clean CSVs too), and
                         # derives the unit weight column from the CPT when absent.
