@@ -243,21 +243,23 @@
 }
 
 .graphs-container {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    gap: 1.5rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
     width: 100%;
     margin: 0 auto;
     padding: 1rem 0;
 }
 
 .graph-wrapper {
+    flex: 1 1 220px;
+    min-width: 0;
     background: white;
     border-radius: 12px;
-    padding: 1rem;
+    padding: 0.75rem 0.4rem;
     box-shadow: 0 4px 6px rgba(0,0,0,0.05);
     transition: transform 0.2s ease;
-    height: 500px;
+    height: 480px;
 }
 
 .graph-wrapper:hover {
