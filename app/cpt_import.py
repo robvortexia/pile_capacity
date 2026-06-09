@@ -22,7 +22,8 @@ import math
 # Robertson & Cabal (2010) unit-weight correlation constants.
 PA_KPA = 100.0       # atmospheric pressure (kPa)
 GAMMA_W = 9.81       # unit weight of water (kN/m3)
-GAMMA_MIN = 9.81     # clamp: saturated soil cannot weigh less than water
+GAMMA_MIN = 11.0     # clamp: practical lower bound for any soil (per Barry Lehane;
+                     # the correlation can return lower values at shallow depths)
 GAMMA_MAX = 22.5     # clamp: practical upper bound for soils
 
 

@@ -371,7 +371,7 @@ def track_page_visit():
     # Record the page visit in the database
     record_page_visit()
 
-ALLOWED_EXTENSIONS = {'csv', 'txt'}
+ALLOWED_EXTENSIONS = {'csv', 'txt', 'ags'}
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -782,10 +782,15 @@ def calculator_step(type, step):
                     data_dict = []
                     delimiter = None  # set by the legacy parser; kept None for the demo importer
 
-                    if _demo_access():
-                        # Demo: flexible importer that also reads AGS4 and
-                        # vendor/contractor CPT exports, and derives the unit
-                        # weight column from the CPT when the file lacks it.
+                    # Step 1 offers two ways to provide CPT data:
+                    #   'contractor' -> flexible importer (AGS4 / vendor exports;
+                    #                   unit weight derived from the CPT), or
+                    #   'user'       -> clean four-column file the user supplies.
+                    cpt_source = request.form.get('cpt_source', 'contractor')
+                    if cpt_source != 'user':
+                        # Contractor file: flexible importer that reads AGS4 and
+                        # vendor/contractor CPT exports (and clean CSVs too), and
+                        # derives the unit weight column from the CPT when absent.
                         from .cpt_import import parse_cpt_file
                         try:
                             data_dict, _import_note = parse_cpt_file(file.read(), file.filename)
@@ -798,7 +803,7 @@ def calculator_step(type, step):
                         record_event('upload', f'{type}_cpt_import',
                                      {'note': (_import_note or '')[:200], 'filename': file.filename})
                     else:
-                        # Standard parser: clean four-column file
+                        # User file: clean four-column file
                         # (depth, qt, fs, unit weight), auto-detected delimiter.
                         delimiter = None
                         for line in file:

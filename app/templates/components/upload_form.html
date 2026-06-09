@@ -1,32 +1,7 @@
 <div class="upload-container">
     <div class="instructions">
-        <p class="main-instruction">Please upload a CSV or TXT file containing the CPT data in the order indicated below. Note the units required. The CPT profile must extend below the maximum pile depth.</p>
-        
-        <div class="data-requirements">
-            <p class="requirement-note">The first unit weight entry will be used throughout if no other unit weights are entered.</p>
-            <p class="requirement-note no-margin">The depth increment from this CSV file controls the accuracy of the calculations (suggested increment ≤ 0.1 m).</p>
-        </div>
-
-        <div class="data-format">
-            <table class="format-table">
-                <thead>
-                    <tr>
-                        <th>Depth (m)</th>
-                        <th>Cone resistance qt (MPa)</th>
-                        <th>Cone sleeve friction, fs (kPa)</th>
-                        <th>Unit weight (kN/m³)</th>
-                    </tr>
-                </thead>
-            </table>
-        </div>
+        <p class="main-instruction">Choose one of the two options below to provide your CPT data. The profile must extend below the maximum pile depth, and the depth increment controls the accuracy of the calculations (suggested increment &le; 0.1 m).</p>
     </div>
-
-    {% if demo_access %}
-    <div class="import-note">
-        <i class="fas fa-flask"></i>
-        <span><strong>Demo:</strong> you can also upload a raw contractor CPT file. AGS4 (.ags) files and vendor exports with a header row are accepted. Columns are matched by heading, and if the file has no unit weight column it is estimated from the CPT (Robertson &amp; Cabal, 2010). Check the import message after uploading.</span>
-    </div>
-    {% endif %}
 
     {% if sample_data %}
     <div class="sample-loaded-banner">
@@ -36,10 +11,28 @@
     {% endif %}
 
     <form method="POST" action="{{ url_for('main.calculator_step', type=type, step=1) }}" enctype="multipart/form-data" id="uploadForm">
+        <div class="cpt-source">
+            <label class="cpt-source-option">
+                <input type="radio" name="cpt_source" value="contractor" checked onchange="onSourceChange()">
+                <span class="cpt-source-body">
+                    <strong>1. CPT contractor file</strong> <span class="ext">(.txt or .ags)</span>
+                    <small>Raw cone-truck export. Columns are matched by heading; unit weight is calculated from the cone resistance and friction ratio (Robertson &amp; Cabal, 2010).</small>
+                </span>
+            </label>
+            <div class="cpt-source-or">or</div>
+            <label class="cpt-source-option">
+                <input type="radio" name="cpt_source" value="user" onchange="onSourceChange()">
+                <span class="cpt-source-body">
+                    <strong>2. Your own 4-column file</strong> <span class="ext">(.txt or .csv)</span>
+                    <small>Columns in order: Depth (m), cone resistance qt (MPa), cone sleeve friction fs (kPa), unit weight (kN/m³). The first unit weight is used throughout if no others are entered.</small>
+                </span>
+            </label>
+        </div>
+
         <div class="form-group">
-            <label for="cpt_file">Upload CPT Data (CSV or TXT format)</label>
+            <label for="cpt_file">Upload file</label>
             <div class="custom-file-input">
-                <input type="file" id="cpt_file" name="cpt_file" accept=".csv,.txt" {% if not sample_data %}required{% endif %} onchange="handleFileSelect(this)">
+                <input type="file" id="cpt_file" name="cpt_file" accept=".csv,.txt,.ags" {% if not sample_data %}required{% endif %} onchange="handleFileSelect(this)">
                 <label for="cpt_file" class="file-label">
                     <span class="file-button">{% if sample_data %}Replace with your own file{% else %}Choose File{% endif %}</span>
                     <span class="file-name">{% if sample_data %}sample_cpt.csv (loaded){% else %}No file chosen{% endif %}</span>
@@ -171,6 +164,13 @@
 </div>
 
 <script>
+function onSourceChange() {
+    var src = document.querySelector('input[name="cpt_source"]:checked');
+    var fi = document.getElementById('cpt_file');
+    if (src && fi) {
+        fi.setAttribute('accept', src.value === 'user' ? '.csv,.txt' : '.txt,.ags');
+    }
+}
 function handleFileSelect(input) {
     const file = input.files[0];
     if (!file) return;
@@ -696,4 +696,15 @@ document.addEventListener('DOMContentLoaded', function() {
     margin-top: 0.1rem;
     flex-shrink: 0;
 }
+
+.cpt-source { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1.5rem; }
+.cpt-source-option { display: flex; gap: 0.6rem; align-items: flex-start; padding: 0.8rem 1rem; border: 1px solid #e5e7eb; border-radius: 8px; cursor: pointer; transition: border-color 0.15s, background 0.15s; }
+.cpt-source-option:hover { border-color: #c7d2fe; }
+.cpt-source-option:has(input:checked) { border-color: var(--uwa-blue); background: #f5f8ff; }
+.cpt-source-option input[type="radio"] { margin-top: 0.2rem; flex-shrink: 0; }
+.cpt-source-body { display: flex; flex-direction: column; gap: 0.15rem; }
+.cpt-source-body strong { color: #1f2937; font-size: 0.95rem; }
+.cpt-source-body .ext { color: #6b7280; font-weight: 400; font-size: 0.82rem; }
+.cpt-source-body small { color: #6b7280; font-size: 0.82rem; line-height: 1.4; }
+.cpt-source-or { text-align: center; color: #9ca3af; font-size: 0.85rem; padding: 0.1rem; }
 </style> 

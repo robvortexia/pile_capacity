@@ -117,13 +117,14 @@ def sample_data_for_graphs(cpt_data, max_points=None):
 def _build_sbt_graph(processed_data, max_depth):
     """Build a Robertson SBT colour-coded soil profile graph.
     Shared by driven, bored, and helical pile graph functions."""
+    # Short labels keep the legend narrow (per Barry's request to reduce its width).
     sbt_zones = [
-        ('gravelly',   0,    1.31, 'Gravelly sand to dense sand', '#d4a017'),
-        ('sand',       1.31, 2.05, 'Sands: clean to silty',       '#f0c040'),
-        ('sand_mix',   2.05, 2.60, 'Sand mixtures',               '#90c050'),
-        ('silt_mix',   2.60, 2.95, 'Silt mixtures',               '#50a0d0'),
-        ('clay',       2.95, 5.0,  'Clays',                       '#3060b0'),
-        ('sensitive',  None, None, 'Zone 1, Sensitive soils',      '#704090'),
+        ('gravelly',   0,    1.31, 'Gravelly sand', '#d4a017'),
+        ('sand',       1.31, 2.05, 'Sand',          '#f0c040'),
+        ('sand_mix',   2.05, 2.60, 'Sand mix',      '#90c050'),
+        ('silt_mix',   2.60, 2.95, 'Silt mix',      '#50a0d0'),
+        ('clay',       2.95, 5.0,  'Clay',          '#3060b0'),
+        ('sensitive',  None, None, 'Sensitive',     '#704090'),
     ]
     ic_vals = processed_data['lc']
     iz_vals = processed_data.get('iz1', [])
@@ -196,12 +197,12 @@ def _build_sbt_graph(processed_data, max_depth):
             },
             'plot_bgcolor': '#ffffff',
             'paper_bgcolor': '#ffffff',
-            'margin': {'l': 60, 'r': 95, 't': 40, 'b': 30},
+            'margin': {'l': 60, 'r': 38, 't': 40, 'b': 30},
             'font': {'size': 12},
             'autosize': True,
             'showlegend': True,
             'legend': {
-                'font': {'size': 8},
+                'font': {'size': 7},
                 'orientation': 'v',
                 'y': 0.5,
                 'yanchor': 'middle',
