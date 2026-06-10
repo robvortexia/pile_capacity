@@ -142,6 +142,15 @@
                         </span>
                         <span class="nav-text">Home</span>
                     </a>
+                    {% if demo_access %}
+                    <div class="nav-separator-vertical"></div>
+                    <a href="{{ url_for('main.history') }}" class="nav-link">
+                        <span class="nav-icon">
+                            <i class="fas fa-folder-open"></i>
+                        </span>
+                        <span class="nav-text">My calculations</span>
+                    </a>
+                    {% endif %}
                     <div class="nav-separator-vertical"></div>
                     <a href="{{ url_for('main.suggestions') }}" class="nav-link">
                         <span class="nav-icon">
@@ -156,6 +165,18 @@
     </nav>
     
     <main class="main-content">
+        {% if history_saved_now %}
+        <div class="history-saved-note">
+            <i class="fas fa-check-circle"></i>
+            Saved to <a href="{{ url_for('main.history') }}">My calculations</a>.
+            You can reopen these results later from this browser.
+        </div>
+        <style>
+        .history-saved-note { margin: 0.75rem 1rem 0; padding: 0.6rem 1rem; background: #e8f5e9; border: 1px solid #c8e6c9; border-radius: 8px; color: #1b5e20; font-size: 0.92rem; }
+        .history-saved-note i { margin-right: 0.35rem; }
+        .history-saved-note a { color: #1b5e20; font-weight: 600; }
+        </style>
+        {% endif %}
         {% block content %}{% endblock %}
     </main>
 

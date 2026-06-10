@@ -47,3 +47,21 @@ class Suggestion(db.Model):
     message = db.Column(db.Text, nullable=False)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
     ip_address = db.Column(db.String(45), nullable=True)
+
+class SavedCalculation(db.Model):
+    """A completed calculation saved for the no-login history feature.
+
+    Keyed to the anonymous browser id (uwa_anon_id cookie). ``payload`` is a
+    zlib-compressed JSON snapshot of everything needed to rebuild the wizard
+    session (CPT rows, parameters, results, debug details); ``summary_json``
+    is a small uncompressed extract for rendering the history list without
+    touching the payload.
+    """
+    id = db.Column(db.Integer, primary_key=True)
+    anon_id = db.Column(db.String(64), nullable=False, index=True)
+    fingerprint = db.Column(db.String(40), nullable=False, index=True)
+    calc_type = db.Column(db.String(20), nullable=False)
+    title = db.Column(db.String(200), nullable=True)
+    summary_json = db.Column(db.Text, nullable=True)
+    payload = db.Column(db.LargeBinary, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)

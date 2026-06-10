@@ -16,12 +16,16 @@ from .utils import (
 from .calculations import calculate_pile_capacity, process_cpt_data, pre_input_calc, get_iterative_values, calculate_bored_pile_results, calculate_helical_pile_results, calculate_driven_pile_results, compute_capacity_envelope_bored, compute_capacity_envelope_driven
 from .interpolation import process_uploaded_cpt_data
 from datetime import datetime, timedelta
-from .models import db, Registration, Visit, Suggestion, AnalyticsData
+from .models import db, Registration, Visit, Suggestion, AnalyticsData, SavedCalculation
 from functools import wraps
 from hmac import compare_digest
 from collections import deque
 from time import time as _now
 import csv
+import re
+import uuid
+import zlib
+import hashlib
 from io import StringIO
 from sqlalchemy.sql import func
 import logging
@@ -242,6 +246,318 @@ def _attach_demo_cookie(response):
         # Never fail a response because of cookie bookkeeping.
         pass
     return response
+
+
+# ---------------------------------------------------------------------------
+# Saved calculations ("My calculations") - demo-gated history, no login.
+#
+# Every completed calculation is snapshotted to the database, keyed to an
+# anonymous browser id held in a long-lived cookie (same idea as the demo
+# cookie: it must survive Render redeploys, which wipe both the server-side
+# sessions and the temp files behind cpt_data_id / debug_id). Opening an
+# entry rebuilds the wizard session exactly as the original run left it, so
+# the results page, the CSV/PDF downloads and back-navigation to steps 2/3
+# all work on a restored calculation.
+# ---------------------------------------------------------------------------
+
+_ANON_COOKIE_NAME = 'uwa_anon_id'
+_ANON_COOKIE_MAX_AGE = 60 * 60 * 24 * 400  # ~13 months (Chrome caps cookies at 400 days)
+_ANON_ID_RE = re.compile(r'^[0-9a-fA-F-]{8,64}$')
+_HISTORY_MAX_PER_USER = 50
+
+_HISTORY_TYPE_LABELS = {
+    'driven': 'Driven pile',
+    'bored': 'Bored pile',
+    'helical': 'Helical pile',
+    'shallow': 'Shallow footing',
+    'lateral': 'Lateral monopile',
+    'cantilever': 'Cantilever wall',
+}
+
+
+def _anon_id(create=True):
+    """Stable anonymous id for this browser, used to key saved calculations.
+
+    Lives in its own long-lived cookie so it survives server-side session
+    resets. Seeded from the analytics session user_id on first use so saved
+    calculations line up with the existing admin analytics.
+    """
+    from flask import g
+    cookie = request.cookies.get(_ANON_COOKIE_NAME, '')
+    if cookie and _ANON_ID_RE.match(cookie):
+        return cookie
+    pending = getattr(g, 'anon_id_new', None)
+    if pending:
+        return pending
+    if not create:
+        return None
+    aid = get_or_create_user_id()
+    if not _ANON_ID_RE.match(aid or ''):
+        aid = str(uuid.uuid4())
+    g.anon_id_new = aid  # picked up by _attach_anon_cookie on the way out
+    return aid
+
+
+@bp.after_request
+def _attach_anon_cookie(response):
+    """Persist a freshly minted anonymous id as a long-lived cookie."""
+    try:
+        from flask import g
+        aid = getattr(g, 'anon_id_new', None)
+        if aid:
+            response.set_cookie(
+                _ANON_COOKIE_NAME, aid,
+                max_age=_ANON_COOKIE_MAX_AGE,
+                httponly=True,
+                samesite='Lax',
+                path='/',
+            )
+    except Exception:
+        pass
+    return response
+
+
+def _history_json_default(o):
+    """JSON fallback for numpy scalars/arrays that may sit in session data."""
+    if isinstance(o, np.integer):
+        return int(o)
+    if isinstance(o, np.floating):
+        return float(o)
+    if isinstance(o, np.ndarray):
+        return o.tolist()
+    if isinstance(o, datetime):
+        return o.isoformat()
+    return str(o)
+
+
+def _history_pack(obj):
+    return zlib.compress(json.dumps(obj, default=_history_json_default).encode('utf-8'))
+
+
+def _history_unpack(blob):
+    return json.loads(zlib.decompress(blob).decode('utf-8'))
+
+
+def _history_fingerprint(calc_type, pile_params, water_table, original_filename, cpt_rows):
+    """Content fingerprint of a calculation, used to avoid duplicate history
+    entries on results-page refreshes and when reopening a saved entry."""
+    basis = [
+        calc_type, pile_params, water_table, original_filename,
+        len(cpt_rows),
+        cpt_rows[0] if cpt_rows else None,
+        cpt_rows[-1] if cpt_rows else None,
+    ]
+    return hashlib.sha1(
+        json.dumps(basis, sort_keys=True, default=_history_json_default).encode('utf-8')
+    ).hexdigest()
+
+
+def _history_title(calc_type, pile_params, original_filename):
+    p = pile_params or {}
+    name = (p.get('site_name') or p.get('pile_name') or p.get('wall_name') or '').strip()
+    if not name:
+        name = (original_filename or '').strip()
+    label = _HISTORY_TYPE_LABELS.get(calc_type, calc_type)
+    return f'{label} - {name}' if name else label
+
+
+def _history_params_brief(calc_type, p):
+    """One-line summary of the inputs for the history list."""
+    try:
+        if calc_type == 'driven':
+            tips = ', '.join(f'{float(d):g}' for d in p.get('pile_tip_depths', []))
+            return f"D {float(p['pile_diameter']):g} m, tips {tips} m"
+        if calc_type == 'bored':
+            tips = ', '.join(f'{float(d):g}' for d in p.get('pile_tip_depths', []))
+            return (f"shaft {float(p['shaft_diameter']):g} m, "
+                    f"base {float(p['base_diameter']):g} m, tips {tips} m")
+        if calc_type == 'helical':
+            return (f"shaft {float(p['shaft_diameter']):g} m, helix "
+                    f"{float(p['helix_diameter']):g} m at {float(p['helix_depth']):g} m")
+        if calc_type == 'shallow':
+            return (f"{float(p['footing_width']):g} x {float(p['footing_length']):g} m "
+                    f"footing at {float(p['founding_depth']):g} m")
+        if calc_type == 'lateral':
+            return f"D {float(p['diameter']):g} m, L {float(p['embedded_length']):g} m"
+        if calc_type == 'cantilever':
+            return (f"length {float(p['wall_length']):g} m, excavation "
+                    f"{float(p['excavation_depth']):g} m")
+    except Exception:
+        pass
+    return ''
+
+
+def _history_autosave():
+    """Snapshot the just-completed calculation into the saved history.
+
+    Called on the step-4 results render for demo users. Returns True when a
+    new entry was stored, False when skipped (already saved, or the CPT temp
+    file has gone). Callers wrap this in try/except so a storage hiccup can
+    never break the results page.
+    """
+    calc_type = session.get('type')
+    if calc_type not in _HISTORY_TYPE_LABELS or 'results' not in session:
+        return False
+    cpt_blob = load_cpt_data(session['cpt_data_id']) if session.get('cpt_data_id') else None
+    cpt_rows = (cpt_blob or {}).get('cpt_data') or []
+    if not cpt_rows:
+        return False  # without the CPT rows the entry could not be reopened faithfully
+
+    fingerprint = _history_fingerprint(
+        calc_type, session.get('pile_params'), session.get('water_table'),
+        session.get('original_filename'), cpt_rows)
+    if session.get('history_fp') == fingerprint:
+        return False
+
+    payload = {
+        'v': 1,
+        'type': calc_type,
+        'original_filename': session.get('original_filename'),
+        'water_table': session.get('water_table'),
+        'cpt_data': cpt_rows,
+        'pile_params': session.get('pile_params'),
+        'results': session['results'],
+        'capacity_envelope': session.get('capacity_envelope'),
+        'debug': (load_debug_details(session['debug_id']) or None) if session.get('debug_id') else None,
+    }
+    summary = {
+        'filename': session.get('original_filename'),
+        'water_table': session.get('water_table'),
+        'n_points': len(cpt_rows),
+        'depth_max': max(r['z'] for r in cpt_rows),
+        'params_brief': _history_params_brief(calc_type, session.get('pile_params') or {}),
+    }
+
+    anon = _anon_id()
+    row = SavedCalculation.query.filter_by(anon_id=anon, fingerprint=fingerprint).first()
+    is_new = row is None
+    if is_new:
+        row = SavedCalculation(anon_id=anon, fingerprint=fingerprint)
+        db.session.add(row)
+    row.calc_type = calc_type
+    row.title = _history_title(calc_type, session.get('pile_params'), session.get('original_filename'))
+    row.summary_json = json.dumps(summary, default=_history_json_default)
+    row.payload = _history_pack(payload)
+    row.created_at = datetime.utcnow()
+    db.session.commit()
+    session['history_fp'] = fingerprint
+
+    # Keep only the newest entries per browser so the table stays bounded.
+    overflow = (SavedCalculation.query.filter_by(anon_id=anon)
+                .order_by(SavedCalculation.created_at.desc())
+                .offset(_HISTORY_MAX_PER_USER).all())
+    for old in overflow:
+        db.session.delete(old)
+    if overflow:
+        db.session.commit()
+
+    logger.info("History autosave: %s '%s' (new=%s)", calc_type, row.title, is_new)
+    return is_new
+
+
+@bp.route('/history')
+def history():
+    """List this browser's saved calculations (demo-gated)."""
+    _maybe_grant_shallow_demo()
+    if not _demo_access():
+        return redirect(url_for('main.index'))
+    anon = _anon_id(create=False)
+    entries = []
+    if anon:
+        rows = (db.session.query(
+                    SavedCalculation.id, SavedCalculation.calc_type,
+                    SavedCalculation.title, SavedCalculation.summary_json,
+                    SavedCalculation.created_at)
+                .filter(SavedCalculation.anon_id == anon)
+                .order_by(SavedCalculation.created_at.desc())
+                .all())
+        for r in rows:
+            try:
+                summary = json.loads(r.summary_json) if r.summary_json else {}
+            except Exception:
+                summary = {}
+            entries.append({
+                'id': r.id,
+                'calc_type': r.calc_type,
+                'type_label': _HISTORY_TYPE_LABELS.get(r.calc_type, r.calc_type),
+                'title': r.title,
+                'summary': summary,
+                'created_at': r.created_at,
+            })
+    return render_template('history.html', entries=entries)
+
+
+@bp.route('/history/<int:calc_id>/open')
+def history_open(calc_id):
+    """Rebuild the wizard session from a saved calculation and show step 4."""
+    if not _demo_access():
+        return redirect(url_for('main.index'))
+    anon = _anon_id(create=False)
+    row = db.session.get(SavedCalculation, calc_id) if anon else None
+    if row is None or row.anon_id != anon:
+        flash('That saved calculation was not found.')
+        return redirect(url_for('main.history'))
+
+    try:
+        payload = _history_unpack(row.payload)
+    except Exception as e:
+        logger.error(f"Could not unpack saved calculation {calc_id}: {e}")
+        flash('Could not load that saved calculation.')
+        return redirect(url_for('main.history'))
+
+    calc_type = payload.get('type')
+    if calc_type not in _HISTORY_TYPE_LABELS or not payload.get('cpt_data') or 'results' not in payload:
+        flash('Could not load that saved calculation.')
+        return redirect(url_for('main.history'))
+
+    # Reset the wizard state the same way switching module type does, then
+    # rebuild the session exactly as the original run left it.
+    preserved = {}
+    for key in ['user_id', 'email', 'name', 'institution', 'registered', 'user_email',
+                'affiliation', 'shallow_demo_ok', 'private_demo_ok']:
+        if key in session:
+            preserved[key] = session[key]
+    session.clear()
+    session.update(preserved)
+
+    water_table = payload.get('water_table')
+    if water_table is None:
+        water_table = 0
+    session['type'] = calc_type
+    session['cpt_data_id'] = save_cpt_data(payload['cpt_data'], water_table)
+    session['water_table'] = water_table
+    if payload.get('original_filename'):
+        session['original_filename'] = payload['original_filename']
+    if payload.get('pile_params') is not None:
+        session['pile_params'] = payload['pile_params']
+    session['results'] = payload['results']
+    if payload.get('capacity_envelope') is not None:
+        session['capacity_envelope'] = payload['capacity_envelope']
+    if payload.get('debug'):
+        session['debug_id'] = save_debug_details(payload['debug'])
+    # Recompute the fingerprint from the restored state so the step-4 render
+    # recognises this calculation as already saved and does not duplicate it.
+    session['history_fp'] = _history_fingerprint(
+        calc_type, session.get('pile_params'), session.get('water_table'),
+        session.get('original_filename'), payload['cpt_data'])
+
+    record_event('history', 'history_open', {'calc_type': calc_type, 'saved_id': row.id})
+    return redirect(url_for('main.calculator_step', type=calc_type, step=4))
+
+
+@bp.route('/history/<int:calc_id>/delete', methods=['POST'])
+def history_delete(calc_id):
+    """Delete one of this browser's saved calculations."""
+    if not _demo_access():
+        return redirect(url_for('main.index'))
+    anon = _anon_id(create=False)
+    row = db.session.get(SavedCalculation, calc_id) if anon else None
+    if row is not None and row.anon_id == anon:
+        db.session.delete(row)
+        db.session.commit()
+        record_event('history', 'history_delete', {'saved_id': calc_id})
+        flash('Saved calculation deleted.')
+    return redirect(url_for('main.history'))
 
 
 @bp.route('/googlef2236ffa5d780ee8.html')
@@ -709,7 +1025,17 @@ def calculator_step(type, step):
         if 'results' not in session:
             flash('No results available. Please complete the analysis first.')
             return redirect(url_for('main.calculator_step', type=type, step=3))
-        
+
+        # Demo-only: snapshot the completed calculation into "My calculations"
+        # so it can be reopened later. Never allowed to break the results page.
+        history_saved_now = False
+        if _demo_access():
+            try:
+                history_saved_now = _history_autosave()
+            except Exception as hist_e:
+                logger.warning(f"History autosave failed: {hist_e}")
+                db.session.rollback()
+
         detailed_results = None
         if type == 'bored' and 'detailed_results' in session:
             detailed_results = session['detailed_results']
@@ -739,6 +1065,8 @@ def calculator_step(type, step):
             type=type,
             results=session['results'],
             detailed_results=detailed_results,
+            capacity_envelope=session.get('capacity_envelope'),
+            history_saved_now=history_saved_now,
             show_modal=show_modal
         )
 
