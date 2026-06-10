@@ -329,27 +329,27 @@
 
             var traces = [];
 
-            // Add envelope lines first (behind markers) if available
+            // Add envelope lines first (behind markers) if available. These
+            // are the continuous capacity profile: the capacity the pile
+            // would have if its tip were founded at each depth.
             if (env_depths && env_depths.length > 0) {
                 traces.push({
                     x: env_tension,
                     y: env_depths,
-                    name: 'Tension (profile)',
+                    name: 'Tension profile (any tip depth)',
                     type: 'scatter',
                     mode: 'lines',
                     line: { color: 'rgba(26, 115, 232, 0.35)', width: 1.5 },
-                    hoverinfo: 'x+y',
-                    showlegend: false
+                    hoverinfo: 'x+y'
                 });
                 traces.push({
                     x: env_compression,
                     y: env_depths,
-                    name: 'Compression (profile)',
+                    name: 'Compression profile (any tip depth)',
                     type: 'scatter',
                     mode: 'lines',
                     line: { color: 'rgba(220, 38, 38, 0.35)', width: 1.5 },
-                    hoverinfo: 'x+y',
-                    showlegend: false
+                    hoverinfo: 'x+y'
                 });
             }
 
@@ -357,7 +357,7 @@
             traces.push({
                 x: tension_capacities,
                 y: depths,
-                name: 'Tension',
+                name: 'Tension (entered tip depths)',
                 type: 'scatter',
                 mode: 'lines+markers',
                 line: { color: '#1a73e8', width: 2 },
@@ -367,7 +367,7 @@
             traces.push({
                 x: compression_capacities,
                 y: depths,
-                name: 'Compression',
+                name: 'Compression (entered tip depths)',
                 type: 'scatter',
                 mode: 'lines+markers',
                 line: { color: '#dc2626', width: 2 },
@@ -433,14 +433,15 @@
                     tickfont: { size: 12 },
                     automargin: true,
                     range: [maxDepth + 0.5, minDepth - 0.5],
-                    showline: true
+                    showline: true,
+                    zeroline: false
                 },
                 showlegend: true,
                 legend: {
-                    x: 0.01,
-                    y: 0.01,
-                    xanchor: 'left',
-                    yanchor: 'bottom',
+                    x: 0.99,
+                    y: 0.99,
+                    xanchor: 'right',
+                    yanchor: 'top',
                     bgcolor: 'rgba(255,255,255,0.8)',
                     bordercolor: 'rgba(0,0,0,0.1)',
                     borderwidth: 1

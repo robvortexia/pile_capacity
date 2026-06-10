@@ -991,7 +991,16 @@ def calculator_step(type, step):
                 if not cpt_data:
                     flash('CPT data not found. Please upload data again.', 'error')
                     return redirect(url_for('main.calculator_step', type='helical', step=1))
-                
+
+                # Helix depth must sit within the CPT profile, same rule as
+                # the pile modules (Barry, 10 June 2026: no capacity
+                # calculation below the deepest CPT reading)
+                cpt_rows = cpt_data['cpt_data'] if isinstance(cpt_data, dict) else cpt_data
+                max_depth = max(row['z'] for row in cpt_rows)
+                if pile_params['helix_depth'] > max_depth:
+                    flash(f'Helix depth {pile_params["helix_depth"]}m exceeds the deepest CPT reading ({max_depth:.2f}m). Reduce the helix depth or upload deeper CPT data.')
+                    return redirect(url_for('main.calculator_step', type='helical', step=3))
+
                 # Process the CPT data
                 water_table = float(session.get('water_table', 0))  # Consistent use of session water table
                 processed_cpt = pre_input_calc(cpt_data, water_table)
@@ -1327,6 +1336,22 @@ def calculator_step(type, step):
                 if float(request.form.get('cased_depth', 0)) < 0:
                     errors.append('Cased depth cannot be negative')
 
+                # Validate pile tip depths against the CPT profile, same rule
+                # as the driven module (Barry, 10 June 2026: no capacity
+                # calculation when the tip is below the deepest CPT reading)
+                if not pile_tip_depths:
+                    errors.append('At least one pile tip depth is required')
+                elif 'cpt_data_id' in session:
+                    data = load_cpt_data(session['cpt_data_id'])
+                    if data:
+                        cpt_data_check = data['cpt_data'] if isinstance(data, dict) else data
+                        max_depth = max(row['z'] for row in cpt_data_check)
+                        for depth in pile_tip_depths:
+                            if depth <= 0:
+                                errors.append(f'Pile tip depth {depth}m must be greater than 0')
+                            if depth > max_depth:
+                                errors.append(f'Pile tip depth {depth}m exceeds the deepest CPT reading ({max_depth:.2f}m). Reduce the tip depth or upload deeper CPT data.')
+
                 if errors:
                     for error in errors:
                         flash(error)
@@ -1628,7 +1653,7 @@ def calculator_step(type, step):
                 # Validate pile tip depths
                 if not pile_params.get('pile_tip_depths'):
                     errors.append('At least one pile tip depth is required')
-                else:
+                elif 'cpt_data_id' in session:
                     data = load_cpt_data(session['cpt_data_id'])
                     if data:
                         cpt_data_check = data['cpt_data'] if isinstance(data, dict) else data
@@ -1637,7 +1662,7 @@ def calculator_step(type, step):
                             if depth <= 0:
                                 errors.append(f'Pile tip depth {depth}m must be greater than 0')
                             if depth > max_depth:
-                                errors.append(f'Pile tip depth {depth}m exceeds maximum CPT data depth of {max_depth:.1f}m')
+                                errors.append(f'Pile tip depth {depth}m exceeds the deepest CPT reading ({max_depth:.2f}m). Reduce the tip depth or upload deeper CPT data.')
 
                 if errors:
                     for error in errors:
@@ -1729,7 +1754,7 @@ def calculator_step(type, step):
                 if not cpt_data:
                     flash('CPT data not found. Please upload data again.', 'error')
                     return redirect(url_for('main.calculator_step', type='helical', step=1))
-                
+
                 # Process the CPT data
                 processed_cpt = pre_input_calc(cpt_data, float(session['pile_params']['water_table']))
                 
