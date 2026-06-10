@@ -9,6 +9,10 @@ consume:
   * vendor exports with a metadata header and a column-heading row (e.g. the
     Probedrill .txt files), where columns are mapped by heading keyword rather
     than fixed position;
+  * vendor exports where the header is split over two rows, names above units
+    (e.g. the CPT South Australia .txt files: "Depth / Tip / Sleeve / ..."
+    over "(m) / qc (MPa) / fs (kPa) / ..."): the two rows are merged cell-wise
+    before mapping;
   * AGS4 .ags files (the SCPT "Static Cone Penetration Tests - Data" group).
 
 Downstream unit convention (what the calculator expects): z in m, qc(=qt) in
@@ -18,6 +22,7 @@ derived per depth from the CPT via Robertson & Cabal (2010).
 import csv
 import io
 import math
+import re
 
 # Robertson & Cabal (2010) unit-weight correlation constants.
 PA_KPA = 100.0       # atmospheric pressure (kPa)
@@ -180,22 +185,30 @@ def _split(ln, delim):
 
 
 def _map_headings(heading):
-    """Map a lower-cased heading row to column indices for z/qt/qc/fs/gamma."""
+    """Map a lower-cased heading row to column indices for z/qt/qc/fs/gamma.
+
+    Symbols (qc, qt, fs) are matched as whole words within the cell, so
+    "qc (MPa)" or a merged "tip qc (mpa)" map, while "inclination" never
+    trips the "fs" test. Ratio columns (friction ratio, Rf) are excluded
+    from both fs and qc.
+    """
     col = {'z': None, 'qt': None, 'qc': None, 'fs': None, 'gamma': None}
     for idx, h in enumerate(heading):
-        is_ratio = 'ratio' in h
+        words = set(re.findall(r'[a-z][a-z0-9_]*', h))
+        is_ratio = 'ratio' in h or 'rf' in words
         if col['z'] is None and 'depth' in h:
             col['z'] = idx
         elif col['gamma'] is None and any(k in h for k in _GAMMA_KW):
             col['gamma'] = idx
-        elif col['qt'] is None and 'corrected' in h and ('q' in h or 'cone' in h):
+        elif col['qt'] is None and (('corrected' in h and ('q' in h or 'cone' in h)) or
+                                    'qt' in words or 'q_t' in words):
             col['qt'] = idx
         elif (col['fs'] is None and not is_ratio and
               ('sleeve' in h or ('friction' in h and 'res' in h) or
-               ('local' in h and 'friction' in h) or h.strip() in ('fs', 'f_s'))):
+               ('local' in h and 'friction' in h) or 'fs' in words or 'f_s' in words)):
             col['fs'] = idx
-        elif col['qc'] is None and (('cone' in h and 'res' in h) or
-                                    ('tip' in h and 'res' in h) or h.strip() in ('qc', 'q_c')):
+        elif col['qc'] is None and not is_ratio and (('cone' in h and 'res' in h) or
+                                                     'tip' in h or 'qc' in words or 'q_c' in words):
             col['qc'] = idx
     return col
 
@@ -226,24 +239,86 @@ def _parse_tabular(text):
     # Heading row: the nearest preceding line that names the columns. Prefer a
     # line containing a "depth" token (robust to trailing delimiters / column
     # count drift); else a same-width, mostly-text line (e.g. the Probedrill
-    # "depth log / cone resistance / ..." row).
-    heading = None
-    for j in range(first - 1, -1, -1):
+    # "depth log / cone resistance / ..." row). Some vendors split the header
+    # over two rows, names above units (CPT South Australia: "Depth / Tip /
+    # Sleeve / ..." over "(m) / qc (MPa) / fs (kPa) / ..."); when the row
+    # above the nearest candidate is also heading-like, try the cell-wise
+    # merge of the two ("depth (m)", "tip qc (mpa)", ...) first.
+    def heading_toks(j):
+        if j < 0:
+            return None
         toks = clean_toks(nonempty[j])
         if not toks:
-            continue
+            return None
         n_alpha = sum(1 for t in toks if _to_float(t) is None and any(c.isalpha() for c in t))
         has_depth = any('depth' in t.lower() for t in toks)
         if (has_depth and n_alpha >= 2) or (len(toks) == ncol and n_alpha >= max(2, ncol // 2)):
-            heading = [t.lower() for t in toks]
-            break
+            return [t.lower() for t in toks]
+        return None
 
-    col = _map_headings(heading) if heading else {k: None for k in ('z', 'qt', 'qc', 'fs', 'gamma')}
-    mapped_by_heading = bool(heading) and col['z'] is not None and col['fs'] is not None and (
-        col['qc'] is not None or col['qt'] is not None)
+    def maps_fully(c):
+        return c['z'] is not None and c['fs'] is not None and (
+            c['qc'] is not None or c['qt'] is not None)
+
+    heading, col = None, None
+    for j in range(first - 1, -1, -1):
+        near = heading_toks(j)
+        if near is None:
+            continue
+        candidates = [near]
+        above = heading_toks(j - 1)
+        if above is not None:
+            width = max(len(above), len(near))
+            merged = [((above[k] if k < len(above) else '') + ' ' +
+                       (near[k] if k < len(near) else '')).strip()
+                      for k in range(width)]
+            candidates = [merged, near, above]
+        for cand in candidates:
+            c = _map_headings(cand)
+            if maps_fully(c):
+                heading, col = cand, c
+                break
+        if heading is None:   # nearest texty row, as before -> positional fallback
+            heading, col = near, _map_headings(near)
+        break
+
+    if col is None:
+        col = {k: None for k in ('z', 'qt', 'qc', 'fs', 'gamma')}
+    mapped_by_heading = heading is not None and maps_fully(col)
     if not mapped_by_heading:
         # Positional fallback: clean layout depth, qt, fs, [unit weight].
         col = {'z': 0, 'qt': None, 'qc': 1, 'fs': 2, 'gamma': (3 if ncol >= 4 else None)}
+        if col['gamma'] is not None:
+            # Trust column 4 as unit weight only if it reads like one: vendor
+            # exports often carry friction ratio or pore pressure there, and
+            # mistaking those for gamma wrecks the stress profile.
+            vals = []
+            for i in data_idx:
+                toks = _split(nonempty[i], delim)
+                v = _to_float(toks[3]) if len(toks) > 3 else None
+                if v is not None and v > 0:
+                    vals.append(v)
+            vals.sort()
+            if not vals or not (8.0 <= vals[len(vals) // 2] <= 26.0):
+                col['gamma'] = None
+
+    # Unit conversion where the heading states units: downstream expects q in
+    # MPa and fs in kPa, but some exports put fs in MPa or q in kPa.
+    def heading_scale(key, expect):
+        c = col.get(key)
+        if not mapped_by_heading or c is None or c >= len(heading):
+            return 1.0
+        h = heading[c]
+        if expect == 'MPa' and 'kpa' in h and 'mpa' not in h:
+            return 1e-3
+        if expect == 'kPa' and 'mpa' in h and 'kpa' not in h:
+            return 1e3
+        return 1.0
+
+    qt_scale = heading_scale('qt', 'MPa')
+    qc_scale = heading_scale('qc', 'MPa')
+    fs_scale = heading_scale('fs', 'kPa')
+    converted_units = any(s != 1.0 for s in (qt_scale, qc_scale, fs_scale))
 
     rows, used_qt, derived_gamma = [], False, False
     for i in data_idx:
@@ -255,8 +330,14 @@ def _parse_tabular(text):
         z = get(col['z'])
         qt = get(col['qt'])
         qc = get(col['qc'])
+        if qt is not None:
+            qt *= qt_scale
+        if qc is not None:
+            qc *= qc_scale
         q = qt if (qt is not None and qt > 0) else qc
         fs = get(col['fs'])
+        if fs is not None:
+            fs *= fs_scale
         if z is None or q is None or q <= 0 or fs is None or fs < 0:
             continue
         if qt is not None and qt > 0:
@@ -273,6 +354,8 @@ def _parse_tabular(text):
         note = 'Read a contractor CPT export and mapped columns by heading (depth, cone resistance, friction). '
         if col['qt'] is not None and not used_qt:
             note += 'Used cone resistance qc as qt (corrected qt column was empty). '
+        if converted_units:
+            note += 'Converted units to MPa/kPa per the file\'s column headings. '
     else:
         note = 'Read a plain numeric table (depth, qt, fs%s). ' % (', unit weight' if col['gamma'] is not None else '')
     if derived_gamma:
