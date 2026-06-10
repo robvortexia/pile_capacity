@@ -47,7 +47,7 @@
                     <div class="graph-wrapper">
                         <div id="ic_graph" class="graph"></div>
                     </div>
-                    <div class="graph-wrapper">
+                    <div class="graph-wrapper sbt-strip">
                         <div id="sbt_graph" class="graph"></div>
                     </div>
                 </div>
@@ -260,6 +260,11 @@
     box-shadow: 0 4px 6px rgba(0,0,0,0.05);
     transition: transform 0.2s ease;
     height: 480px;
+}
+
+.graph-wrapper.sbt-strip {
+    flex: 0 0 115px;
+    max-width: 115px;
 }
 
 .graph-wrapper:hover {

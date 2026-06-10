@@ -39,7 +39,7 @@
                     <div class="graph-wrapper"><div id="qt_graph" class="graph"></div></div>
                     <div class="graph-wrapper"><div id="fr_graph" class="graph"></div></div>
                     <div class="graph-wrapper"><div id="ic_graph" class="graph"></div></div>
-                    <div class="graph-wrapper"><div id="sbt_graph" class="graph"></div></div>
+                    <div class="graph-wrapper sbt-strip"><div id="sbt_graph" class="graph"></div></div>
                 </div>
                 <div class="debug-section">
                     <div class="button-group">
@@ -255,6 +255,7 @@
 .step { background: white; padding: 1rem; }
 .graphs-container { display: flex; flex-wrap: wrap; gap: 1rem; width: 100%; margin: 0 auto; padding: 1rem 0; }
 .graph-wrapper { flex: 1 1 220px; min-width: 0; background: white; border-radius: 12px; padding: 0.75rem 0.4rem; box-shadow: 0 4px 6px rgba(0,0,0,0.05); height: 480px; }
+.graph-wrapper.sbt-strip { flex: 0 0 115px; max-width: 115px; }
 .graph { width: 100% !important; height: 100% !important; }
 .graph-tall { width: 100%; height: 460px; }
 .soil-banner { padding: 0.85rem 1rem; border-radius: 8px; margin: 0.5rem 0 1rem; background: #e8f0fe; border-left: 4px solid #1a73e8; }

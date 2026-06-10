@@ -170,7 +170,7 @@ def _build_sbt_graph(processed_data, max_depth):
             'title': {'text': '', 'font': {'size': 16, 'weight': 500}},
             'barmode': 'stack',
             'xaxis': {
-                'title': {'text': 'Robertson SBT', 'standoff': 15},
+                'title': {'text': 'Robertson SBT', 'standoff': 15, 'font': {'size': 9}},
                 'side': 'top',
                 'showticklabels': False,
                 'showgrid': False,
@@ -197,7 +197,7 @@ def _build_sbt_graph(processed_data, max_depth):
             },
             'plot_bgcolor': '#ffffff',
             'paper_bgcolor': '#ffffff',
-            'margin': {'l': 50, 'r': 12, 't': 40, 'b': 60},
+            'margin': {'l': 45, 'r': 6, 't': 40, 'b': 110},
             'font': {'size': 12},
             'autosize': True,
             'showlegend': True,
