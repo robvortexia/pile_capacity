@@ -124,10 +124,12 @@ def _private_module_allowed():
 def _demo_access():
     """True only for users who arrived via the ?code= demo link.
 
-    Used to gate experimental/preview features (currently the flexible CPT
-    file importer) to demo users while the rest of the site stays public. This
-    is the original private-preview check (session flag set by the code link,
-    backed by the long-lived ``uwa_demo_ok`` cookie, plus the email allowlist).
+    Used to gate experimental/preview features to demo users while the rest
+    of the site stays public. Nothing is gated right now (the contractor-file
+    importer and the saved-calculations history went public in June 2026);
+    kept for the next preview feature. This is the original private-preview
+    check (session flag set by the code link, backed by the long-lived
+    ``uwa_demo_ok`` cookie, plus the email allowlist).
     """
     if session.get('shallow_demo_ok') or session.get('private_demo_ok'):
         return True
@@ -141,8 +143,9 @@ def _demo_access():
 
 @bp.app_context_processor
 def _inject_demo_flag():
-    """Expose ``demo_access`` to every template (e.g. to show the demo-only
-    "contractor file" note on the upload form)."""
+    """Expose ``demo_access`` to every template so preview-only UI can be
+    rendered for demo users. No template uses it right now; kept for the
+    next preview feature."""
     try:
         return {'demo_access': _demo_access()}
     except Exception:
@@ -457,10 +460,7 @@ def _history_autosave():
 
 @bp.route('/history')
 def history():
-    """List this browser's saved calculations (demo-gated)."""
-    _maybe_grant_shallow_demo()
-    if not _demo_access():
-        return redirect(url_for('main.index'))
+    """List this browser's saved calculations."""
     anon = _anon_id(create=False)
     entries = []
     if anon:
@@ -490,8 +490,6 @@ def history():
 @bp.route('/history/<int:calc_id>/open')
 def history_open(calc_id):
     """Rebuild the wizard session from a saved calculation and show step 4."""
-    if not _demo_access():
-        return redirect(url_for('main.index'))
     anon = _anon_id(create=False)
     row = db.session.get(SavedCalculation, calc_id) if anon else None
     if row is None or row.anon_id != anon:
@@ -548,8 +546,6 @@ def history_open(calc_id):
 @bp.route('/history/<int:calc_id>/delete', methods=['POST'])
 def history_delete(calc_id):
     """Delete one of this browser's saved calculations."""
-    if not _demo_access():
-        return redirect(url_for('main.index'))
     anon = _anon_id(create=False)
     row = db.session.get(SavedCalculation, calc_id) if anon else None
     if row is not None and row.anon_id == anon:
@@ -1026,15 +1022,14 @@ def calculator_step(type, step):
             flash('No results available. Please complete the analysis first.')
             return redirect(url_for('main.calculator_step', type=type, step=3))
 
-        # Demo-only: snapshot the completed calculation into "My calculations"
-        # so it can be reopened later. Never allowed to break the results page.
+        # Snapshot the completed calculation into "My calculations" so it can
+        # be reopened later. Never allowed to break the results page.
         history_saved_now = False
-        if _demo_access():
-            try:
-                history_saved_now = _history_autosave()
-            except Exception as hist_e:
-                logger.warning(f"History autosave failed: {hist_e}")
-                db.session.rollback()
+        try:
+            history_saved_now = _history_autosave()
+        except Exception as hist_e:
+            logger.warning(f"History autosave failed: {hist_e}")
+            db.session.rollback()
 
         detailed_results = None
         if type == 'bored' and 'detailed_results' in session:
@@ -1110,14 +1105,13 @@ def calculator_step(type, step):
                     data_dict = []
                     delimiter = None  # set by the legacy parser; kept None for the demo importer
 
-                    # The flexible contractor-file importer is demo-gated for now
-                    # (?code= link). Demo users get a two-option Step 1:
-                    #   'contractor' -> importer (AGS4 / vendor exports; unit
-                    #                   weight derived from the CPT), or
+                    # Two-option Step 1:
+                    #   'contractor' -> flexible importer (AGS4 / vendor
+                    #                   exports; unit weight derived from the
+                    #                   CPT), or
                     #   'user'       -> clean four-column file they supply.
-                    # Public users always use the standard four-column parser.
                     cpt_source = request.form.get('cpt_source', 'contractor')
-                    if _demo_access() and cpt_source != 'user':
+                    if cpt_source != 'user':
                         # Contractor file: flexible importer that reads AGS4 and
                         # vendor/contractor CPT exports (and clean CSVs too), and
                         # derives the unit weight column from the CPT when absent.
