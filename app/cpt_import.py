@@ -189,19 +189,30 @@ def _map_headings(heading):
 
     Symbols (qc, qt, fs) are matched as whole words within the cell, so
     "qc (MPa)" or a merged "tip qc (mpa)" map, while "inclination" never
-    trips the "fs" test. Ratio columns (friction ratio, Rf) are excluded
-    from both fs and qc.
+    trips the "fs" test. Ratio-like columns are excluded from qt/qc/fs/gamma:
+    "friction ratio", Rf, Bq, percentages, and formula headings such as
+    "fs/qc (%)" or "Bq = u2/qt (-)" (a slash between two channel symbols;
+    slashes in unit text like "kN/m2" or "kN/m3" do not count). A cell that
+    only hints at depth via a standalone "z" word can be overridden by a
+    later cell that says "depth" outright (so "Zone (Z)" cannot steal the
+    depth column).
     """
     col = {'z': None, 'qt': None, 'qc': None, 'fs': None, 'gamma': None}
+    z_weak = False
     for idx, h in enumerate(heading):
         words = set(re.findall(r'[a-z][a-z0-9_]*', h))
-        is_ratio = 'ratio' in h or 'rf' in words
-        if col['z'] is None and 'depth' in h:
-            col['z'] = idx
-        elif col['gamma'] is None and any(k in h for k in _GAMMA_KW):
+        is_ratio = ('ratio' in h or '%' in h or 'rf' in words or 'bq' in words or
+                    re.search(r'\b(?:fs|qs|qc|qt|u[012]?)\s*/\s*(?:fs|qs|qc|qt|u[012]?)\b', h)
+                    is not None)
+        if 'depth' in h and (col['z'] is None or z_weak):
+            col['z'], z_weak = idx, False
+        elif col['z'] is None and 'z' in words:
+            col['z'], z_weak = idx, True
+        elif col['gamma'] is None and not is_ratio and any(k in h for k in _GAMMA_KW):
             col['gamma'] = idx
-        elif col['qt'] is None and (('corrected' in h and ('q' in h or 'cone' in h)) or
-                                    'qt' in words or 'q_t' in words):
+        elif col['qt'] is None and not is_ratio and (
+                ('corrected' in h and ('q' in h or 'cone' in h)) or
+                'qt' in words or 'q_t' in words):
             col['qt'] = idx
         elif (col['fs'] is None and not is_ratio and
               ('sleeve' in h or ('friction' in h and 'res' in h) or
@@ -260,26 +271,63 @@ def _parse_tabular(text):
         return c['z'] is not None and c['fs'] is not None and (
             c['qc'] is not None or c['qt'] is not None)
 
-    heading, col = None, None
+    heading, col, z_assumed = None, None, False
     for j in range(first - 1, -1, -1):
         near = heading_toks(j)
         if near is None:
             continue
-        candidates = [near]
+        candidates, merged = [near], None
         above = heading_toks(j - 1)
         if above is not None:
-            width = max(len(above), len(near))
-            merged = [((above[k] if k < len(above) else '') + ' ' +
-                       (near[k] if k < len(near) else '')).strip()
-                      for k in range(width)]
-            candidates = [merged, near, above]
-        for cand in candidates:
-            c = _map_headings(cand)
-            if maps_fully(c):
-                heading, col = cand, c
+            candidates = [near, above]
+            if delim is not None or len(above) == len(near):
+                # Two-row name+unit header: merge cell-wise, padding the
+                # shorter row (delimited cells are explicit, so width drift
+                # is just trailing extras; whitespace-split rows must match
+                # exactly or multi-word names misalign).
+                width = max(len(above), len(near))
+                merged = [((above[k] if k < len(above) else '') + ' ' +
+                           (near[k] if k < len(near) else '')).strip()
+                          for k in range(width)]
+                candidates = [near, merged, above]
+
+        def defaulted_z(c, allow):
+            # Depth defaulting to column 0 (the universal CPT layout) when
+            # qc/fs mapped and column 0 is unclaimed: this is how a
+            # units-only header row like "(m) / qc (MPa) / fs (kPa)" keeps
+            # its column positions and unit info.
+            if (c['z'] is None and allow and
+                    0 not in (c['qc'], c['qt'], c['fs'], c['gamma'])):
+                c['z'] = 0
+                return True
+            return False
+
+        # Pass 1 wants the depth column named explicitly; pass 2 allows the
+        # column-0 default. The nearest row goes first so a stray texty line
+        # above a complete header cannot poison the mapping via the merge.
+        for allow_default_z in (False, True):
+            for cand in candidates:
+                if delim is None and len(cand) != ncol:
+                    # Whitespace-split headings only align with the data
+                    # when token counts match (multi-word names break up).
+                    continue
+                c = _map_headings(cand)
+                z_assumed = defaulted_z(c, allow_default_z)
+                if maps_fully(c):
+                    heading, col = cand, c
+                    break
+            if heading is not None:
                 break
+        # If the nearest row won on its own but the merged header maps to
+        # the identical columns, prefer the merge: same mapping, plus the
+        # name+unit text for unit scaling.
+        if heading is near and merged is not None:
+            cm = _map_headings(merged)
+            defaulted_z(cm, z_assumed)
+            if cm == col:
+                heading = merged
         if heading is None:   # nearest texty row, as before -> positional fallback
-            heading, col = near, _map_headings(near)
+            heading, col, z_assumed = near, _map_headings(near), False
         break
 
     if col is None:
@@ -352,6 +400,8 @@ def _parse_tabular(text):
 
     if mapped_by_heading:
         note = 'Read a contractor CPT export and mapped columns by heading (depth, cone resistance, friction). '
+        if z_assumed:
+            note += 'The header did not name a depth column; assumed the first column is depth. '
         if col['qt'] is not None and not used_qt:
             note += 'Used cone resistance qc as qt (corrected qt column was empty). '
         if converted_units:
