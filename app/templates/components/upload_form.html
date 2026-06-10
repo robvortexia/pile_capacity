@@ -102,21 +102,32 @@
             <div class="row-count-info" style="background-color: #e8f4fd; padding: 10px; border-radius: 5px; margin-bottom: 15px; border-left: 4px solid #007bff;">
                 <strong>📊 Data Summary:</strong> <span id="row-count-display"></span>
             </div>
-            <div class="table-responsive">
-                <table class="table table-striped table-hover">
-                    <thead>
-                        <tr>
-                            <th>Depth (m)</th>
-                            <th>Cone resistance qt (MPa)</th>
-                            <th>Cone sleeve friction, fs (kPa)</th>
-                            <th>Unit weight (kN/m³)</th>
-                        </tr>
-                    </thead>
-                    <tbody id="preview-body">
-                    </tbody>
-                </table>
+
+            <div id="raw-preview" style="display: none;">
+                <h4 class="preview-subhead">Your file as received <span class="preview-subnote">(first 10 lines)</span></h4>
+                <pre id="raw-preview-pre" class="raw-preview-pre"></pre>
             </div>
-            <p class="text-muted" id="preview-message"></p>
+
+            <div id="import-note" class="import-note" style="display: none;"></div>
+
+            <div id="parsed-preview" style="display: none;">
+                <h4 class="preview-subhead" id="parsed-title" style="display: none;">What the calculator will read</h4>
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover">
+                        <thead>
+                            <tr>
+                                <th>Depth (m)</th>
+                                <th>Cone resistance qt (MPa)</th>
+                                <th>Cone sleeve friction, fs (kPa)</th>
+                                <th>Unit weight (kN/m³)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="preview-body">
+                        </tbody>
+                    </table>
+                </div>
+                <p class="text-muted" id="preview-message"></p>
+            </div>
         </div>
     </div>
 
@@ -164,29 +175,56 @@
 </div>
 
 <script>
-function onSourceChange() {
+var selectedFile = null;
+var previewRequestSeq = 0;  // ignore stale importer responses
+
+function currentSource() {
     var src = document.querySelector('input[name="cpt_source"]:checked');
+    return src ? src.value : 'contractor';
+}
+
+function onSourceChange() {
     var fi = document.getElementById('cpt_file');
-    if (src && fi) {
-        fi.setAttribute('accept', src.value === 'user' ? '.csv,.txt' : '.txt,.ags');
+    if (fi) {
+        fi.setAttribute('accept', currentSource() === 'user' ? '.csv,.txt' : '.txt,.ags');
+    }
+    renderPreview();
+}
+
+function handleFileSelect(input) {
+    selectedFile = input.files[0] || null;
+    renderPreview();
+}
+
+function renderPreview() {
+    var container = document.getElementById('preview-container');
+    if (!selectedFile) {
+        container.style.display = 'none';
+        return;
+    }
+    container.style.display = 'block';
+    if (currentSource() === 'user') {
+        renderUserPreview(selectedFile);
+    } else {
+        renderContractorPreview(selectedFile);
     }
 }
-function handleFileSelect(input) {
-    const file = input.files[0];
-    if (!file) return;
+
+// Option 2 (clean four-column file): the file already matches the table
+// headers, so a client-side line split is an honest preview.
+function renderUserPreview(file) {
+    document.getElementById('raw-preview').style.display = 'none';
+    document.getElementById('import-note').style.display = 'none';
+    document.getElementById('parsed-title').style.display = 'none';
+    document.getElementById('parsed-preview').style.display = 'block';
 
     const reader = new FileReader();
     reader.onload = function(e) {
-        const content = e.target.result;
-        const lines = content.split('\n');
+        const lines = e.target.result.split('\n');
         const previewBody = document.getElementById('preview-body');
-        const previewContainer = document.getElementById('preview-container');
         const previewMessage = document.getElementById('preview-message');
-        
-        // Clear existing preview
         previewBody.innerHTML = '';
-        
-        // Show first 10 lines
+
         const maxLines = Math.min(10, lines.length);
         for (let i = 0; i < maxLines; i++) {
             const line = lines[i].trim();
@@ -195,11 +233,8 @@ function handleFileSelect(input) {
                 const row = document.createElement('tr');
                 values.forEach((value, index) => {
                     const cell = document.createElement('td');
-                    // Try to format numeric values with 2 significant figures
                     if (index > 0 && !isNaN(parseFloat(value))) {
-                        const num = parseFloat(value);
-                        // Format to 2 significant figures
-                        cell.textContent = num.toPrecision(2);
+                        cell.textContent = parseFloat(value).toPrecision(2);
                     } else {
                         cell.textContent = value;
                     }
@@ -208,25 +243,97 @@ function handleFileSelect(input) {
                 previewBody.appendChild(row);
             }
         }
-        
-        // Count total valid data rows (non-empty lines)
+
         const totalRows = lines.filter(line => line.trim()).length;
-        
-        // Update the row count display
-        const rowCountDisplay = document.getElementById('row-count-display');
-        rowCountDisplay.textContent = `${totalRows} rows of CPT data uploaded`;
-        
-        // Show preview container
-        previewContainer.style.display = 'block';
-        
-        // Update message with row count
-        if (lines.length > 10) {
-            previewMessage.textContent = `Showing first 10 rows. Continue to step 2 to view complete data analysis.`;
-        } else {
-            previewMessage.textContent = '';
-        }
+        document.getElementById('row-count-display').textContent = `${totalRows} rows of CPT data uploaded`;
+        previewMessage.textContent = lines.length > 10
+            ? 'Showing first 10 rows. Continue to step 2 to view complete data analysis.'
+            : '';
     };
     reader.readAsText(file);
+}
+
+// Option 1 (contractor file): show the raw lines as received, then ask the
+// server to run the real importer so the table shows what the calculator
+// will actually read (columns matched by heading, unit weight derived).
+function renderContractorPreview(file) {
+    var rawBlock = document.getElementById('raw-preview');
+    var note = document.getElementById('import-note');
+    var parsed = document.getElementById('parsed-preview');
+    var countEl = document.getElementById('row-count-display');
+
+    rawBlock.style.display = 'block';
+    note.style.display = 'none';
+    parsed.style.display = 'none';
+    countEl.textContent = 'Reading file...';
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        const lines = e.target.result.split('\n').slice(0, 10);
+        document.getElementById('raw-preview-pre').textContent =
+            lines.map(l => l.replace(/\s+$/, '')).join('\n');
+    };
+    reader.readAsText(file);
+
+    var seq = ++previewRequestSeq;
+    var fd = new FormData();
+    fd.append('cpt_file', file, file.name);
+    fetch('{{ url_for('main.preview_cpt') }}', { method: 'POST', body: fd })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            if (seq !== previewRequestSeq) return;  // a newer file was chosen
+            if (!data.ok) {
+                countEl.textContent = 'This file could not be read';
+                note.className = 'import-note import-note-error';
+                note.innerHTML = '<i class="fas fa-exclamation-triangle"></i><div></div>';
+                note.lastChild.textContent = 'The importer could not read this file: ' + data.error +
+                    ' You can still try option 2 with a clean four-column file.';
+                note.style.display = 'flex';
+                return;
+            }
+            countEl.textContent = data.n_rows + ' rows of CPT data read, down to ' +
+                Number(data.depth_max).toFixed(1) + ' m';
+
+            var noteText = data.note || 'File read by the importer.';
+            var html = '<i class="fas fa-info-circle"></i><div>' + escapeHtml(noteText);
+            (data.warnings || []).forEach(function (w) {
+                html += '<span class="import-warning-line">⚠ ' + escapeHtml(w) + '</span>';
+            });
+            html += '</div>';
+            note.className = 'import-note';
+            note.innerHTML = html;
+            note.style.display = 'flex';
+
+            var body = document.getElementById('preview-body');
+            body.innerHTML = '';
+            data.rows.forEach(function (r) {
+                var tr = document.createElement('tr');
+                [r.z.toFixed(2), r.qc.toFixed(2), r.fs.toFixed(1), r.gtot.toFixed(1)].forEach(function (v) {
+                    var td = document.createElement('td');
+                    td.textContent = v;
+                    tr.appendChild(td);
+                });
+                body.appendChild(tr);
+            });
+            document.getElementById('parsed-title').style.display = 'block';
+            document.getElementById('preview-message').textContent =
+                'Showing the first ' + data.rows.length + ' of ' + data.n_rows +
+                ' interpreted rows. The full profile is plotted in Step 2.';
+            parsed.style.display = 'block';
+        })
+        .catch(function () {
+            if (seq !== previewRequestSeq) return;
+            countEl.textContent = 'Preview unavailable';
+            note.className = 'import-note';
+            note.innerHTML = '<i class="fas fa-info-circle"></i><div>Could not build the preview, but you can still continue: the file is read properly when you submit.</div>';
+            note.style.display = 'flex';
+        });
+}
+
+function escapeHtml(s) {
+    var div = document.createElement('div');
+    div.textContent = s;
+    return div.innerHTML;
 }
 
 document.addEventListener('DOMContentLoaded', function() {
@@ -696,6 +803,12 @@ document.addEventListener('DOMContentLoaded', function() {
     margin-top: 0.1rem;
     flex-shrink: 0;
 }
+
+.preview-subhead { margin: 1.1rem 0 0.45rem; font-size: 0.95rem; color: #37474f; }
+.preview-subhead .preview-subnote { color: #8a939b; font-weight: 400; font-size: 0.82rem; }
+.raw-preview-pre { background: #f4f6f8; border: 1px solid #e0e4e8; border-radius: 6px; padding: 0.7rem 0.9rem; font-size: 0.78rem; line-height: 1.5; color: #37474f; overflow-x: auto; max-height: 230px; overflow-y: auto; margin: 0 0 0.4rem; }
+.import-note.import-note-error { background: #fde8e8; border-color: #f4c7c3; border-left-color: #c53030; color: #c53030; }
+.import-warning-line { display: block; margin-top: 0.4rem; font-weight: 600; }
 
 .cpt-source { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1.5rem; }
 .cpt-source-option { display: flex; gap: 0.6rem; align-items: flex-start; padding: 0.8rem 1rem; border: 1px solid #e5e7eb; border-radius: 8px; cursor: pointer; transition: border-color 0.15s, background 0.15s; }

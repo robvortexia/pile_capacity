@@ -556,6 +556,36 @@ def history_delete(calc_id):
     return redirect(url_for('main.history'))
 
 
+@bp.route('/preview-cpt', methods=['POST'])
+def preview_cpt():
+    """AJAX preview for Step 1: run the flexible importer on the chosen file
+    and return the first interpreted rows, the import note and any sanity
+    warnings, so the user sees what the calculator will read before they
+    submit. Read-only: touches no session or database state."""
+    f = request.files.get('cpt_file')
+    if f is None or not f.filename:
+        return jsonify({'ok': False, 'error': 'No file received.'}), 400
+    if not allowed_file(f.filename):
+        return jsonify({'ok': False, 'error': 'Unsupported file type. Use a .csv, .txt or .ags file.'}), 400
+    from .cpt_import import parse_cpt_file
+    try:
+        rows, note = parse_cpt_file(f.read(), f.filename)
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)})
+    if not rows:
+        return jsonify({'ok': False, 'error': 'No CPT data rows could be read from the file.'})
+    return jsonify({
+        'ok': True,
+        'note': note or '',
+        'warnings': _sanity_check_cpt(rows),
+        'n_rows': len(rows),
+        'depth_max': rows[-1]['z'],
+        'rows': [{'z': round(r['z'], 3), 'qc': round(r['qc'], 3),
+                  'fs': round(r['fs'], 2), 'gtot': round(r['gtot'], 2)}
+                 for r in rows[:8]],
+    })
+
+
 @bp.route('/googlef2236ffa5d780ee8.html')
 def google_site_verification():
     """Serve Google Search Console verification file."""
