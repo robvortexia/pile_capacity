@@ -110,7 +110,7 @@
                             <tr><td>Footing B &times; L</td><td>{{ results.inputs.footing_width_m }} &times; {{ results.inputs.footing_length_m }} m</td></tr>
                             <tr><td>Founding depth D (below excavation)</td><td>{{ results.inputs.founding_depth_m }} m</td></tr>
                             <tr><td>Site excavation d<sub>ex</sub></td><td>{{ results.inputs.excavation_depth_m }} m</td></tr>
-                            <tr><td>Unit weight used</td><td>{{ '%.1f'|format(results.inputs.unit_weight_used_knm3) }} kN/m³</td></tr>
+                            <tr><td>Unit weight used</td><td>{{ '%.1f'|format(results.inputs.unit_weight_used_knm3) }} kN/m³{% if results.inputs.unit_weight_source %} ({{ results.inputs.unit_weight_source }}){% endif %}</td></tr>
                             <tr><td>Zone of influence</td><td>{{ '%.2f'|format(sm.zone_top_m) }} – {{ '%.2f'|format(sm.zone_base_m) }} m</td></tr>
                             {% if sand %}
                             <tr><td>q<sub>c,avg</sub> in zone (after excavation)</td><td>{{ '%.2f'|format(sm.qc_avg_mpa) }} MPa</td></tr>

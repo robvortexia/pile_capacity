@@ -198,6 +198,35 @@ def _sanity_check_cpt(data_dict):
             'Most qt values exceed 100 MPa, which is unusually high. '
             'Check that qt is uploaded in MPa rather than kPa.')
 
+    # 4. Contiguous spans where fs <= 0 while qc is non-zero: the sleeve
+    #    reading has dropped out. Ic cannot be computed there (it collapses
+    #    to 0), so the calculator treats those spans as clean sand and
+    #    computes no shaft friction from them. Near-surface dropout is
+    #    common (sleeve not yet in the ground) but matters just as much:
+    #    it also feeds the CPT-derived unit weight. Report every span of
+    #    at least 5 consecutive readings.
+    spans = []
+    start = None
+    for i, r in enumerate(data_dict):
+        dropout = r['fs'] <= 0 and r['qc'] > 0
+        if dropout and start is None:
+            start = i
+        elif not dropout and start is not None:
+            if i - start >= 5:
+                spans.append((data_dict[start]['z'], data_dict[i - 1]['z']))
+            start = None
+    if start is not None and n - start >= 5:
+        spans.append((data_dict[start]['z'], data_dict[-1]['z']))
+    if spans:
+        shown = ', '.join('%.2f-%.2f m' % s for s in spans[:3])
+        more = '' if len(spans) <= 3 else ' (and %d more spans)' % (len(spans) - 3)
+        warnings.append(
+            'Sleeve friction (fs) reads zero over %s%s while qc is non-zero, '
+            'so the sleeve reading has likely dropped out there. Soil '
+            'classification (Ic) and shaft friction over these depths are '
+            'unreliable: the calculator treats them as clean sand.'
+            % (shown, more))
+
     # 4. Friction ratio sanity. Median Fr should sit between ~0.1% and
     #    ~10% for soils. Outside that strongly suggests a units / column
     #    mistake we haven't already flagged.
@@ -1430,6 +1459,7 @@ def calculator_step(type, step):
                     'ageing_factor': _opt('ageing_factor', 0.66),
                     'creep': _opt('creep', 0.02),
                     'nkt': _opt('nkt', 15),
+                    'unit_weight': _opt('unit_weight', None),
                     'site_name': request.form.get('file_name', ''),
                     'force_soil_model': request.form.get('force_soil_model') or None,
                 }
@@ -1441,6 +1471,8 @@ def calculator_step(type, step):
                     errors.append('Footing length must be greater than 0')
                 if footing_params['founding_depth'] is None or footing_params['founding_depth'] < 0:
                     errors.append('Founding depth below excavation cannot be negative')
+                if footing_params['unit_weight'] is not None and not (5 <= footing_params['unit_weight'] <= 30):
+                    errors.append('Unit weight must be between 5 and 30 kN/m3 (leave blank to derive it from the CPT)')
                 if errors:
                     for error in errors:
                         flash(error)
@@ -2266,32 +2298,40 @@ def download_results():
                     mimetype="text/csv",
                     headers={"Content-disposition": f"attachment; filename=bored_pile_results_{datetime.now().strftime('%Y%m%d')}.csv"}
                 )
-            else:
+            elif pile_type == 'helical' and isinstance(session['results'], dict):
                 # For helical piles, output the summary capacity values
                 results = session['results']
-                
+
+                def _cap(key):
+                    # A capacity value must come from the calculation or be
+                    # visibly absent. Never substitute a number.
+                    if key not in results:
+                        logger.warning("download_results: '%s' missing from helical summary; writing N/A", key)
+                        return 'N/A'
+                    return results[key]
+
                 # Create a CSV with helical pile results
                 output = io.StringIO()
                 writer = csv.writer(output)
-                
+
                 # Write header row with Excel-safe symbols
                 writer.writerow(['CAPACITY', 'Qshaft (kN)', 'Q at delta=10mm (kN)', 'Qult (kN)', 'Installation torque (kNm)'])
-                
+
                 # Write tension row
                 writer.writerow([
                     'Tension',
-                    results.get('qshaft', 17.3),  # Use the correct key and default value
-                    results.get('q_delta_10mm_tension', 63.8),
-                    results.get('qult_tension', 121.7),
-                    results.get('installation_torque', 6.4)
+                    _cap('qshaft'),
+                    _cap('q_delta_10mm_tension'),
+                    _cap('qult_tension'),
+                    _cap('installation_torque')
                 ])
-                
+
                 # Write compression row
                 writer.writerow([
                     'Compression',
-                    results.get('qshaft', 17.3),  # Use the correct key and default value
-                    results.get('q_delta_10mm_compression', 84.6),
-                    results.get('qult_compression', 168.2),
+                    _cap('qshaft'),
+                    _cap('q_delta_10mm_compression'),
+                    _cap('qult_compression'),
                     '-'  # No installation torque for compression
                 ])
                 
@@ -2308,6 +2348,18 @@ def download_results():
                     mimetype="text/csv",
                     headers={"Content-disposition": f"attachment; filename=helical_pile_results{site_name}_{datetime.now().strftime('%Y%m%d')}.csv"}
                 )
+            else:
+                # Shallow, lateral and cantilever have no CSV here yet, and a
+                # mismatched results shape must never fall into another
+                # module's writer (this used to serve a helical CSV of
+                # hardcoded defaults). Refuse clearly instead.
+                if pile_type in ('driven', 'bored', 'helical'):
+                    flash('Results format not recognized; please re-run the calculation.')
+                else:
+                    flash('A CSV download is not available for this module yet.')
+                if pile_type in ('driven', 'bored', 'helical', 'shallow', 'lateral', 'cantilever'):
+                    return redirect(url_for('main.calculator_step', type=pile_type, step=4))
+                return redirect(url_for('main.index'))
         else:
             # Try to load results from results_id
             results = load_calculation_results(session['results_id'])
@@ -2379,31 +2431,39 @@ def download_results():
                     flash('Results format not recognized for bored piles', 'error')
                     return redirect(url_for('main.calculator_step', type='bored', step=4))
             # For helical piles, output the summary capacity values
-            else:
+            elif pile_type == 'helical':
                 summary_results = results.get('summary', results)  # Try both locations
-                
+
+                def _cap(key):
+                    # A capacity value must come from the calculation or be
+                    # visibly absent. Never substitute a number.
+                    if not isinstance(summary_results, dict) or key not in summary_results:
+                        logger.warning("download_results: '%s' missing from stored helical summary; writing N/A", key)
+                        return 'N/A'
+                    return summary_results[key]
+
                 # Create a CSV with helical pile results
                 output = io.StringIO()
                 writer = csv.writer(output)
-                
+
                 # Write header row with Excel-safe symbols
                 writer.writerow(['CAPACITY', 'Qshaft (kN)', 'Q at delta=10mm (kN)', 'Qult (kN)', 'Installation torque (kNm)'])
-                
+
                 # Write tension row
                 writer.writerow([
                     'Tension',
-                    summary_results.get('qshaft', 17.3),  # Use the correct key and default value
-                    summary_results.get('q_delta_10mm_tension', 63.8),
-                    summary_results.get('qult_tension', 121.7),
-                    summary_results.get('installation_torque', 6.4)
+                    _cap('qshaft'),
+                    _cap('q_delta_10mm_tension'),
+                    _cap('qult_tension'),
+                    _cap('installation_torque')
                 ])
-                
+
                 # Write compression row
                 writer.writerow([
                     'Compression',
-                    summary_results.get('qshaft', 17.3),  # Use the correct key and default value
-                    summary_results.get('q_delta_10mm_compression', 84.6),
-                    summary_results.get('qult_compression', 168.2),
+                    _cap('qshaft'),
+                    _cap('q_delta_10mm_compression'),
+                    _cap('qult_compression'),
                     '-'  # No installation torque for compression
                 ])
                 
@@ -2420,6 +2480,11 @@ def download_results():
                     mimetype="text/csv",
                     headers={"Content-disposition": f"attachment; filename=helical_pile_results{site_name}_{datetime.now().strftime('%Y%m%d')}.csv"}
                 )
+            else:
+                flash('A CSV download is not available for this module yet.')
+                if pile_type in ('driven', 'bored', 'helical', 'shallow', 'lateral', 'cantilever'):
+                    return redirect(url_for('main.calculator_step', type=pile_type, step=4))
+                return redirect(url_for('main.index'))
     except Exception as e:
         current_app.logger.error(f"Error generating results download: {str(e)}")
         flash(f'Error generating results download: {str(e)}')

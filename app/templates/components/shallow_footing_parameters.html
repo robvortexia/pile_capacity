@@ -52,6 +52,12 @@
                 <input type="hidden" name="water_table" value="{{ session.get('water_table', 0.0) }}">
                 <span class="help-text">Depth to water table from original ground surface (set at Step 1).</span>
             </div>
+
+            <div class="form-field">
+                <label>Soil unit weight, &gamma; (kN/m&sup3;) (optional)</label>
+                <input type="number" name="unit_weight" step="0.1" min="0" class="form-control" placeholder="Blank = derive from CPT">
+                <span class="help-text">Single total unit weight for the stress calculations. Leave blank to use the average CPT-derived value over the zone of influence.</span>
+            </div>
         </div>
 
         <details class="advanced">

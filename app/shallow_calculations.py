@@ -114,17 +114,28 @@ def _downsample(idx_lists, max_points=400):
     return out
 
 
-def _representative_unit_weight(processed_cpt, params, foot_idx):
+def _representative_unit_weight(processed_cpt, params, foot_idx, zone_idx):
     """Single unit weight for the post-excavation stress recompute.
 
-    Per Barry's spec the program uses the FIRST unit weight entered in the
-    CSV (workbook D24 = pileapp!E2). An explicit override is honoured if
-    provided.
+    An explicit user override is honoured first. Otherwise the average unit
+    weight over the zone of influence (footing base to zone base) is used.
+    Barry's original spec took the FIRST value in the file (workbook D24 =
+    pileapp!E2), written for hand-built files with one constant unit-weight
+    column, where the average gives the identical number. For contractor
+    files the importer derives a per-depth unit weight and row 0 is often an
+    fs=0 surface artifact (about 12 kN/m3), so the zone average is the
+    faithful generalisation rather than a behaviour change.
     """
     if params.get('unit_weight') not in (None, '', 0):
         return float(params['unit_weight'])
     gtot = processed_cpt['gtot']
-    return float(gtot[0]) if gtot else 0.0
+    if not len(gtot):
+        return 0.0
+    if foot_idx is None:
+        return float(gtot[0])
+    end = zone_idx if (zone_idx is not None and zone_idx >= foot_idx) else foot_idx
+    span = gtot[foot_idx:end + 1]
+    return float(sum(span) / len(span))
 
 
 def _classify(avg_ic):
@@ -461,7 +472,12 @@ def calculate_shallow_footing_results(processed_cpt, params):
         warnings.append('The CPT data do not extend as far as the base of the '
                         'zone of influence of the footing.')
 
-    gamma_const = _representative_unit_weight(processed_cpt, p, foot_idx)
+    gamma_const = _representative_unit_weight(processed_cpt, p, foot_idx, zone_idx)
+    if gamma_const and gamma_const < 14.0:
+        warnings.append(
+            'Unit weight used (%.1f kN/m3) is unusually low for soil. Check '
+            'the unit-weight column in the CPT file, or enter a site unit '
+            'weight in the parameters form.' % gamma_const)
 
     if branch == 'sand':
         result = _sand_branch(processed_cpt, p, gamma_const, avg_ic)
@@ -481,5 +497,8 @@ def calculate_shallow_footing_results(processed_cpt, params):
         'founding_depth_m': D, 'excavation_depth_m': dex,
         'design_life_years': p['design_life_years'],
         'unit_weight_used_knm3': gamma_const,
+        'unit_weight_source': ('entered in form'
+                               if p.get('unit_weight') not in (None, '', 0)
+                               else 'CPT average over zone of influence'),
     }
     return result
