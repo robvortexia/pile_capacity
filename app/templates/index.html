@@ -75,6 +75,12 @@
         {% endif %}
     </div>
 
+    <div class="guides-strip">
+        <span>Guides:</span>
+        <a href="{{ url_for('main.screw_pile_landing') }}">Screw pile calculator</a>
+        <a href="{{ url_for('main.guide_pile_length') }}">How to work out pile depth from CPT data</a>
+    </div>
+
     <!-- 3D PIV Research Advertisement - Subtle placement -->
     <div class="research-ad">
         <a href="https://www.3dpivmeasurement.com/" class="research-link" id="piv-ad-link" target="_blank" rel="noopener noreferrer">
@@ -265,6 +271,28 @@
 .btn-disabled:hover {
     transform: none;
     box-shadow: none;
+}
+
+.guides-strip {
+    margin: 1.5rem 0 0.5rem 0;
+    padding: 0.75rem 1rem;
+    text-align: center;
+    color: #666;
+    font-size: 0.95rem;
+}
+
+.guides-strip span {
+    margin-right: 0.5rem;
+}
+
+.guides-strip a {
+    color: var(--primary-color);
+    text-decoration: none;
+    margin: 0 0.75rem;
+}
+
+.guides-strip a:hover {
+    text-decoration: underline;
 }
 
 /* Research Advertisement Styles */

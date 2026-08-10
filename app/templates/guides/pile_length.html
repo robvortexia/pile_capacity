@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+
+{% block title %}Pile Depth Calculator: Required Pile Length from CPT Data | UWA{% endblock %}
+{% block meta_description %}Work out how deep a pile needs to be: run a free CPT-based capacity calculation and read the required pile length off the capacity vs depth plot. From UWA.{% endblock %}
+{% block meta_keywords %}pile depth calculator, pile length calculation, required pile depth, pile embedment, pile length from CPT, how deep should piles be{% endblock %}
+{% block og_title %}Pile Depth Calculator: Required Pile Length from CPT Data | UWA{% endblock %}
+{% block og_description %}How to work out required pile depth: run a CPT-based capacity calculation and read the length off the capacity vs depth plot.{% endblock %}
+{% block twitter_title %}Pile Depth from CPT Data | UWA{% endblock %}
+{% block twitter_description %}Work out required pile length with a free CPT-based capacity calculation from UWA.{% endblock %}
+
+{% block jsonld %}
+<script type="application/ld+json">
+{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "How to work out required pile depth and length from CPT data",
+    "description": "Determine the pile length a design load requires by running a CPT-based capacity calculation and reading the capacity vs depth plot.",
+    "url": "https://uwa-geotech-cpt-calculator.com/guides/pile-length-from-cpt",
+    "dateModified": "2026-08-10",
+    "author": {
+        "@type": "Organization",
+        "name": "The University of Western Australia",
+        "url": "https://www.uwa.edu.au/"
+    },
+    "publisher": {
+        "@type": "Organization",
+        "name": "UWA CPT Pile Calculator",
+        "url": "https://uwa-geotech-cpt-calculator.com/"
+    }
+}
+</script>
+{% endblock %}
+
+{% block content %}
+<div class="guide-page">
+    <div class="guide-header">
+        <h1>How to work out required pile depth and length from CPT data</h1>
+        <p class="guide-lead">There is no single formula behind a pile depth calculator. The depth a pile
+        needs is the depth at which its capacity meets your design load, and with CPT data that capacity can
+        be computed at every possible tip depth. Choosing a pile length then becomes reading a chart from a
+        <a href="{{ url_for('main.calculator_step', type='driven', step=1) }}">free CPT capacity calculation</a>.</p>
+    </div>
+
+    <div class="guide-section">
+        <h2>Step 1: Know your required load</h2>
+        <p>Start from the structural load the pile must carry and apply the load and capacity factors your
+        design code requires (in Australia, AS 2159). That gives the geotechnical capacity the pile must
+        provide. This part stays with the design engineer; the calculator handles the next part.</p>
+    </div>
+
+    <div class="guide-section">
+        <h2>Step 2: Run a CPT-based capacity calculation</h2>
+        <p>Upload the CPT trace from your site investigation to one of the free UWA calculators:
+        <a href="{{ url_for('main.calculator_step', type='driven', step=1) }}">driven piles</a>
+        (Unified CPT method, Lehane et al. 2020),
+        <a href="{{ url_for('main.calculator_step', type='bored', step=1) }}">bored and CFA piles</a>
+        (Doan &amp; Lehane 2021), or
+        <a href="{{ url_for('main.screw_pile_landing') }}">screw piles</a>
+        (Bittar et al. 2023). Each method builds the pile's shaft friction and base resistance directly from
+        the measured cone resistance, rather than from generic soil-type assumptions.</p>
+    </div>
+
+    <div class="guide-section">
+        <h2>Step 3: Read the depth off the capacity vs depth plot</h2>
+        <p>The driven and bored pile results include a plot of axial capacity against pile tip depth, in
+        compression and in tension:</p>
+        <img src="{{ url_for('static', filename='img/guide_capacity_vs_depth.png') }}"
+             alt="Capacity vs depth plot from the UWA driven pile calculator, showing compression and tension capacity profiles increasing with pile tip depth"
+             class="guide-image">
+        <p>Capacity generally grows with depth as shaft friction accumulates, so the required pile length is
+        the depth where the capacity curve crosses your required value. If the pile also resists uplift,
+        check the tension curve the same way; tension capacity is usually the lower of the two, so read it
+        off the plot rather than assuming a fraction of the compression value.</p>
+        <p>The screw pile calculator reports capacity at the helix depth you enter, so there you run trial
+        depths instead of reading a curve.</p>
+    </div>
+
+    <div class="guide-section">
+        <h2>What to watch for</h2>
+        <ul>
+            <li><strong>Layered ground.</strong> Capacity does not always rise smoothly. Where the CPT shows a
+            weak layer, the curve flattens or dips, and a tip founded just above a weak layer can be
+            misleading. Look at the whole profile, not just the crossing point.</li>
+            <li><strong>CPT depth limits.</strong> Capacity can only be computed where soil data exists, so
+            the CPT must extend below any tip depth you are considering. The calculator will refuse tip
+            depths below the deepest CPT reading rather than guess.</li>
+            <li><strong>Groundwater.</strong> The water table affects vertical effective stress and therefore
+            capacity. The calculators build the stress profile from the unit weights and water table depth
+            you provide, so enter them with care.</li>
+            <li><strong>Settlement and lateral demands.</strong> Axial capacity is usually the starting
+            point, but stiffness, settlement or lateral loading can govern. The
+            <a href="{{ url_for('main.index') }}">other UWA modules</a> cover footings, monopiles and
+            retaining walls.</li>
+        </ul>
+    </div>
+
+    <div class="guide-section guide-final-cta">
+        <a href="{{ url_for('main.calculator_step', type='driven', step=1) }}" class="btn btn-primary">
+            Start a pile capacity calculation
+        </a>
+        <a href="{{ url_for('main.use_sample_data', type='driven') }}" class="btn btn-secondary">
+            Try it with sample data
+        </a>
+    </div>
+</div>
+
+<style>
+.guide-page {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 2rem;
+}
+
+.guide-header h1 {
+    font-size: 2rem;
+    color: #333;
+    margin-bottom: 0.75rem;
+}
+
+.guide-lead {
+    font-size: 1.15rem;
+    color: #555;
+    line-height: 1.6;
+    margin-bottom: 1.25rem;
+}
+
+.guide-section {
+    background: white;
+    padding: 1.5rem 2rem;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    margin: 1.25rem 0;
+    line-height: 1.6;
+}
+
+.guide-section h2 {
+    font-size: 1.25rem;
+    color: #003087;
+    margin-bottom: 0.75rem;
+}
+
+.guide-section ul {
+    padding-left: 1.25rem;
+}
+
+.guide-section li {
+    margin-bottom: 0.6rem;
+}
+
+.guide-image {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    margin: 1rem auto;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+}
+
+.guide-final-cta {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    box-shadow: none;
+    background: none;
+    padding: 1rem 0 2rem 0;
+}
+</style>
+{% endblock %}

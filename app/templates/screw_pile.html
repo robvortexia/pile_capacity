@@ -1,0 +1,254 @@
+{% extends "base.html" %}
+
+{% block title %}Screw Pile Calculator: Free CPT-Based Capacity Design | UWA{% endblock %}
+{% block meta_description %}Free screw pile capacity calculator. Upload CPT data and design screw (helical) piles in sand with the peer-reviewed UWA method. No sign-up, instant results.{% endblock %}
+{% block meta_keywords %}screw pile calculator, screw piling calculator, screw pile capacity, screw pile design, helical pile calculator, CPT screw pile, AS 2159 screw piles{% endblock %}
+{% block og_title %}Screw Pile Calculator: Free CPT-Based Capacity Design | UWA{% endblock %}
+{% block og_description %}Free screw pile capacity calculator. Design screw (helical) piles in sand from CPT data with the peer-reviewed UWA method.{% endblock %}
+{% block twitter_title %}Screw Pile Calculator: Free CPT-Based Design | UWA{% endblock %}
+{% block twitter_description %}Free screw pile capacity calculator using real CPT data. Peer-reviewed UWA method, no sign-up.{% endblock %}
+
+{% block jsonld %}
+<script type="application/ld+json">
+{
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "UWA Screw Pile Capacity Calculator",
+    "url": "https://uwa-geotech-cpt-calculator.com/screw-pile-calculator",
+    "description": "Free screw pile (helical pile) capacity calculator for sand, using CPT data and the Bittar et al. (2023) method.",
+    "applicationCategory": "Engineering",
+    "operatingSystem": "Web Browser",
+    "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "AUD"
+    },
+    "author": {
+        "@type": "Person",
+        "name": "Professor Barry M. Lehane",
+        "jobTitle": "Professor of Geotechnical Engineering",
+        "affiliation": {
+            "@type": "Organization",
+            "name": "The University of Western Australia"
+        },
+        "url": "https://research-repository.uwa.edu.au/en/persons/barry-lehane",
+        "sameAs": [
+            "https://scholar.google.com.au/citations?user=6JOr_LkAAAAJ"
+        ]
+    }
+}
+</script>
+<script type="application/ld+json">
+{
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+        {
+            "@type": "Question",
+            "name": "Is a screw pile the same as a helical pile?",
+            "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Yes. Screw pile is the common term in Australia and the UK, while North America and the research literature usually say helical pile or helical pier. Same pile, same calculation."
+            }
+        },
+        {
+            "@type": "Question",
+            "name": "How is this different from torque correlation?",
+            "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Torque correlation (Qult = Kt x T) estimates capacity from the torque measured while installing the pile, so it can only verify capacity during or after installation. The CPT-based method predicts capacity beforehand from soil data, so you can size the pile at the design stage. Many projects use both: CPT-based design first, torque as an installation check."
+            }
+        },
+        {
+            "@type": "Question",
+            "name": "Does the calculator work in clay?",
+            "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "The Bittar et al. (2023) method was developed and validated for screw piles in sand. For clay or mixed profiles, treat results with caution and seek specific geotechnical advice."
+            }
+        },
+        {
+            "@type": "Question",
+            "name": "Does it calculate uplift (tension) capacity?",
+            "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Yes. Capacity is reported in both compression and tension, so it covers uplift cases such as light structures."
+            }
+        },
+        {
+            "@type": "Question",
+            "name": "How do I choose the pile depth?",
+            "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Enter a trial helix depth and compare the reported capacity with your required load, allowing for your safety or reduction factors. Adjust the depth and rerun until it works."
+            }
+        },
+        {
+            "@type": "Question",
+            "name": "Do I need my own CPT data?",
+            "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "For a real design, yes: the calculation is driven by the CPT profile at your site. To explore the tool first, the sample data works with every module."
+            }
+        }
+    ]
+}
+</script>
+{% endblock %}
+
+{% block content %}
+<div class="landing-page">
+    <div class="landing-header">
+        <h1>Screw Pile Capacity Calculator</h1>
+        <p class="landing-lead">Design screw piles in sand from real CPT data. Free, no sign-up, built on a
+        peer-reviewed method from The University of Western Australia.</p>
+        <div class="button-group landing-cta">
+            <a href="{{ url_for('main.calculator_step', type='helical', step=1) }}" class="btn btn-primary">
+                Start a screw pile calculation
+            </a>
+            <a href="{{ url_for('main.use_sample_data', type='helical') }}" class="btn btn-secondary">
+                Try it with sample data
+            </a>
+        </div>
+    </div>
+
+    <div class="landing-section">
+        <h2>Screw piles and helical piles are the same thing</h2>
+        <p>Screw pile is the everyday name in Australia. The research literature calls the same foundation a
+        helical pile: a steel shaft with one or more helix plates, screwed into the ground. This calculator
+        covers both names and applies the CPT-based design method of Bittar et al. (2023), developed at UWA
+        and published in the Canadian Geotechnical Journal. You can read more on the
+        <a href="{{ url_for('main.pile_description', type='helical') }}">helical pile method page</a>.</p>
+    </div>
+
+    <div class="landing-section">
+        <h2>What the calculator does</h2>
+        <p>It computes the axial capacity of a screw pile in sand, in both compression and tension (uplift),
+        directly from a cone penetration test profile. Capacity is reported at the helix depth you enter,
+        together with the load-displacement response. To find the embedment your design load needs, run
+        trial helix depths; the <a href="{{ url_for('main.guide_pile_length') }}">pile depth guide</a> covers
+        the general approach.</p>
+        <p>It calculates geotechnical capacity. It does not estimate pile quantities or installation cost for
+        a deck or slab; for that you need a layout, not a capacity method.</p>
+    </div>
+
+    <div class="landing-section">
+        <h2>What you need</h2>
+        <p>A CPT trace from your site investigation: depth, cone resistance (qc) and sleeve friction (fs).
+        Most Australian geotechnical reports include CPT soundings. The importer reads CSV and Excel files,
+        AGS4, and raw contractor files, and sorts out the units automatically. No CPT file handy? Use the
+        sample data button above to see how it works.</p>
+    </div>
+
+    <div class="landing-section">
+        <h2>Who it is for</h2>
+        <p>Geotechnical and structural engineers running capacity checks for screw pile designs, and screw
+        piling contractors who want a method-based capacity estimate when quoting rather than a rule of
+        thumb. In Australia, pile design generally falls under AS 2159, with residential site classification
+        to AS 2870. The calculator provides ultimate geotechnical capacity from the CPT; the choice of load
+        factors and geotechnical strength reduction factors remains with the design engineer.</p>
+    </div>
+
+    <div class="landing-section">
+        <h2>Frequently asked questions</h2>
+        <dl class="faq-list">
+            <dt>Is a screw pile the same as a helical pile?</dt>
+            <dd>Yes. Screw pile is the common term in Australia and the UK, while North America and the
+            research literature usually say helical pile or helical pier. Same pile, same calculation.</dd>
+
+            <dt>How is this different from torque correlation?</dt>
+            <dd>Torque correlation (Q<sub>ult</sub> = K<sub>t</sub> &times; T) estimates capacity from the
+            torque measured while installing the pile, so it can only verify capacity during or after
+            installation. The CPT-based method predicts capacity beforehand from soil data, so you can size
+            the pile at the design stage. Many projects use both: CPT-based design first, torque as an
+            installation check.</dd>
+
+            <dt>Does the calculator work in clay?</dt>
+            <dd>The Bittar et al. (2023) method was developed and validated for screw piles in sand. For clay
+            or mixed profiles, treat results with caution and seek specific geotechnical advice.</dd>
+
+            <dt>Does it calculate uplift (tension) capacity?</dt>
+            <dd>Yes. Capacity is reported in both compression and tension, so it covers uplift cases such as
+            light structures.</dd>
+
+            <dt>How do I choose the pile depth?</dt>
+            <dd>Enter a trial helix depth and compare the reported capacity with your required load, allowing
+            for your safety or reduction factors. Adjust the depth and rerun until it works. There is a
+            <a href="{{ url_for('main.guide_pile_length') }}">step-by-step pile depth guide</a>.</dd>
+
+            <dt>Do I need my own CPT data?</dt>
+            <dd>For a real design, yes: the calculation is driven by the CPT profile at your site. To explore
+            the tool first, the sample data works with every module.</dd>
+        </dl>
+    </div>
+
+    <div class="landing-section landing-final-cta">
+        <a href="{{ url_for('main.calculator_step', type='helical', step=1) }}" class="btn btn-primary">
+            Start a screw pile calculation
+        </a>
+        <a href="{{ url_for('main.index') }}" class="btn btn-secondary">
+            See all calculators
+        </a>
+    </div>
+</div>
+
+<style>
+.landing-page {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 2rem;
+}
+
+.landing-header h1 {
+    font-size: 2rem;
+    color: #333;
+    margin-bottom: 0.75rem;
+}
+
+.landing-lead {
+    font-size: 1.15rem;
+    color: #555;
+    line-height: 1.6;
+    margin-bottom: 1.25rem;
+}
+
+.landing-cta {
+    margin-bottom: 1rem;
+}
+
+.landing-section {
+    background: white;
+    padding: 1.5rem 2rem;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    margin: 1.25rem 0;
+    line-height: 1.6;
+}
+
+.landing-section h2 {
+    font-size: 1.25rem;
+    color: #003087;
+    margin-bottom: 0.75rem;
+}
+
+.faq-list dt {
+    font-weight: 600;
+    margin-top: 1rem;
+    color: #333;
+}
+
+.faq-list dd {
+    margin: 0.35rem 0 0 0;
+    color: #555;
+}
+
+.landing-final-cta {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    box-shadow: none;
+    background: none;
+    padding: 1rem 0 2rem 0;
+}
+</style>
+{% endblock %}

@@ -660,6 +660,8 @@ def sitemap_xml():
         {'loc': '/shallow/calculator/1', 'priority': '0.8', 'changefreq': 'monthly', 'lastmod': '2026-06-10'},
         {'loc': '/lateral/calculator/1', 'priority': '0.8', 'changefreq': 'monthly', 'lastmod': '2026-06-10'},
         {'loc': '/cantilever/calculator/1', 'priority': '0.8', 'changefreq': 'monthly', 'lastmod': '2026-06-10'},
+        {'loc': '/screw-pile-calculator', 'priority': '0.9', 'changefreq': 'monthly', 'lastmod': '2026-08-10'},
+        {'loc': '/guides/pile-length-from-cpt', 'priority': '0.8', 'changefreq': 'monthly', 'lastmod': '2026-08-10'},
         {'loc': '/suggestions', 'priority': '0.5', 'changefreq': 'yearly', 'lastmod': '2026-04-10'},
     ]
     xml = '<?xml version="1.0" encoding="UTF-8"?>\n'
@@ -673,6 +675,18 @@ def sitemap_xml():
         xml += '  </url>\n'
     xml += '</urlset>'
     return Response(xml, mimetype='application/xml')
+
+
+@bp.route('/screw-pile-calculator')
+def screw_pile_landing():
+    """SEO landing page for the Australian term; the tool itself is the helical module."""
+    return render_template('screw_pile.html')
+
+
+@bp.route('/guides/pile-length-from-cpt')
+def guide_pile_length():
+    """Guide targeting pile depth / pile length queries."""
+    return render_template('guides/pile_length.html')
 
 
 @bp.route('/sample/<type>')
