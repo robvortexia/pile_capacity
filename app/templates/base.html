@@ -8,12 +8,12 @@
     <meta name="description" content="{% block meta_description %}Free online CPT-based pile capacity calculator from The University of Western Australia. Calculate axial capacity for driven, bored, and helical piles using Cone Penetration Test data.{% endblock %}">
     <meta name="keywords" content="{% block meta_keywords %}CPT pile calculator, cone penetration test, driven pile capacity, bored pile capacity, helical pile capacity, geotechnical engineering, UWA, pile foundation design, Lehane, axial pile capacity, CPT data analysis{% endblock %}">
     <meta name="author" content="The University of Western Australia & Vortexia Solutions">
-    <meta name="robots" content="index, follow">
-    <link rel="canonical" href="{% block canonical %}{{ request.url_root.rstrip('/') }}{{ request.path }}{% endblock %}">
+    <meta name="robots" content="{% block meta_robots %}index, follow{% endblock %}">
+    <link rel="canonical" href="{% block canonical %}https://uwa-geotech-cpt-calculator.com{{ request.path }}{% endblock %}">
 
     <!-- Open Graph / Facebook -->
     <meta property="og:type" content="website">
-    <meta property="og:url" content="{{ request.url }}">
+    <meta property="og:url" content="https://uwa-geotech-cpt-calculator.com{{ request.path }}">
     <meta property="og:title" content="{% block og_title %}UWA CPT Pile Calculator{% endblock %}">
     <meta property="og:description" content="{% block og_description %}Free CPT-based pile capacity calculator from UWA. Calculate axial capacity for driven, bored, and helical piles using Cone Penetration Test data.{% endblock %}">
     <meta property="og:image" content="{{ url_for('static', filename='img/uwalogo.png', _external=True) }}">

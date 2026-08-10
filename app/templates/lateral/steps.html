@@ -1,5 +1,9 @@
 {% extends "base.html" %}
 
+{% block title %}{% if step == 1 %}Monopile Lateral Response Calculator - Step 1: Upload CPT Data | UWA{% else %}Monopile Calculator - Step {{ step }}: {{ {2: 'CPT Profiles', 3: 'Parameters', 4: 'Results'}.get(step, '') }} | UWA{% endif %}{% endblock %}
+{% block meta_description %}Upload CPT data to predict the lateral load-displacement response of a monopile in sand after Wang et al. (2020, 2023). Free tool from UWA.{% endblock %}
+{% block meta_robots %}{% if step == 1 %}index, follow{% else %}noindex{% endif %}{% endblock %}
+
 {% block extra_head %}
 <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
 {% endblock %}

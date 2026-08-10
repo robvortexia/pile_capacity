@@ -1,12 +1,12 @@
 {% extends "base.html" %}
 
-{% block title %}Helical Pile Capacity Calculator — CPT Method for Sand (Bittar et al. 2023) | UWA{% endblock %}
-{% block meta_description %}Calculate helical pile axial capacity in sand from CPT data using the Bittar et al. (2023) method. Free online geotechnical tool from The University of Western Australia.{% endblock %}
-{% block meta_keywords %}helical pile capacity, CPT helical pile design, Bittar 2023, cone penetration test helical piles, UWA pile calculator, helical pile sand, screw pile capacity{% endblock %}
-{% block og_title %}Helical Pile Capacity Calculator — CPT Method | UWA{% endblock %}
-{% block og_description %}Calculate helical pile capacity in sand from CPT data using Bittar et al. (2023). Free tool from UWA.{% endblock %}
-{% block twitter_title %}Helical Pile Capacity — CPT Method | UWA{% endblock %}
-{% block twitter_description %}Calculate helical pile capacity in sand from CPT data. Free tool from UWA.{% endblock %}
+{% block title %}Helical Pile Capacity Calculator (Screw Piles) - CPT Method for Sand | UWA{% endblock %}
+{% block meta_description %}Calculate helical (screw) pile axial capacity in sand from CPT data using the Bittar et al. (2023) method. Free online geotechnical tool from The University of Western Australia.{% endblock %}
+{% block meta_keywords %}helical pile capacity, screw pile calculator, CPT helical pile design, Bittar 2023, cone penetration test helical piles, UWA pile calculator, helical pile sand, screw pile capacity{% endblock %}
+{% block og_title %}Helical (Screw) Pile Capacity Calculator - CPT Method | UWA{% endblock %}
+{% block og_description %}Calculate helical (screw) pile capacity in sand from CPT data using Bittar et al. (2023). Free tool from UWA.{% endblock %}
+{% block twitter_title %}Helical (Screw) Pile Capacity - CPT Method | UWA{% endblock %}
+{% block twitter_description %}Calculate helical (screw) pile capacity in sand from CPT data. Free tool from UWA.{% endblock %}
 
 {% block jsonld %}
 <script type="application/ld+json">
@@ -14,6 +14,7 @@
     "@context": "https://schema.org",
     "@type": "WebApplication",
     "name": "UWA Helical Pile Capacity Calculator",
+    "alternateName": "UWA Screw Pile Capacity Calculator",
     "url": "https://uwa-geotech-cpt-calculator.com/helical/description",
     "description": "Calculate helical pile axial capacity in sand from CPT data using the Bittar et al. (2023) method.",
     "applicationCategory": "Engineering",
@@ -36,9 +37,14 @@
 
 {% block content %}
 <div class="description-container">
+    <div class="description-header">
+        <h1>Helical (Screw) Pile Capacity Calculator for Sand</h1>
+    </div>
+
     <div class="description-content">
         <div class="description-text">
-            <p>This program uses CPT data to calculate the axial capacity of helical piles in sand.</p>
+            <p>This program uses CPT data to calculate the axial capacity of helical piles in sand.
+            Helical piles are commonly known as screw piles in Australia.</p>
 
             <p>This calculator implements the design method described in:</p>
             <p>Bittar, E.J., Lehane, B.M., Blake, A., Richards, D., White, D., Mahdavi, S., & Cerfontaine, B. (2023).
@@ -50,7 +56,7 @@
             </a>
         </div>
         <div class="description-image">
-            <img src="{{ url_for('static', filename='img/helical_pile.jpg') }}" alt="Helical Pile Illustration">
+            <img src="{{ url_for('static', filename='img/helical_pile.jpg') }}" alt="Helical (screw) pile with helix plates installed in sand">
         </div>
     </div>
 

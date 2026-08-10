@@ -300,7 +300,7 @@ _HISTORY_MAX_PER_USER = 50
 _HISTORY_TYPE_LABELS = {
     'driven': 'Driven pile',
     'bored': 'Bored pile',
-    'helical': 'Helical pile',
+    'helical': 'Helical (screw) pile',
     'shallow': 'Shallow footing',
     'lateral': 'Lateral monopile',
     'cantilever': 'Cantilever wall',
@@ -626,13 +626,6 @@ def robots_txt():
     """Serve robots.txt for search engine crawlers."""
     content = """User-agent: *
 Allow: /
-Allow: /driven/description
-Allow: /bored/description
-Allow: /helical/description
-Allow: /driven/calculator/1
-Allow: /bored/calculator/1
-Allow: /helical/calculator/1
-Allow: /suggestions
 Disallow: /admin
 Disallow: /admin/export
 Disallow: /admin/send_weekly_report
@@ -642,6 +635,8 @@ Disallow: /download_intermediary_calcs
 Disallow: /download_helical_calculations
 Disallow: /register
 Disallow: /track_ad_click
+Disallow: /sample/
+Disallow: /preview-cpt
 
 Sitemap: https://uwa-geotech-cpt-calculator.com/sitemap.xml
 """
@@ -652,13 +647,19 @@ Sitemap: https://uwa-geotech-cpt-calculator.com/sitemap.xml
 def sitemap_xml():
     """Serve XML sitemap for search engine indexing."""
     pages = [
-        {'loc': '/', 'priority': '1.0', 'changefreq': 'monthly', 'lastmod': '2026-04-10'},
+        {'loc': '/', 'priority': '1.0', 'changefreq': 'monthly', 'lastmod': '2026-08-10'},
         {'loc': '/driven/description', 'priority': '0.9', 'changefreq': 'monthly', 'lastmod': '2026-04-10'},
         {'loc': '/bored/description', 'priority': '0.9', 'changefreq': 'monthly', 'lastmod': '2026-04-10'},
-        {'loc': '/helical/description', 'priority': '0.9', 'changefreq': 'monthly', 'lastmod': '2026-04-10'},
-        {'loc': '/driven/calculator/1', 'priority': '0.8', 'changefreq': 'monthly', 'lastmod': '2026-04-10'},
-        {'loc': '/bored/calculator/1', 'priority': '0.8', 'changefreq': 'monthly', 'lastmod': '2026-04-10'},
-        {'loc': '/helical/calculator/1', 'priority': '0.8', 'changefreq': 'monthly', 'lastmod': '2026-04-10'},
+        {'loc': '/helical/description', 'priority': '0.9', 'changefreq': 'monthly', 'lastmod': '2026-08-10'},
+        {'loc': '/shallow/description', 'priority': '0.9', 'changefreq': 'monthly', 'lastmod': '2026-06-10'},
+        {'loc': '/lateral/description', 'priority': '0.9', 'changefreq': 'monthly', 'lastmod': '2026-06-10'},
+        {'loc': '/cantilever/description', 'priority': '0.9', 'changefreq': 'monthly', 'lastmod': '2026-06-10'},
+        {'loc': '/driven/calculator/1', 'priority': '0.8', 'changefreq': 'monthly', 'lastmod': '2026-06-10'},
+        {'loc': '/bored/calculator/1', 'priority': '0.8', 'changefreq': 'monthly', 'lastmod': '2026-06-10'},
+        {'loc': '/helical/calculator/1', 'priority': '0.8', 'changefreq': 'monthly', 'lastmod': '2026-06-10'},
+        {'loc': '/shallow/calculator/1', 'priority': '0.8', 'changefreq': 'monthly', 'lastmod': '2026-06-10'},
+        {'loc': '/lateral/calculator/1', 'priority': '0.8', 'changefreq': 'monthly', 'lastmod': '2026-06-10'},
+        {'loc': '/cantilever/calculator/1', 'priority': '0.8', 'changefreq': 'monthly', 'lastmod': '2026-06-10'},
         {'loc': '/suggestions', 'priority': '0.5', 'changefreq': 'yearly', 'lastmod': '2026-04-10'},
     ]
     xml = '<?xml version="1.0" encoding="UTF-8"?>\n'
@@ -880,8 +881,13 @@ def create_driven_data_dataframe(processed_cpt, calc_dict, cpt_profile_dict=None
 
     return pd.DataFrame(data)
 
-@bp.route('/')
 @bp.route('/index')
+def index_alias():
+    """Legacy alias. 301 so search engines consolidate signals on the root URL."""
+    return redirect(url_for('main.index'), code=301)
+
+
+@bp.route('/')
 def index():
     logger.debug("Session keys: %s, registered=%s", list(session.keys()), session.get('registered'))
 

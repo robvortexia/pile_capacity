@@ -1,6 +1,7 @@
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_session import Session
+from werkzeug.middleware.proxy_fix import ProxyFix
 from .models import db
 from datetime import timedelta
 import os
@@ -29,6 +30,9 @@ def _init_scheduler(app):
 
 def create_app():
     app = Flask(__name__)
+    # Render terminates TLS at its proxy; trust X-Forwarded-Proto/Host so
+    # request.url and url_for(_external=True) emit https on the real domain.
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
     app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY') or 'your-secret-key-here'
     
     # Use PostgreSQL database if DATABASE_URL is provided, otherwise use SQLite

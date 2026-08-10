@@ -1,5 +1,9 @@
 {% extends "base.html" %}
 
+{% block title %}{% if step == 1 %}Helical (Screw) Pile Calculator - Step 1: Upload CPT Data | UWA{% else %}Helical Pile Calculator - Step {{ step }}: {{ {2: 'CPT Profiles', 3: 'Parameters', 4: 'Results'}.get(step, '') }} | UWA{% endif %}{% endblock %}
+{% block meta_description %}Upload CPT data to calculate helical (screw) pile capacity in sand with the Bittar et al. (2023) method. Free tool from UWA.{% endblock %}
+{% block meta_robots %}{% if step == 1 %}index, follow{% else %}noindex{% endif %}{% endblock %}
+
 {% block extra_head %}
 <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
 {% endblock %}
