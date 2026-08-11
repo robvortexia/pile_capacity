@@ -246,14 +246,14 @@
             <tbody>
                 {% for u in recent_users %}
                 <tr>
-                    <td data-label="User">
+                    <td data-label="User" title="{{ u.email or u.user_id }}">
                         <a href="{{ url_for('main.admin_user_detail', user_id=u.user_id) }}" style="color:#003087;text-decoration:none;font-weight:500">
                             {{ u.email or (u.user_id[:8] ~ '...') }}
                         </a>
                     </td>
                     <td data-label="Location">{{ u.city }}{{ ', ' if u.city and u.country }}{{ u.country }}</td>
                     <td data-label="Browser">{{ u.browser_os }}</td>
-                    <td data-label="Referrer" style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ u.referrer }}</td>
+                    <td data-label="Referrer" title="{{ u.referrer }}" style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ u.referrer }}</td>
                     <td data-label="Pages">{{ u.page_count }}</td>
                     <td data-label="Session">{{ u.duration_minutes }} min</td>
                     <td data-label="First">{{ u.first_seen.strftime('%Y-%m-%d %H:%M') }}</td>
@@ -280,9 +280,9 @@
                 {% for event in recent_activity[:50] %}
                 <tr>
                     <td data-label="Time">{{ event.timestamp.strftime('%Y-%m-%d %H:%M') }}</td>
-                    <td data-label="User">{{ event.email or (event.user_id[:8] ~ '…' if event.user_id else '—') }}</td>
+                    <td data-label="User" title="{{ event.email or event.user_id or '' }}">{{ event.email or (event.user_id[:8] ~ '…' if event.user_id else '—') }}</td>
                     <td data-label="Event">{{ event.data_key }}</td>
-                    <td data-label="Details" style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ (event.data_value or '')[:100] or '—' }}</td>
+                    <td data-label="Details" title="{{ event.data_value or '' }}" style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ (event.data_value or '')[:100] or '—' }}</td>
                 </tr>
                 {% endfor %}
             </tbody>
