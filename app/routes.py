@@ -615,6 +615,26 @@ def preview_cpt():
     })
 
 
+# The calculator's original domain. Papers cite its URLs (e.g. the LSU LTRC
+# FR_682 report and ISFOG2025-598 print pile-capacity-uwa.com links), so the
+# re-registered domain 301s every request to the matching current page.
+_LEGACY_HOSTS = {'pile-capacity-uwa.com', 'www.pile-capacity-uwa.com'}
+_LEGACY_PATH_MAP = {
+    '/calculator': '/driven/calculator/1',
+    '/sand.pdf': '/driven/description',
+    '/srd.pdf': '/driven/description',
+    '/clay.pdf': '/driven/description',
+}
+
+
+@bp.before_app_request
+def _redirect_legacy_domain():
+    host = request.host.split(':')[0].lower()
+    if host in _LEGACY_HOSTS:
+        target = _LEGACY_PATH_MAP.get(request.path, '/')
+        return redirect('https://uwa-geotech-cpt-calculator.com' + target, code=301)
+
+
 @bp.route('/googlef2236ffa5d780ee8.html')
 def google_site_verification():
     """Serve Google Search Console verification file."""
