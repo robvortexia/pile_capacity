@@ -60,7 +60,7 @@ def build_weekly_usage_email(subject_prefix: str = 'Site usage summary') -> Emai
     msg['From'] = sender
     msg['To'] = ', '.join(recipients)
     subject_suffix = _get_config('SITE_NAME', 'UWA Pile Calculator')
-    msg['Subject'] = f"{subject_prefix} — {subject_suffix}"
+    msg['Subject'] = f"{subject_prefix} - {subject_suffix}"
     msg.set_content('\n'.join(lines))
     return msg
 

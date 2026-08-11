@@ -174,7 +174,7 @@ def _sanity_check_cpt(data_dict):
     if swap_rows > 0.3 * n:
         warnings.append(
             'Sleeve friction (fs) exceeds tip resistance (qt) in %d of %d '
-            'rows. The qt and fs columns may be in the wrong order — qt '
+            'rows. The qt and fs columns may be in the wrong order: qt '
             'should be column 2 in MPa, fs column 3 in kPa.' % (swap_rows, n))
 
     # 2. Unit weight should sit in roughly [10, 25] kN/m^3 for soils. If
