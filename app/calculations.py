@@ -1,10 +1,13 @@
 import math
 import json
+import logging
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import plotly.utils
 from scipy.interpolate import interp1d
+
+logger = logging.getLogger(__name__)
 
 def get_ifr(diameter):
     return math.tanh(0.3 * ((diameter * 1000 / 35.68)**0.5))
@@ -264,7 +267,7 @@ def get_qb_clay(pile_end_condition, qt_value, area_value):
         return 0.4*qt_value*1000*area_value
 
 def pre_input_calc(data, water_table):
-    print(f"Water table value in pre_input_calc: {water_table}")
+    logger.debug("pre_input_calc: water_table=%s", water_table)
     try:
         cpt_data = data['cpt_data'] if isinstance(data, dict) else data
         # Convert to numpy arrays for calculations but keep as lists for output
@@ -287,6 +290,11 @@ def pre_input_calc(data, water_table):
         kc = [0] * n_points
         iz1 = [0] * n_points
         qtc = [0] * n_points
+
+        # Points where the Ic/Qtn iteration failed and neutral fallback
+        # values were substituted. Counted so callers can tell the user
+        # instead of silently fabricating soil behaviour.
+        fallback_count = 0
 
         # Use numpy for the simple calculations, then convert back to lists
         for i in range(n_points):
@@ -316,8 +324,10 @@ def pre_input_calc(data, water_table):
                     lc[i] = iterative_values['lc']
                     n[i] = iterative_values['n']
                 except Exception as iter_error:
-                    print(f"Warning: Iterative calculation failed for point {i} at depth {depth[i]}: {str(iter_error)}")
+                    logger.debug("Iterative calculation failed for point %d at depth %s: %s",
+                                 i, depth[i], iter_error)
                     # Use fallback values
+                    fallback_count += 1
                     qtn[i] = 1.0
                     lc[i] = 2.5
                     n[i] = 0.5
@@ -328,8 +338,9 @@ def pre_input_calc(data, water_table):
                 iz1[i] = get_iz1(qtn[i], fr_percent[i])
                 
             except Exception as e:
-                print(f"Error processing data point {i} at depth {depth[i]}: {str(e)}")
+                logger.debug("Error processing data point %d at depth %s: %s", i, depth[i], e)
                 # Use default values for this point
+                fallback_count += 1
                 fr_percent[i] = 1.0
                 qtn[i] = 1.0
                 lc[i] = 2.5
@@ -337,6 +348,11 @@ def pre_input_calc(data, water_table):
                 kc[i] = 1.0
                 qtc[i] = qt[i]
                 iz1[i] = 1.0
+
+        if fallback_count:
+            logger.warning("pre_input_calc: %d of %d points could not be classified; "
+                           "neutral fallback values (Ic=2.5) were substituted",
+                           fallback_count, n_points)
 
         return {
             'depth': depth.tolist(),
@@ -356,10 +372,11 @@ def pre_input_calc(data, water_table):
             'bq': bq,
             'kc': kc,
             'iz1': iz1,
-            'qtc': qtc
+            'qtc': qtc,
+            'fallback_count': fallback_count
         }
     except Exception as e:
-        print(f"Error in pre_input_calc: {str(e)}")
+        logger.error(f"Error in pre_input_calc: {str(e)}")
         return None
 
 def interpolate_at_depth(depths, values, target_depth):
@@ -566,16 +583,18 @@ def calculate_pile_capacity(cpt_data, params, pile_type='driven'):
         return results
 
 def process_cpt_data(data):
+    """Normalise uploaded CPT rows for calculation.
+
+    pre_input_calc integrates overburden stress incrementally down the
+    profile, so rows must be in increasing-depth order with no repeated
+    depths; a descending or re-stroked contractor file would otherwise
+    produce silently wrong stresses. Returns
+    ``{'cpt_data': rows, 'upload_notes': [...]}`` where ``upload_notes``
+    lists any corrections applied, for the route to surface to the user.
+    """
     try:
-        # Data is already in the correct format, no need for additional processing
-        if isinstance(data, list) and data and isinstance(data[0], dict):
-            if all(key in data[0] for key in ['z', 'fs', 'qc', 'gtot']):
-                return {'cpt_data': data}
-        
-        # If we somehow get here with other data types, handle them
-        cpt_data = []
         if isinstance(data, pd.DataFrame):
-            cpt_data = [
+            rows = [
                 {
                     'z': float(row[0]),
                     'qc': float(row[1]),
@@ -585,13 +604,46 @@ def process_cpt_data(data):
                 for _, row in data.iterrows()
             ]
         elif isinstance(data, list):
-            cpt_data = data  # Data should already be in correct format from route handler
-            
-        if not cpt_data:
+            rows = data
+        else:
+            rows = []
+
+        if not rows:
             raise ValueError("No data processed")
-            
-        return {'cpt_data': cpt_data}
-        
+
+        notes = []
+
+        n_in = len(rows)
+        rows = [r for r in rows if r['z'] >= 0]
+        if len(rows) < n_in:
+            notes.append(
+                '%d rows with negative depth were dropped.' % (n_in - len(rows)))
+
+        ordered = sorted(rows, key=lambda r: r['z'])
+        if ordered != rows:
+            notes.append(
+                'Depth values were not in increasing order; rows were sorted '
+                'by depth before processing.')
+
+        deduped = []
+        dropped_dupes = 0
+        last_z = None
+        for r in ordered:
+            if last_z is not None and r['z'] == last_z:
+                dropped_dupes += 1
+                continue
+            deduped.append(r)
+            last_z = r['z']
+        if dropped_dupes:
+            notes.append(
+                '%d repeated depth readings were dropped (the first reading '
+                'at each depth was kept).' % dropped_dupes)
+
+        if not deduped:
+            raise ValueError("No usable data rows after cleaning")
+
+        return {'cpt_data': deduped, 'upload_notes': notes}
+
     except Exception as e:
         logger.error(f"Error processing CPT data: {str(e)}")
         return None
