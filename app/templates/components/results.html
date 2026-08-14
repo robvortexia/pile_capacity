@@ -11,23 +11,23 @@
                         <tbody>
                             <tr>
                                 <th>Site Name</th>
-                                <td>{{ session.get('pile_params', {}).get('site_name', 'N/A') }}</td>
+                                <td>{{ (pile_params or {}).get('site_name', 'N/A') }}</td>
                             </tr>
                             <tr>
                                 <th>Shaft Diameter</th>
-                                <td>{{ session.get('pile_params', {}).get('shaft_diameter', 'N/A') }} m</td>
+                                <td>{{ (pile_params or {}).get('shaft_diameter', 'N/A') }} m</td>
                             </tr>
                             <tr>
                                 <th>Helix Diameter</th>
-                                <td>{{ session.get('pile_params', {}).get('helix_diameter', 'N/A') }} m</td>
+                                <td>{{ (pile_params or {}).get('helix_diameter', 'N/A') }} m</td>
                             </tr>
                             <tr>
                                 <th>Helix Depth</th>
-                                <td>{{ session.get('pile_params', {}).get('helix_depth', 'N/A') }} m</td>
+                                <td>{{ (pile_params or {}).get('helix_depth', 'N/A') }} m</td>
                             </tr>
                             <tr>
                                 <th>Water Table</th>
-                                <td>{{ session.get('pile_params', {}).get('water_table', 'N/A') }} m</td>
+                                <td>{{ (pile_params or {}).get('water_table', 'N/A') }} m</td>
                             </tr>
                         </tbody>
                     </table>
@@ -222,47 +222,47 @@
                             {% if type == 'driven' %}
                             <tr>
                                 <th>Site Name</th>
-                                <td>{{ session.get('pile_params', {}).get('site_name', 'N/A') }}</td>
+                                <td>{{ (pile_params or {}).get('site_name', 'N/A') }}</td>
                             </tr>
                             <tr>
                                 <th>Pile End Condition</th>
-                                <td>{{ session.get('pile_params', {}).get('pile_end_condition', 'N/A') }}</td>
+                                <td>{{ (pile_params or {}).get('pile_end_condition', 'N/A') }}</td>
                             </tr>
                             <tr>
                                 <th>Pile Shape</th>
-                                <td>{{ session.get('pile_params', {}).get('pile_shape', 'N/A') }}</td>
+                                <td>{{ (pile_params or {}).get('pile_shape', 'N/A') }}</td>
                             </tr>
                             <tr>
                                 <th>Pile Diameter</th>
-                                <td>{{ session.get('pile_params', {}).get('pile_diameter', 'N/A') }} m</td>
+                                <td>{{ (pile_params or {}).get('pile_diameter', 'N/A') }} m</td>
                             </tr>
-                            {% if session.get('pile_params', {}).get('pile_shape', '') != 'square' %}
+                            {% if (pile_params or {}).get('pile_shape', '') != 'square' %}
                             <tr>
                                 <th>Wall Thickness</th>
-                                <td>{{ session.get('pile_params', {}).get('wall_thickness', 'N/A') }} mm</td>
+                                <td>{{ (pile_params or {}).get('wall_thickness', 'N/A') }} mm</td>
                             </tr>
                             {% endif %}
                             {% else %}
                             <tr>
                                 <th>Site Name</th>
-                                <td>{{ session.get('pile_params', {}).get('site_name', 'N/A') }}</td>
+                                <td>{{ (pile_params or {}).get('site_name', 'N/A') }}</td>
                             </tr>
                             <tr>
                                 <th>Shaft Diameter</th>
-                                <td>{{ session.get('pile_params', {}).get('shaft_diameter', 'N/A') }} m</td>
+                                <td>{{ (pile_params or {}).get('shaft_diameter', 'N/A') }} m</td>
                             </tr>
                             <tr>
                                 <th>Base Diameter</th>
-                                <td>{{ session.get('pile_params', {}).get('base_diameter', 'N/A') }} m</td>
+                                <td>{{ (pile_params or {}).get('base_diameter', 'N/A') }} m</td>
                             </tr>
                             <tr>
                                 <th>Cased Depth</th>
-                                <td>{{ session.get('pile_params', {}).get('cased_depth', 'N/A') }} m</td>
+                                <td>{{ (pile_params or {}).get('cased_depth', 'N/A') }} m</td>
                             </tr>
                             {% endif %}
                             <tr>
                                 <th>Water Table</th>
-                                <td>{{ session.get('pile_params', {}).get('water_table', 'N/A') }} m</td>
+                                <td>{{ (pile_params or {}).get('water_table', 'N/A') }} m</td>
                             </tr>
                         </tbody>
                     </table>

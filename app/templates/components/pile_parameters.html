@@ -1,23 +1,23 @@
 <div class="parameters-container">
     <form method="POST" action="{{ url_for('main.calculator_step', type=type, step=3) }}">
-        <input type="hidden" 
-               name="water_table" 
-               value="{{ session['water_table'] }}">
+        <input type="hidden"
+               name="water_table"
+               value="{{ water_table | default(0.0, true) }}">
         <div class="form-section">
             <div class="form-field">
                 <label>Site Name (optional)</label>
-                <input type="text" name="site_name" class="form-control" placeholder="Enter site name" value="{{ session.get('pile_params', {}).get('site_name', '') }}">
+                <input type="text" name="site_name" class="form-control" placeholder="Enter site name" value="{{ (pile_params or {}).get('site_name', '') }}">
             </div>
 
             <div class="form-field" id="pile-end-condition-field">
                 <label>Pile End Condition</label>
                 <div class="modern-radio-group">
                     <div class="modern-radio">
-                        <input type="radio" id="open" name="pile_end_condition" value="open" {% if session.get('pile_params', {}).get('pile_end_condition', 'open') != 'closed' %}checked{% endif %}>
+                        <input type="radio" id="open" name="pile_end_condition" value="open" {% if (pile_params or {}).get('pile_end_condition', 'open') != 'closed' %}checked{% endif %}>
                         <label for="open">Open</label>
                     </div>
                     <div class="modern-radio">
-                        <input type="radio" id="closed" name="pile_end_condition" value="closed" {% if session.get('pile_params', {}).get('pile_end_condition') == 'closed' %}checked{% endif %}>
+                        <input type="radio" id="closed" name="pile_end_condition" value="closed" {% if (pile_params or {}).get('pile_end_condition') == 'closed' %}checked{% endif %}>
                         <label for="closed">Closed</label>
                     </div>
                 </div>
@@ -28,11 +28,11 @@
                 <label>Pile Shape</label>
                 <div class="modern-radio-group">
                     <div class="modern-radio">
-                        <input type="radio" id="circular" name="pile_shape" value="circular" {% if session.get('pile_params', {}).get('pile_shape', 'circular') != 'square' %}checked{% endif %}>
+                        <input type="radio" id="circular" name="pile_shape" value="circular" {% if (pile_params or {}).get('pile_shape', 'circular') != 'square' %}checked{% endif %}>
                         <label for="circular">Circular</label>
                     </div>
                     <div class="modern-radio">
-                        <input type="radio" id="square" name="pile_shape" value="square" {% if session.get('pile_params', {}).get('pile_shape') == 'square' %}checked{% endif %}>
+                        <input type="radio" id="square" name="pile_shape" value="square" {% if (pile_params or {}).get('pile_shape') == 'square' %}checked{% endif %}>
                         <label for="square">Square</label>
                     </div>
                 </div>
@@ -41,25 +41,25 @@
 
             <div class="form-field">
                 <label>Pile Diameter or side width (m)</label>
-                <input type="number" name="pile_diameter" value="{{ session.get('pile_params', {}).get('pile_diameter', 1) }}" step="0.0001" class="form-control" required>
+                <input type="number" name="pile_diameter" value="{{ (pile_params or {}).get('pile_diameter', 1) }}" step="0.0001" class="form-control" required>
                 <span class="help-text">Outer diameter for circular piles, or side length for square piles.</span>
             </div>
 
             <div class="form-field" id="wall-thickness-field">
                 <label>Pile Wall Thickness (mm)</label>
-                <input type="number" name="wall_thickness" value="{{ session.get('pile_params', {}).get('wall_thickness', 20) }}" class="form-control" required>
+                <input type="number" name="wall_thickness" value="{{ (pile_params or {}).get('wall_thickness', 20) }}" class="form-control" required>
                 <span class="help-text">Steel wall thickness of the pipe pile.</span>
             </div>
 
             <div class="form-field">
                 <label>Borehole Depth (m)</label>
-                <input type="number" name="borehole_depth" step="0.1" class="form-control" required value="{{ session.get('pile_params', {}).get('borehole_depth', '') }}">
+                <input type="number" name="borehole_depth" step="0.1" class="form-control" required value="{{ (pile_params or {}).get('borehole_depth', '') }}">
                 <span class="help-text">Depth from ground surface over which the program assumes zero shaft friction (normally=0)</span>
             </div>
 
             <div class="form-field">
                 <label>Pile tip depths (m) for analysis</label>
-                <input type="text" name="pile_tip_depths" class="form-control" required placeholder="e.g., 10, 15, 20" value="{{ session.get('pile_params', {}).get('pile_tip_depths', []) | join(', ') }}">
+                <input type="text" name="pile_tip_depths" class="form-control" required placeholder="e.g., 10, 15, 20" value="{{ (pile_params or {}).get('pile_tip_depths', []) | join(', ') }}">
                 <span class="help-text">Separate depths by commas. Maximum depth must be less than CPT depth.</span>
             </div>
         </div>

@@ -114,6 +114,32 @@ def sample_data_for_graphs(cpt_data, max_points=None):
     
     return sampled_data
 
+def sample_processed_profile(processed, max_points=None):
+    """Downsample an already-computed pre_input_calc profile for graphing.
+
+    Slices every per-depth list in the profile with the same uniformly
+    spaced indices, so the step-2 graphs can reuse the profile computed
+    once at upload instead of re-running pre_input_calc on sampled rows.
+    Scalar entries (e.g. fallback_count) pass through unchanged.
+    """
+    if max_points is None:
+        try:
+            max_points = current_app.config.get('GRAPH_SAMPLE_SIZE', 1000)
+        except RuntimeError:
+            max_points = 1000
+    n = len(processed.get('depth', []))
+    if n <= max_points:
+        return processed
+    indices = sorted(set(np.linspace(0, n - 1, max_points, dtype=int)))
+    sampled = {}
+    for key, value in processed.items():
+        if isinstance(value, list) and len(value) == n:
+            sampled[key] = [value[i] for i in indices]
+        else:
+            sampled[key] = value
+    return sampled
+
+
 def _build_sbt_graph(processed_data, max_depth):
     """Build a Robertson SBT colour-coded soil profile graph.
     Shared by driven, bored, and helical pile graph functions."""
@@ -214,18 +240,22 @@ def _build_sbt_graph(processed_data, max_depth):
     }
 
 
-def create_cpt_graphs(data, water_table=None):
+def create_cpt_graphs(data, water_table=None, processed=None):
     if water_table is None:
         water_table = data.get('water_table', 0)
-    
-    # Sample data for graph performance - this maintains visual accuracy while preventing timeouts
-    cpt_data = data['cpt_data'] if isinstance(data, dict) else data
-    sampled_cpt_data = sample_data_for_graphs(cpt_data)
-    
-    # Create sampled data structure for processing
-    sampled_data = {'cpt_data': sampled_cpt_data, 'water_table': water_table}
-    
-    processed_data = pre_input_calc(sampled_data, water_table)
+
+    if processed is not None:
+        # Profile already computed at upload: just downsample it for display.
+        processed_data = sample_processed_profile(processed)
+    else:
+        # Sample data for graph performance - this maintains visual accuracy while preventing timeouts
+        cpt_data = data['cpt_data'] if isinstance(data, dict) else data
+        sampled_cpt_data = sample_data_for_graphs(cpt_data)
+
+        # Create sampled data structure for processing
+        sampled_data = {'cpt_data': sampled_cpt_data, 'water_table': water_table}
+
+        processed_data = pre_input_calc(sampled_data, water_table)
     if not processed_data:
         return None
     
@@ -372,17 +402,23 @@ def create_cpt_graphs(data, water_table=None):
         'sbt': json.dumps(sbt_graph, cls=plotly.utils.PlotlyJSONEncoder),
     }
 
-def create_bored_pile_graphs(data):
-    # Get water table from session
-    water_table = float(session['water_table'])
-    
-    # Sample data for graph performance
-    cpt_data = data['cpt_data'] if isinstance(data, dict) else data
-    sampled_cpt_data = sample_data_for_graphs(cpt_data)
-    sampled_data = {'cpt_data': sampled_cpt_data, 'water_table': water_table}
-    
-    processed_data = pre_input_calc(sampled_data, water_table)
-    
+def create_bored_pile_graphs(data, water_table=None, processed=None):
+    if water_table is None:
+        # Legacy fallback: water table from the data blob or the session
+        water_table = data.get('water_table') if isinstance(data, dict) else None
+        if water_table is None:
+            water_table = float(session['water_table'])
+
+    if processed is not None:
+        processed_data = sample_processed_profile(processed)
+    else:
+        # Sample data for graph performance
+        cpt_data = data['cpt_data'] if isinstance(data, dict) else data
+        sampled_cpt_data = sample_data_for_graphs(cpt_data)
+        sampled_data = {'cpt_data': sampled_cpt_data, 'water_table': water_table}
+
+        processed_data = pre_input_calc(sampled_data, water_table)
+
     if not processed_data:
         return None
 
@@ -501,17 +537,21 @@ def create_bored_pile_graphs(data):
         'sbt': json.dumps(sbt_graph, cls=plotly.utils.PlotlyJSONEncoder),
     }
 
-def create_helical_pile_graphs(data):
-    # Get water table from data
-    water_table = data.get('water_table', 0)
-    
-    # Sample data for graph performance
-    cpt_data = data['cpt_data'] if isinstance(data, dict) else data
-    sampled_cpt_data = sample_data_for_graphs(cpt_data)
-    sampled_data = {'cpt_data': sampled_cpt_data, 'water_table': water_table}
-    
-    processed_data = pre_input_calc(sampled_data, water_table)
-    
+def create_helical_pile_graphs(data, water_table=None, processed=None):
+    if water_table is None:
+        # Get water table from data
+        water_table = data.get('water_table', 0)
+
+    if processed is not None:
+        processed_data = sample_processed_profile(processed)
+    else:
+        # Sample data for graph performance
+        cpt_data = data['cpt_data'] if isinstance(data, dict) else data
+        sampled_cpt_data = sample_data_for_graphs(cpt_data)
+        sampled_data = {'cpt_data': sampled_cpt_data, 'water_table': water_table}
+
+        processed_data = pre_input_calc(sampled_data, water_table)
+
     if not processed_data:
         return None
 

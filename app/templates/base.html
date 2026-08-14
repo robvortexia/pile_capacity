@@ -107,7 +107,7 @@
                     <button type="submit" class="btn btn-primary">Continue</button>
                 </div>
             </form>
-            <button type="button" class="btn-skip-registration" onclick="document.getElementById('registrationModal').style.display='none'">Skip for now</button>
+            <button type="button" class="btn-skip-registration" onclick="document.cookie='uwa_reg_skip=1;max-age=2592000;path=/;SameSite=Lax';document.getElementById('registrationModal').style.display='none'">Skip for now</button>
             {% with messages = get_flashed_messages() %}
                 {% if messages %}
                     {% for message in messages %}

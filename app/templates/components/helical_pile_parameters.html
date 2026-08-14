@@ -3,35 +3,35 @@
         <div class="form-group">
             <label for="shaft_diameter">Shaft Diameter (m)</label>
             <input type="number" step="0.001" class="form-control" id="shaft_diameter" name="shaft_diameter"
-                   value="{{ session.get('pile_params', {}).get('shaft_diameter', 0.762) }}" required>
+                   value="{{ (pile_params or {}).get('shaft_diameter', 0.762) }}" required>
             <span class="help-text">Outer diameter of the central steel shaft.</span>
         </div>
 
         <div class="form-group">
             <label for="helix_diameter">Helix Diameter (m)</label>
             <input type="number" step="0.001" class="form-control" id="helix_diameter" name="helix_diameter"
-                   value="{{ session.get('pile_params', {}).get('helix_diameter', 1.5) }}" required>
+                   value="{{ (pile_params or {}).get('helix_diameter', 1.5) }}" required>
             <span class="help-text">Outer diameter of the helical plate.</span>
         </div>
 
         <div class="form-group">
             <label for="helix_depth">Helix Depth (m)</label>
             <input type="number" step="0.001" class="form-control" id="helix_depth" name="helix_depth"
-                   value="{{ session.get('pile_params', {}).get('helix_depth', 7.0) }}" required>
+                   value="{{ (pile_params or {}).get('helix_depth', 7.0) }}" required>
             <span class="help-text">Depth of the helix plate below ground surface.</span>
         </div>
         
         <div class="form-group">
             <label for="water_table">Water Table Depth (m)</label>
-            <div class="form-control-static">{{ session.get('water_table', 0.0) }}</div>
+            <div class="form-control-static">{{ water_table | default(0.0, true) }}</div>
             <input type="hidden" id="water_table" name="water_table" 
-                   value="{{ session.get('water_table', 0.0) }}">
+                   value="{{ water_table | default(0.0, true) }}">
         </div>
         
         <div class="form-group">
             <label for="site_name">Site Name (optional)</label>
             <input type="text" class="form-control" id="site_name" name="site_name" 
-                   value="{{ session.get('pile_params', {}).get('site_name', '') }}">
+                   value="{{ (pile_params or {}).get('site_name', '') }}">
         </div>
         
         <div class="button-group">

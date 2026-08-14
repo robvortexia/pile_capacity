@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, request, jsonify, flash, redirect, url_for, session, Response, send_file, current_app, make_response
+from flask import Blueprint, render_template, request, jsonify, flash, redirect, url_for, session, Response, send_file, current_app, make_response, has_request_context
 from werkzeug.utils import secure_filename
 import pandas as pd
 import os
@@ -8,15 +8,16 @@ import plotly.graph_objects as go
 import plotly.utils
 import numpy as np
 from .utils import (
-    save_cpt_data, load_cpt_data, create_cpt_graphs, 
-    save_graphs_data, load_graphs_data, generate_csv_download, 
+    save_cpt_data, load_cpt_data, create_cpt_graphs,
+    save_graphs_data, load_graphs_data, generate_csv_download,
     save_debug_details, load_debug_details, create_bored_pile_graphs,
-    save_calculation_results, load_calculation_results, create_helical_pile_graphs
+    save_calculation_results, load_calculation_results, create_helical_pile_graphs,
+    sample_processed_profile
 )
 from .calculations import calculate_pile_capacity, process_cpt_data, pre_input_calc, get_iterative_values, calculate_bored_pile_results, calculate_helical_pile_results, calculate_driven_pile_results, compute_capacity_envelope_bored, compute_capacity_envelope_driven
 from .interpolation import process_uploaded_cpt_data
 from datetime import datetime, timedelta
-from .models import db, Registration, Visit, Suggestion, AnalyticsData, SavedCalculation
+from .models import db, Registration, Visit, Suggestion, AnalyticsData, SavedCalculation, CalcFlow
 from functools import wraps
 from hmac import compare_digest
 from collections import deque
@@ -40,7 +41,8 @@ from .analytics import record_page_visit, store_analytics_data, get_or_create_us
 pd.set_option('display.precision', 15)  # Increase default precision
 pd.set_option('display.float_format', lambda x: '%.15g' % x)  # Use full precision in string conversions
 
-logging.basicConfig(level=logging.DEBUG)
+# INFO in production: DEBUG floods the Render logs with per-request noise.
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 bp = Blueprint('main', __name__)
@@ -323,7 +325,11 @@ def _anon_id(create=True):
         return pending
     if not create:
         return None
-    aid = get_or_create_user_id()
+    # Seed from the analytics session id when one exists so saved
+    # calculations line up with the admin analytics; otherwise mint a fresh
+    # id without touching the session (a session write here would create a
+    # server-side session file for every anonymous page view).
+    aid = session.get('user_id') or str(uuid.uuid4())
     if not _ANON_ID_RE.match(aid or ''):
         aid = str(uuid.uuid4())
     g.anon_id_new = aid  # picked up by _attach_anon_cookie on the way out
@@ -370,15 +376,171 @@ def _history_unpack(blob):
     return json.loads(zlib.decompress(blob).decode('utf-8'))
 
 
+# ---------------------------------------------------------------------------
+# Wizard flow state - one CalcFlow row per upload-to-results run.
+#
+# The CPT rows and the pre_input_calc profile are stored once at upload
+# (cpt_payload); parameters/results/debug details are stored as the wizard
+# advances (state_payload). The flow id rides in the wizard URLs (added
+# automatically by _add_flow_to_urls), so each browser tab carries its own
+# flow, and a Render redeploy no longer strands users mid-wizard the way
+# the old temp-file storage did.
+# ---------------------------------------------------------------------------
+
+_FLOW_ID_RE = re.compile(r'^[0-9a-f]{32}$')
+_FLOWS_MAX_PER_USER = 20
+_FLOWS_TTL_DAYS = 30  # stale-flow reaper; saved history is the long-term store
+_UPLOAD_MAX_ROWS = 50000  # far beyond any real sounding; bounds CPU and storage per upload
+_FLOW_ENDPOINTS = {
+    'main.calculator_step',
+    'main.download_debug_params',
+    'main.download_results',
+    'main.download_pdf_report',
+    'main.download_intermediary_calcs',
+}
+
+
+def _request_flow_id():
+    """Flow id carried by this request's own URL or form, if any."""
+    if not has_request_context():
+        return None
+    for candidate in (request.args.get('flow', ''),
+                      request.form.get('flow', '')):
+        if candidate and _FLOW_ID_RE.match(candidate):
+            return candidate
+    return None
+
+
+def _current_flow_id():
+    """Flow id for this request: URL/form arg first, then session fallback
+    (the fallback covers wizard URLs entered without the ?flow= arg)."""
+    fid = _request_flow_id()
+    if fid:
+        return fid
+    if not has_request_context():
+        return None
+    fid = session.get('flow_id', '')
+    return fid if fid and _FLOW_ID_RE.match(fid) else None
+
+
+@bp.url_defaults
+def _add_flow_to_urls(endpoint, values):
+    """Carry the flow id from this request's URL onto every wizard/download
+    URL built while handling it, so templates never need to thread it
+    through. Deliberately only propagates ids already present in the
+    request (never the session fallback): otherwise links to OTHER modules
+    rendered on description/landing pages would pick up the last active
+    flow of whatever module the user ran previously."""
+    if endpoint in _FLOW_ENDPOINTS and 'flow' not in values:
+        fid = _request_flow_id()
+        if fid:
+            values['flow'] = fid
+
+
+def _flow_create(calc_type, cpt_rows, processed, water_table, original_filename):
+    """Persist a new wizard flow; returns its id."""
+    fid = uuid.uuid4().hex
+    anon = _anon_id()
+    row = CalcFlow(
+        id=fid,
+        anon_id=anon,
+        calc_type=calc_type,
+        water_table=water_table,
+        original_filename=original_filename,
+        cpt_payload=_history_pack({'cpt_data': cpt_rows, 'processed': processed}),
+    )
+    db.session.add(row)
+    db.session.commit()
+    # Bound storage: drop this browser's oldest flows beyond the cap, and
+    # reap stale flows globally (the per-anon cap alone is bypassable by a
+    # client that discards cookies; saved history covers long-term reopen).
+    try:
+        overflow = (CalcFlow.query.filter_by(anon_id=anon)
+                    .order_by(CalcFlow.updated_at.desc())
+                    .offset(_FLOWS_MAX_PER_USER).all())
+        for old in overflow:
+            db.session.delete(old)
+        cutoff = datetime.utcnow() - timedelta(days=_FLOWS_TTL_DAYS)
+        stale = CalcFlow.query.filter(CalcFlow.updated_at < cutoff).delete(
+            synchronize_session=False)
+        if overflow or stale:
+            db.session.commit()
+    except Exception:
+        db.session.rollback()
+    session['flow_id'] = fid  # fallback for URLs entered without ?flow=
+    return fid
+
+
+def _flow_row(expected_type=None):
+    """The CalcFlow row for this request, or None. Rows belong to the
+    browser (anon cookie) that created them, and a flow created by one
+    module is invisible to another module's wizard (``expected_type``):
+    without that guard, editing the module segment of a wizard URL would
+    run module B's calculation against module A's flow and corrupt it."""
+    fid = _current_flow_id()
+    if not fid:
+        return None
+    row = db.session.get(CalcFlow, fid)
+    if row is None:
+        return None
+    if row.anon_id and row.anon_id != _anon_id():
+        return None
+    if expected_type is not None and row.calc_type != expected_type:
+        return None
+    return row
+
+
+def _flow_has_cpt(row):
+    """Cheap existence check: flows are always created with a CPT payload,
+    so a resolvable row means the wizard has data (no blob load needed)."""
+    return row is not None
+
+
+def _flow_cpt(row):
+    """CPT blob for a flow, shaped like the old load_cpt_data return:
+    {'cpt_data': rows, 'water_table': wt, 'processed': profile} or None."""
+    if row is None or not row.cpt_payload:
+        return None
+    try:
+        blob = _history_unpack(row.cpt_payload)
+    except Exception as e:
+        logger.error("Could not unpack flow %s cpt payload: %s", row.id, e)
+        return None
+    if not blob or not blob.get('cpt_data'):
+        return None
+    blob['water_table'] = row.water_table
+    return blob
+
+
+def _flow_state(row):
+    if row is None or not row.state_payload:
+        return {}
+    try:
+        return _history_unpack(row.state_payload) or {}
+    except Exception as e:
+        logger.error("Could not unpack flow %s state payload: %s", row.id, e)
+        return {}
+
+
+def _flow_save_state(row, **updates):
+    state = _flow_state(row)
+    state.update(updates)
+    row.state_payload = _history_pack(state)
+    row.updated_at = datetime.utcnow()
+    db.session.commit()
+    return state
+
+
 def _history_fingerprint(calc_type, pile_params, water_table, original_filename, cpt_rows):
     """Content fingerprint of a calculation, used to avoid duplicate history
-    entries on results-page refreshes and when reopening a saved entry."""
-    basis = [
-        calc_type, pile_params, water_table, original_filename,
-        len(cpt_rows),
-        cpt_rows[0] if cpt_rows else None,
-        cpt_rows[-1] if cpt_rows else None,
-    ]
+    entries on results-page refreshes and when reopening a saved entry.
+    Digests every CPT row: sampling only the first/last rows made a
+    corrected re-issue of the same sounding (same name, count and depth
+    range) silently overwrite the previous history entry."""
+    rows_digest = hashlib.sha1(
+        json.dumps(cpt_rows, default=_history_json_default).encode('utf-8')
+    ).hexdigest()
+    basis = [calc_type, pile_params, water_table, original_filename, rows_digest]
     return hashlib.sha1(
         json.dumps(basis, sort_keys=True, default=_history_json_default).encode('utf-8')
     ).hexdigest()
@@ -419,45 +581,45 @@ def _history_params_brief(calc_type, p):
     return ''
 
 
-def _history_autosave():
+def _history_autosave(flow, state):
     """Snapshot the just-completed calculation into the saved history.
 
-    Called on the step-4 results render for demo users. Returns True when a
-    new entry was stored, False when skipped (already saved, or the CPT temp
-    file has gone). Callers wrap this in try/except so a storage hiccup can
-    never break the results page.
+    Called on the step-4 results render. Returns True when a new entry was
+    stored, False when skipped (already saved, or the flow's CPT payload is
+    gone). Callers wrap this in try/except so a storage hiccup can never
+    break the results page.
     """
-    calc_type = session.get('type')
-    if calc_type not in _HISTORY_TYPE_LABELS or 'results' not in session:
+    calc_type = flow.calc_type if flow is not None else None
+    if calc_type not in _HISTORY_TYPE_LABELS or state.get('results') is None:
         return False
-    cpt_blob = load_cpt_data(session['cpt_data_id']) if session.get('cpt_data_id') else None
+    cpt_blob = _flow_cpt(flow)
     cpt_rows = (cpt_blob or {}).get('cpt_data') or []
     if not cpt_rows:
         return False  # without the CPT rows the entry could not be reopened faithfully
 
     fingerprint = _history_fingerprint(
-        calc_type, session.get('pile_params'), session.get('water_table'),
-        session.get('original_filename'), cpt_rows)
-    if session.get('history_fp') == fingerprint:
+        calc_type, state.get('pile_params'), flow.water_table,
+        flow.original_filename, cpt_rows)
+    if flow.history_fp == fingerprint:
         return False
 
     payload = {
         'v': 1,
         'type': calc_type,
-        'original_filename': session.get('original_filename'),
-        'water_table': session.get('water_table'),
+        'original_filename': flow.original_filename,
+        'water_table': flow.water_table,
         'cpt_data': cpt_rows,
-        'pile_params': session.get('pile_params'),
-        'results': session['results'],
-        'capacity_envelope': session.get('capacity_envelope'),
-        'debug': (load_debug_details(session['debug_id']) or None) if session.get('debug_id') else None,
+        'pile_params': state.get('pile_params'),
+        'results': state['results'],
+        'capacity_envelope': state.get('capacity_envelope'),
+        'debug': state.get('debug'),
     }
     summary = {
-        'filename': session.get('original_filename'),
-        'water_table': session.get('water_table'),
+        'filename': flow.original_filename,
+        'water_table': flow.water_table,
         'n_points': len(cpt_rows),
         'depth_max': max(r['z'] for r in cpt_rows),
-        'params_brief': _history_params_brief(calc_type, session.get('pile_params') or {}),
+        'params_brief': _history_params_brief(calc_type, state.get('pile_params') or {}),
     }
 
     anon = _anon_id()
@@ -467,12 +629,12 @@ def _history_autosave():
         row = SavedCalculation(anon_id=anon, fingerprint=fingerprint)
         db.session.add(row)
     row.calc_type = calc_type
-    row.title = _history_title(calc_type, session.get('pile_params'), session.get('original_filename'))
+    row.title = _history_title(calc_type, state.get('pile_params'), flow.original_filename)
     row.summary_json = json.dumps(summary, default=_history_json_default)
     row.payload = _history_pack(payload)
     row.created_at = datetime.utcnow()
+    flow.history_fp = fingerprint
     db.session.commit()
-    session['history_fp'] = fingerprint
 
     # Keep only the newest entries per browser so the table stays bounded.
     overflow = (SavedCalculation.query.filter_by(anon_id=anon)
@@ -485,6 +647,56 @@ def _history_autosave():
 
     logger.info("History autosave: %s '%s' (new=%s)", calc_type, row.title, is_new)
     return is_new
+
+
+def _render_step4(type, show_modal):
+    """Render the results page for any module from the flow state."""
+    flow = _flow_row(type)
+    state = _flow_state(flow)
+    results = state.get('results')
+    if results is None:
+        flash('No results available. Please complete the analysis first.')
+        return redirect(url_for('main.calculator_step', type=type, step=3))
+
+    # Snapshot the completed calculation into "My calculations" so it can
+    # be reopened later. Never allowed to break the results page.
+    history_saved_now = False
+    try:
+        history_saved_now = _history_autosave(flow, state)
+    except Exception as hist_e:
+        logger.warning(f"History autosave failed: {hist_e}")
+        db.session.rollback()
+
+    debug = state.get('debug')
+    detailed_results = None
+    if type == 'helical':
+        if isinstance(debug, list) and debug:
+            detailed_results = debug[0]
+        else:
+            logger.error("No debug details found or invalid format")
+            flash('Error loading calculation details', 'error')
+            return redirect(url_for('main.calculator_step', type=type, step=3))
+    elif type in ('driven', 'bored'):
+        tips = []
+        if isinstance(debug, dict):
+            tips = debug.get('tips', [])
+        elif isinstance(debug, list):
+            tips = debug
+        if tips:
+            detailed_results = tips[0]
+
+    return render_template(
+        f'{type}/steps.html',
+        step=4,
+        type=type,
+        results=results,
+        detailed_results=detailed_results,
+        capacity_envelope=state.get('capacity_envelope'),
+        pile_params=state.get('pile_params') or {},
+        original_filename=flow.original_filename if flow is not None else None,
+        history_saved_now=history_saved_now,
+        show_modal=show_modal,
+    )
 
 
 @bp.route('/history')
@@ -537,39 +749,36 @@ def history_open(calc_id):
         flash('Could not load that saved calculation.')
         return redirect(url_for('main.history'))
 
-    # Reset the wizard state the same way switching module type does, then
-    # rebuild the session exactly as the original run left it.
-    preserved = {}
-    for key in ['user_id', 'email', 'name', 'institution', 'registered', 'user_email',
-                'affiliation', 'shallow_demo_ok', 'private_demo_ok']:
-        if key in session:
-            preserved[key] = session[key]
-    session.clear()
-    session.update(preserved)
-
+    # Rebuild the calculation as a fresh flow (the saved payloads predate
+    # the stored-profile format, so the profile is recomputed once here).
     water_table = payload.get('water_table')
     if water_table is None:
         water_table = 0
-    session['type'] = calc_type
-    session['cpt_data_id'] = save_cpt_data(payload['cpt_data'], water_table)
-    session['water_table'] = water_table
-    if payload.get('original_filename'):
-        session['original_filename'] = payload['original_filename']
+    cpt_rows = payload['cpt_data']
+    profile = pre_input_calc({'cpt_data': cpt_rows}, water_table)
+    fid = _flow_create(calc_type, cpt_rows, profile, water_table,
+                       payload.get('original_filename'))
+    flow = db.session.get(CalcFlow, fid)
+
+    state_updates = {'results': payload['results']}
     if payload.get('pile_params') is not None:
-        session['pile_params'] = payload['pile_params']
-    session['results'] = payload['results']
+        state_updates['pile_params'] = payload['pile_params']
     if payload.get('capacity_envelope') is not None:
-        session['capacity_envelope'] = payload['capacity_envelope']
+        state_updates['capacity_envelope'] = payload['capacity_envelope']
     if payload.get('debug'):
-        session['debug_id'] = save_debug_details(payload['debug'])
+        state_updates['debug'] = payload['debug']
+    _flow_save_state(flow, **state_updates)
+
     # Recompute the fingerprint from the restored state so the step-4 render
     # recognises this calculation as already saved and does not duplicate it.
-    session['history_fp'] = _history_fingerprint(
-        calc_type, session.get('pile_params'), session.get('water_table'),
-        session.get('original_filename'), payload['cpt_data'])
+    flow.history_fp = _history_fingerprint(
+        calc_type, payload.get('pile_params'), water_table,
+        payload.get('original_filename'), cpt_rows)
+    db.session.commit()
+    session['type'] = calc_type
 
     record_event('history', 'history_open', {'calc_type': calc_type, 'saved_id': row.id})
-    return redirect(url_for('main.calculator_step', type=calc_type, step=4))
+    return redirect(url_for('main.calculator_step', type=calc_type, step=4, flow=fid))
 
 
 @bp.route('/history/<int:calc_id>/delete', methods=['POST'])
@@ -751,16 +960,15 @@ def use_sample_data(type):
         processed_data = process_cpt_data(data_dict)
         water_table = 2.0  # Default water table for sample
 
-        file_id = save_cpt_data(processed_data['cpt_data'], water_table)
-        session['cpt_data_id'] = file_id
-        session['water_table'] = water_table
-        session['original_filename'] = 'sample_data'
+        cpt_rows = processed_data['cpt_data']
+        profile = pre_input_calc({'cpt_data': cpt_rows}, water_table)
+        flow_id = _flow_create(type, cpt_rows, profile, water_table, 'sample_data')
         session['type'] = type
 
         store_analytics_data('sample_data', 'type', type)
 
         # Redirect to step 1 with sample flag so user can review the data
-        return redirect(url_for('main.calculator_step', type=type, step=1, sample=1))
+        return redirect(url_for('main.calculator_step', type=type, step=1, sample=1, flow=flow_id))
     except Exception as e:
         logger.error(f"Error loading sample data: {str(e)}")
         flash(f'Error loading sample data: {str(e)}')
@@ -1010,18 +1218,26 @@ def calculator_step(type, step):
         if not _private_module_allowed():
             return redirect(url_for('main.index'))
 
-    # Show registration modal if user hasn't registered yet
+    # Show registration modal if user hasn't registered yet. "Skip for now"
+    # is remembered in a 30-day cookie, so the modal stops re-covering
+    # later wizard steps and the results page after one dismissal.
     show_modal = False
     if 'registered' not in session or not session['registered']:
         if request.cookies.get('user_registered') == 'true':
             session['registered'] = True
             session.modified = True
-        else:
+        elif request.cookies.get('uwa_reg_skip') != '1':
             show_modal = True
 
     # Handle helical pile processing specifically
     if type == 'helical' and step == 3 and request.method == 'POST':
         try:
+            flow = _flow_row(type)
+            cpt_blob = _flow_cpt(flow)
+            if not cpt_blob:
+                flash('CPT data not found. Please upload data again.', 'error')
+                return redirect(url_for('main.calculator_step', type='helical', step=1))
+
             # Get parameters from form
             pile_params = {
                 'site_name': request.form.get('site_name', ''),
@@ -1029,7 +1245,7 @@ def calculator_step(type, step):
                 'helix_diameter': float(request.form.get('helix_diameter', 0)),
                 'helix_depth': float(request.form.get('helix_depth', 0)),
                 'borehole_depth': 0.0,  # Always set to zero as requested
-                'water_table': float(session.get('water_table', 0))  # Use water table from session instead of form
+                'water_table': float(flow.water_table or 0)
             }
             
             # Validate helical pile parameters
@@ -1048,77 +1264,56 @@ def calculator_step(type, step):
                     flash(error)
                 return redirect(url_for('main.calculator_step', type='helical', step=3))
 
-            # Store parameters in session
-            session['pile_params'] = pile_params
-
             # Store parameters in database
             store_analytics_data('pile_params', data_dict=pile_params)
 
-            # Load CPT data
-            if 'cpt_data_id' in session:
-                cpt_data = load_cpt_data(session['cpt_data_id'])
-                if not cpt_data:
-                    flash('CPT data not found. Please upload data again.', 'error')
-                    return redirect(url_for('main.calculator_step', type='helical', step=1))
+            # Helix depth must sit within the CPT profile, same rule as
+            # the pile modules (Barry, 10 June 2026: no capacity
+            # calculation below the deepest CPT reading)
+            max_depth = max(row['z'] for row in cpt_blob['cpt_data'])
+            if pile_params['helix_depth'] > max_depth:
+                flash(f'Helix depth {pile_params["helix_depth"]}m exceeds the deepest CPT reading ({max_depth:.2f}m). Reduce the helix depth or upload deeper CPT data.')
+                return redirect(url_for('main.calculator_step', type='helical', step=3))
 
-                # Helix depth must sit within the CPT profile, same rule as
-                # the pile modules (Barry, 10 June 2026: no capacity
-                # calculation below the deepest CPT reading)
-                cpt_rows = cpt_data['cpt_data'] if isinstance(cpt_data, dict) else cpt_data
-                max_depth = max(row['z'] for row in cpt_rows)
-                if pile_params['helix_depth'] > max_depth:
-                    flash(f'Helix depth {pile_params["helix_depth"]}m exceeds the deepest CPT reading ({max_depth:.2f}m). Reduce the helix depth or upload deeper CPT data.')
-                    return redirect(url_for('main.calculator_step', type='helical', step=3))
+            # Profile computed once at upload; recompute only for legacy flows
+            processed_cpt = cpt_blob.get('processed') or pre_input_calc(cpt_blob, float(flow.water_table or 0))
 
-                # Process the CPT data
-                water_table = float(session.get('water_table', 0))  # Consistent use of session water table
-                processed_cpt = pre_input_calc(cpt_data, water_table)
-                
-                # Calculate results
-                try:
-                    results = calculate_helical_pile_results(processed_cpt, pile_params)
-                    
-                    # Store summary results in session
-                    session['results'] = results['summary']
-                    
-                    # Store results in database
-                    store_analytics_data('calculation_results', 'summary', results['summary'])
-                    
-                    # Create detailed results with all necessary data
-                    detailed_results = {
-                        'calculations': results['detailed'],
-                        'helix_calculations': {
-                            'perimeter': results['detailed'].get('perimeter'),
-                            'helix_area': results['detailed'].get('helix_area'),
-                            'q1_helix': results['detailed'].get('q1_helix'),
-                            'q10_helix': results['detailed'].get('q10_helix'),
-                            'qhelix_tension': results['detailed'].get('qhelix_tension'),
-                            'qhelix_compression': results['detailed'].get('qhelix_compression')
-                        },
-                        'input_parameters': session['pile_params']
-                    }
-                    
-                    # Save detailed results and store debug_id in session
-                    debug_id = save_debug_details([detailed_results])  # Wrap in list since load_debug_details expects a list
-                    session['debug_id'] = debug_id
-                    
-                    # Store debug ID in database
-                    store_analytics_data('calculation_debug', 'debug_id', debug_id)
+            # Calculate results
+            try:
+                results = calculate_helical_pile_results(processed_cpt, pile_params)
 
-                    logger.info("Helical pile calculations completed for %s (debug_id=%s)", pile_params.get('site_name'), debug_id)
+                # Store results in database
+                store_analytics_data('calculation_results', 'summary', results['summary'])
 
-                    session.pop('results_id', None)
-                    session.pop('detailed_results', None)
+                # Create detailed results with all necessary data
+                detailed_results = {
+                    'calculations': results['detailed'],
+                    'helix_calculations': {
+                        'perimeter': results['detailed'].get('perimeter'),
+                        'helix_area': results['detailed'].get('helix_area'),
+                        'q1_helix': results['detailed'].get('q1_helix'),
+                        'q10_helix': results['detailed'].get('q10_helix'),
+                        'qhelix_tension': results['detailed'].get('qhelix_tension'),
+                        'qhelix_compression': results['detailed'].get('qhelix_compression')
+                    },
+                    'input_parameters': pile_params
+                }
 
-                    return redirect(url_for('main.calculator_step', type=type, step=4))
-                except Exception as e:
-                    logger.error(f"Error in helical pile calculations: {str(e)}")
-                    flash(f'Error in calculation: {str(e)}', 'error')
-                    return redirect(url_for('main.calculator_step', type='helical', step=3))
-            else:
-                flash('No CPT data available', 'error')
-                return redirect(url_for('main.calculator_step', type='helical', step=1))
-                
+                # Persist everything on the flow row (debug wrapped in a list,
+                # matching the shape the downloads expect)
+                _flow_save_state(flow,
+                                 pile_params=pile_params,
+                                 results=results['summary'],
+                                 debug=[detailed_results])
+
+                logger.info("Helical pile calculations completed for %s (flow=%s)", pile_params.get('site_name'), flow.id)
+
+                return redirect(url_for('main.calculator_step', type=type, step=4))
+            except Exception as e:
+                logger.error(f"Error in helical pile calculations: {str(e)}")
+                flash(f'Error in calculation: {str(e)}', 'error')
+                return redirect(url_for('main.calculator_step', type='helical', step=3))
+
         except Exception as e:
             logger.error(f"Error processing helical pile parameters: {str(e)}")
             flash(f'Error: {str(e)}', 'error')
@@ -1126,52 +1321,7 @@ def calculator_step(type, step):
     
     # Handle step 4 - Results display
     elif step == 4:
-        if 'results' not in session:
-            flash('No results available. Please complete the analysis first.')
-            return redirect(url_for('main.calculator_step', type=type, step=3))
-
-        # Snapshot the completed calculation into "My calculations" so it can
-        # be reopened later. Never allowed to break the results page.
-        history_saved_now = False
-        try:
-            history_saved_now = _history_autosave()
-        except Exception as hist_e:
-            logger.warning(f"History autosave failed: {hist_e}")
-            db.session.rollback()
-
-        detailed_results = None
-        if type == 'bored' and 'detailed_results' in session:
-            detailed_results = session['detailed_results']
-        elif type == 'helical' and 'debug_id' in session:
-            debug_details = load_debug_details(session['debug_id'])
-            if debug_details and isinstance(debug_details, list) and len(debug_details) > 0:
-                detailed_results = debug_details[0]
-            else:
-                logger.error("No debug details found or invalid format")
-                flash('Error loading calculation details', 'error')
-                return redirect(url_for('main.calculator_step', type=type, step=3))
-        elif type == 'driven' and 'debug_id' in session:
-            debug_details = load_debug_details(session['debug_id'])
-            tips = []
-            if isinstance(debug_details, dict):
-                tips = debug_details.get('tips', [])
-            elif isinstance(debug_details, list):
-                tips = debug_details
-            if tips:
-                detailed_results = tips[0]
-            else:
-                logger.error("No debug details found for driven piles")
-
-        return render_template(
-            f'{type}/steps.html',
-            step=step,
-            type=type,
-            results=session['results'],
-            detailed_results=detailed_results,
-            capacity_envelope=session.get('capacity_envelope'),
-            history_saved_now=history_saved_now,
-            show_modal=show_modal
-        )
+        return _render_step4(type, show_modal)
 
     # Continue with the rest of the route handler
     if request.method == 'POST':
@@ -1280,8 +1430,32 @@ def calculator_step(type, step):
                                      {'warning': _w[:200]})
 
                     processed_data = process_cpt_data(data_dict)
+                    if not processed_data or not processed_data.get('cpt_data'):
+                        flash('No valid data found in file')
+                        return redirect(request.url)
                     logger.debug("process_cpt_data completed")
-                    
+
+                    # Surface any corrections the cleaning pass applied
+                    # (re-sorted depths, dropped duplicate/negative rows) so
+                    # the user knows their file was adjusted.
+                    for _note in processed_data.get('upload_notes', []):
+                        flash(_note)
+                        record_event('upload', f'{type}_cpt_upload_note', {'note': _note[:200]})
+
+                    if len(processed_data['cpt_data']) < 5:
+                        flash('Only %d usable CPT rows could be read from the file. '
+                              'At least 5 readings are needed for a meaningful profile; '
+                              'check the file format and units.' % len(processed_data['cpt_data']))
+                        return redirect(request.url)
+
+                    if len(processed_data['cpt_data']) > _UPLOAD_MAX_ROWS:
+                        flash('The file contains %d readings, more than the %d this tool '
+                              'supports in one upload. Reduce the file (e.g. one sounding '
+                              'per upload) and try again.'
+                              % (len(processed_data['cpt_data']), _UPLOAD_MAX_ROWS))
+                        return redirect(request.url)
+
+
                     # Check if we need interpolation for better accuracy
                     cpt_data = processed_data['cpt_data']
                     depths = [row['z'] for row in cpt_data]
@@ -1322,17 +1496,26 @@ def calculator_step(type, step):
                                 flash(f"Warning: Interpolation failed ({str(interp_error)}). Using original data with coarse spacing.")
                                 # Continue with original data if interpolation fails
                     
-                    # Save processed data
-                    file_id = save_cpt_data(processed_data['cpt_data'], water_table)
-                    session['cpt_data_id'] = file_id
-                    session['water_table'] = water_table
-                    
+                    # Compute the profile once, at upload; every later step
+                    # and download reuses it from the persisted flow row.
+                    cpt_rows = processed_data['cpt_data']
+                    profile = pre_input_calc({'cpt_data': cpt_rows}, water_table)
+                    if not profile:
+                        flash('Error processing CPT data. Please check your input data.')
+                        return redirect(request.url)
+                    if profile.get('fallback_count'):
+                        flash('%d of %d readings could not be classified from qt/fs and were '
+                              'treated as neutral soil (Ic = 2.5). Check those readings if '
+                              'the soil profile around them matters.'
+                              % (profile['fallback_count'], len(cpt_rows)))
+
+                    flow_id = _flow_create(type, cpt_rows, profile, water_table, original_filename)
+
                     logger.debug(f"File name: {file.filename}")
                     logger.debug(f"Content type: {file.content_type}")
                     logger.debug(f"Detected delimiter: {delimiter}")
 
                     # Track upload details including depth range
-                    cpt_rows = processed_data['cpt_data']
                     depth_min = min(r['z'] for r in cpt_rows) if cpt_rows else 0
                     depth_max = max(r['z'] for r in cpt_rows) if cpt_rows else 0
                     record_event('upload_success', f'{type}_upload_complete', {
@@ -1344,7 +1527,7 @@ def calculator_step(type, step):
                         'delimiter': delimiter,
                     })
 
-                    return redirect(url_for('main.calculator_step', type=type, step=2))
+                    return redirect(url_for('main.calculator_step', type=type, step=2, flow=flow_id))
                     
                 except pd.errors.EmptyDataError:
                     flash('The uploaded file is empty')
@@ -1357,26 +1540,21 @@ def calculator_step(type, step):
                 return redirect(request.url)
         
         elif step == 2:  # Handle CPT data acceptance
-            if 'cpt_data_id' not in session:
+            # The data was validated and processed at upload; just confirm
+            # the flow still exists. No throwaway recomputation here.
+            if not _flow_has_cpt(_flow_row(type)):
                 flash('No CPT data available. Please upload data first.')
                 return redirect(url_for('main.calculator_step', type=type, step=1))
-            
-            # Verify the data exists and is valid
-            data = load_cpt_data(session['cpt_data_id'])
-            if not data:
-                flash('CPT data not found. Please upload data again.')
-                return redirect(url_for('main.calculator_step', type=type, step=1))
-                
-            # Process the data to ensure it's valid
-            processed_data = pre_input_calc(data, data['water_table'])
-            if not processed_data:
-                flash('Error processing CPT data. Please check your input data.')
-                return redirect(url_for('main.calculator_step', type=type, step=1))
-                
             return redirect(url_for('main.calculator_step', type=type, step=3))
         
         elif step == 3:
             if type == 'bored':
+                flow = _flow_row(type)
+                cpt_blob = _flow_cpt(flow)
+                if not cpt_blob:
+                    flash('CPT data not found. Please upload data again.')
+                    return redirect(url_for('main.calculator_step', type=type, step=1))
+
                 # Add validation for bored pile parameters
                 required_fields = ['shaft_diameter', 'base_diameter', 'cased_depth', 'pile_tip_depths']
                 for field in required_fields:
@@ -1386,7 +1564,7 @@ def calculator_step(type, step):
                 
                 # Debug logging
                 logger.info(f"Bored pile form submitted with data: {request.form}")
-                logger.info(f"Session water table: {session.get('water_table')}")
+                logger.info(f"Flow water table: {flow.water_table}")
                 
                 # Parse pile tip depths from the comma-separated string
                 tip_depths_str = request.form.get('pile_tip_depths', '')
@@ -1410,68 +1588,55 @@ def calculator_step(type, step):
                 # calculation when the tip is below the deepest CPT reading)
                 if not pile_tip_depths:
                     errors.append('At least one pile tip depth is required')
-                elif 'cpt_data_id' in session:
-                    data = load_cpt_data(session['cpt_data_id'])
-                    if data:
-                        cpt_data_check = data['cpt_data'] if isinstance(data, dict) else data
-                        max_depth = max(row['z'] for row in cpt_data_check)
-                        for depth in pile_tip_depths:
-                            if depth <= 0:
-                                errors.append(f'Pile tip depth {depth}m must be greater than 0')
-                            if depth > max_depth:
-                                errors.append(f'Pile tip depth {depth}m exceeds the deepest CPT reading ({max_depth:.2f}m). Reduce the tip depth or upload deeper CPT data.')
+                else:
+                    max_depth = max(row['z'] for row in cpt_blob['cpt_data'])
+                    for depth in pile_tip_depths:
+                        if depth <= 0:
+                            errors.append(f'Pile tip depth {depth}m must be greater than 0')
+                        if depth > max_depth:
+                            errors.append(f'Pile tip depth {depth}m exceeds the deepest CPT reading ({max_depth:.2f}m). Reduce the tip depth or upload deeper CPT data.')
 
                 if errors:
                     for error in errors:
                         flash(error)
                     return redirect(url_for('main.calculator_step', type=type, step=3))
 
-                # Store parameters in session
-                session['pile_params'] = {
+                pile_params = {
                     'shaft_diameter': float(request.form['shaft_diameter']),
                     'base_diameter': float(request.form['base_diameter']),
                     'cased_depth': float(request.form['cased_depth']),
-                    'water_table': float(session.get('water_table', 0)),  # Use water table from session instead of form
+                    'water_table': float(flow.water_table or 0),
                     'site_name': request.form.get('file_name', ''),
                     'pile_tip_depths': pile_tip_depths
                 }
 
                 record_event('calculation', 'bored_params', {
-                    'shaft_diameter': session['pile_params']['shaft_diameter'],
-                    'base_diameter': session['pile_params']['base_diameter'],
-                    'cased_depth': session['pile_params']['cased_depth'],
+                    'shaft_diameter': pile_params['shaft_diameter'],
+                    'base_diameter': pile_params['base_diameter'],
+                    'cased_depth': pile_params['cased_depth'],
                     'tip_depths': pile_tip_depths,
                 })
 
-                # Process the data and calculate results
-                if 'cpt_data_id' not in session:
-                    flash('No CPT data available. Please upload data first.')
-                    return redirect(url_for('main.calculator_step', type=type, step=1))
+                # Profile computed once at upload; recompute only for legacy flows
+                processed_cpt = cpt_blob.get('processed') or pre_input_calc(cpt_blob, float(flow.water_table or 0))
 
-                cpt_data = load_cpt_data(session['cpt_data_id'])
-                if not cpt_data:
-                    flash('CPT data not found. Please upload data again.')
-                    return redirect(url_for('main.calculator_step', type=type, step=1))
-
-                # Process the CPT data
-                processed_cpt = pre_input_calc(cpt_data, float(session.get('water_table', 0)))  # Consistent use of session water table
-                
                 try:
-                    results = calculate_bored_pile_results(processed_cpt, session['pile_params'])
+                    results = calculate_bored_pile_results(processed_cpt, pile_params)
 
-                    session['results'] = results['summary']
-
-                    debug_id = save_debug_details(results['detailed'])
-                    session['debug_id'] = debug_id
-                    logger.info("Bored pile calculation complete (debug_id=%s)", debug_id)
+                    logger.info("Bored pile calculation complete (flow=%s)", flow.id)
 
                     # Compute continuous capacity envelope for the graph
                     try:
-                        envelope = compute_capacity_envelope_bored(processed_cpt, session['pile_params'])
-                        session['capacity_envelope'] = envelope
+                        envelope = compute_capacity_envelope_bored(processed_cpt, pile_params)
                     except Exception as env_e:
                         logger.warning(f"Could not compute capacity envelope: {env_e}")
-                        session['capacity_envelope'] = None
+                        envelope = None
+
+                    _flow_save_state(flow,
+                                     pile_params=pile_params,
+                                     results=results['summary'],
+                                     capacity_envelope=envelope,
+                                     debug=results['detailed'])
 
                     return redirect(url_for('main.calculator_step', type=type, step=4))
                 except Exception as e:
@@ -1479,6 +1644,12 @@ def calculator_step(type, step):
                     flash(f'Error in calculation: {str(e)}')
                     return redirect(url_for('main.calculator_step', type=type, step=3))
             elif type == 'shallow':
+                flow = _flow_row(type)
+                cpt_blob = _flow_cpt(flow)
+                if not cpt_blob:
+                    flash('CPT data not found. Please upload data again.')
+                    return redirect(url_for('main.calculator_step', type=type, step=1))
+
                 # Shallow foundations: footing geometry + analysis options.
                 def _opt(name, default):
                     val = request.form.get(name, '')
@@ -1488,7 +1659,7 @@ def calculator_step(type, step):
                         return default
 
                 footing_params = {
-                    'water_table': float(session.get('water_table', 0)),
+                    'water_table': float(flow.water_table or 0),
                     'footing_width': _opt('footing_width', None),
                     'footing_length': _opt('footing_length', None),
                     'founding_depth': _opt('founding_depth', None),
@@ -1518,25 +1689,17 @@ def calculator_step(type, step):
                         flash(error)
                     return redirect(url_for('main.calculator_step', type=type, step=3))
 
-                session['pile_params'] = footing_params
                 record_event('calculation', 'shallow_params', {
                     k: footing_params[k] for k in
                     ('footing_width', 'footing_length', 'founding_depth',
                      'excavation_depth', 'design_life_years')
                 })
 
-                if 'cpt_data_id' not in session:
-                    flash('No CPT data available. Please upload data first.')
-                    return redirect(url_for('main.calculator_step', type=type, step=1))
-                cpt_data = load_cpt_data(session['cpt_data_id'])
-                if not cpt_data:
-                    flash('CPT data not found. Please upload data again.')
-                    return redirect(url_for('main.calculator_step', type=type, step=1))
-
-                processed_cpt = pre_input_calc(cpt_data, float(session.get('water_table', 0)))
+                # Profile computed once at upload; recompute only for legacy flows
+                processed_cpt = cpt_blob.get('processed') or pre_input_calc(cpt_blob, float(flow.water_table or 0))
                 try:
                     results = calculate_shallow_footing_results(processed_cpt, footing_params)
-                    session['results'] = results
+                    _flow_save_state(flow, pile_params=footing_params, results=results)
                     store_analytics_data('calculation_results', 'shallow_summary', results.get('summary'))
                     logger.info("Shallow footing calculation complete (%s model)",
                                 results.get('soil_decision', {}).get('soil_model_used'))
@@ -1546,6 +1709,12 @@ def calculator_step(type, step):
                     flash(f'Error in calculation: {str(e)}')
                     return redirect(url_for('main.calculator_step', type=type, step=3))
             elif type == 'cantilever':
+                flow = _flow_row(type)
+                cpt_blob = _flow_cpt(flow)
+                if not cpt_blob:
+                    flash('CPT data not found. Please upload data again.')
+                    return redirect(url_for('main.calculator_step', type=type, step=1))
+
                 # Embedded cantilever wall in sand.
                 def _optc(name, default):
                     val = request.form.get(name, '')
@@ -1555,7 +1724,7 @@ def calculator_step(type, step):
                         return default
 
                 wall_params = {
-                    'water_table': float(session.get('water_table', 0)),
+                    'water_table': float(flow.water_table or 0),
                     'wall_length': _optc('wall_length', None),
                     'excavation_depth': _optc('excavation_depth', None),
                     'EI_kNm2_per_m': _optc('EI_kNm2_per_m', None),
@@ -1573,22 +1742,15 @@ def calculator_step(type, step):
                         flash(error)
                     return redirect(url_for('main.calculator_step', type=type, step=3))
 
-                session['pile_params'] = wall_params
                 record_event('calculation', 'cantilever_params', {
                     k: wall_params[k] for k in ('wall_length', 'excavation_depth', 'EI_kNm2_per_m')
                 })
-                if 'cpt_data_id' not in session:
-                    flash('No CPT data available. Please upload data first.')
-                    return redirect(url_for('main.calculator_step', type=type, step=1))
-                cpt_data = load_cpt_data(session['cpt_data_id'])
-                if not cpt_data:
-                    flash('CPT data not found. Please upload data again.')
-                    return redirect(url_for('main.calculator_step', type=type, step=1))
 
-                processed_cpt = pre_input_calc(cpt_data, float(session.get('water_table', 0)))
+                # Profile computed once at upload; recompute only for legacy flows
+                processed_cpt = cpt_blob.get('processed') or pre_input_calc(cpt_blob, float(flow.water_table or 0))
                 try:
                     results = calculate_cantilever_results(processed_cpt, wall_params)
-                    session['results'] = results
+                    _flow_save_state(flow, pile_params=wall_params, results=results)
                     if results.get('aborted'):
                         store_analytics_data('calculation_results', 'cantilever_aborted',
                                              results.get('checks'))
@@ -1603,6 +1765,12 @@ def calculator_step(type, step):
                     flash(f'Error in calculation: {str(e)}')
                     return redirect(url_for('main.calculator_step', type=type, step=3))
             elif type == 'lateral':
+                flow = _flow_row(type)
+                cpt_blob = _flow_cpt(flow)
+                if not cpt_blob:
+                    flash('CPT data not found. Please upload data again.')
+                    return redirect(url_for('main.calculator_step', type=type, step=1))
+
                 # Laterally loaded monopiles in sand.
                 def _opt(name, default):
                     val = request.form.get(name, '')
@@ -1612,7 +1780,7 @@ def calculator_step(type, step):
                         return default
 
                 lateral_params = {
-                    'water_table': float(session.get('water_table', 0)),
+                    'water_table': float(flow.water_table or 0),
                     'gamma_above': _opt('gamma_above', 17.1),
                     'gamma_below': _opt('gamma_below', 19.9),
                     'diameter': _opt('diameter', None),
@@ -1641,25 +1809,17 @@ def calculator_step(type, step):
                         flash(error)
                     return redirect(url_for('main.calculator_step', type=type, step=3))
 
-                session['pile_params'] = lateral_params
                 record_event('calculation', 'lateral_params', {
                     k: lateral_params[k] for k in
                     ('diameter', 'embedded_length', 'pile_type',
                      'load_height_above_ground', 'youngs_modulus_GPa')
                 })
 
-                if 'cpt_data_id' not in session:
-                    flash('No CPT data available. Please upload data first.')
-                    return redirect(url_for('main.calculator_step', type=type, step=1))
-                cpt_data = load_cpt_data(session['cpt_data_id'])
-                if not cpt_data:
-                    flash('CPT data not found. Please upload data again.')
-                    return redirect(url_for('main.calculator_step', type=type, step=1))
-
-                processed_cpt = pre_input_calc(cpt_data, float(session.get('water_table', 0)))
+                # Profile computed once at upload; recompute only for legacy flows
+                processed_cpt = cpt_blob.get('processed') or pre_input_calc(cpt_blob, float(flow.water_table or 0))
                 try:
                     results = calculate_lateral_monopile_results(processed_cpt, lateral_params)
-                    session['results'] = results
+                    _flow_save_state(flow, pile_params=lateral_params, results=results)
                     if results.get('aborted'):
                         # Show the abort/warning page directly at step 4
                         store_analytics_data('calculation_results', 'lateral_aborted',
@@ -1675,6 +1835,12 @@ def calculator_step(type, step):
                     flash(f'Error in calculation: {str(e)}')
                     return redirect(url_for('main.calculator_step', type=type, step=3))
             elif type == 'driven':
+                flow = _flow_row(type)
+                cpt_blob = _flow_cpt(flow)
+                if not cpt_blob:
+                    flash('CPT data not found. Please upload data again.')
+                    return redirect(url_for('main.calculator_step', type=type, step=1))
+
                 # Add validation for driven pile parameters
                 required_fields = ['pile_diameter', 'wall_thickness', 'borehole_depth', 'pile_shape', 'pile_end_condition']
                 for field in required_fields:
@@ -1696,11 +1862,10 @@ def calculator_step(type, step):
                     'borehole_depth': float(request.form['borehole_depth']),
                     'pile_shape': request.form['pile_shape'],
                     'pile_end_condition': request.form['pile_end_condition'],
-                    'water_table': float(session['water_table']),  # Get from previous step
+                    'water_table': float(flow.water_table or 0),
                     'site_name': request.form.get('site_name', ''),
                     'pile_tip_depths': pile_tip_depths
                 }
-                session['pile_params'] = pile_params
 
                 record_event('calculation', 'driven_params', {
                     'pile_diameter': pile_params['pile_diameter'],
@@ -1725,53 +1890,38 @@ def calculator_step(type, step):
                 # Validate pile tip depths
                 if not pile_params.get('pile_tip_depths'):
                     errors.append('At least one pile tip depth is required')
-                elif 'cpt_data_id' in session:
-                    data = load_cpt_data(session['cpt_data_id'])
-                    if data:
-                        cpt_data_check = data['cpt_data'] if isinstance(data, dict) else data
-                        max_depth = max(row['z'] for row in cpt_data_check)
-                        for depth in pile_params['pile_tip_depths']:
-                            if depth <= 0:
-                                errors.append(f'Pile tip depth {depth}m must be greater than 0')
-                            if depth > max_depth:
-                                errors.append(f'Pile tip depth {depth}m exceeds the deepest CPT reading ({max_depth:.2f}m). Reduce the tip depth or upload deeper CPT data.')
+                else:
+                    max_depth = max(row['z'] for row in cpt_blob['cpt_data'])
+                    for depth in pile_params['pile_tip_depths']:
+                        if depth <= 0:
+                            errors.append(f'Pile tip depth {depth}m must be greater than 0')
+                        if depth > max_depth:
+                            errors.append(f'Pile tip depth {depth}m exceeds the deepest CPT reading ({max_depth:.2f}m). Reduce the tip depth or upload deeper CPT data.')
 
                 if errors:
                     for error in errors:
                         flash(error)
                     return redirect(url_for('main.calculator_step', type=type, step=3))
 
-                # Process the data and calculate results
-                if 'cpt_data_id' not in session:
-                    flash('No CPT data available. Please upload data first.')
-                    return redirect(url_for('main.calculator_step', type=type, step=1))
-                
-                cpt_data = load_cpt_data(session['cpt_data_id'])
-                if not cpt_data:
-                    flash('CPT data not found. Please upload data again.')
-                    return redirect(url_for('main.calculator_step', type=type, step=1))
-                
-                # Process the CPT data
-                processed_cpt = pre_input_calc(cpt_data, float(session.get('water_table', 0)))
-                
+                # Profile computed once at upload; recompute only for legacy flows
+                processed_cpt = cpt_blob.get('processed') or pre_input_calc(cpt_blob, float(flow.water_table or 0))
+
                 try:
                     # Calculate results using the driven pile specific function
-                    results = calculate_driven_pile_results(processed_cpt, session['pile_params'])
-
-                    # Store summary results in session
-                    session['results'] = results['summary']
-
-                    # Save detailed results and store debug_id in session
-                    debug_id = save_debug_details(results['detailed'])
-                    session['debug_id'] = debug_id
+                    results = calculate_driven_pile_results(processed_cpt, pile_params)
 
                     # Compute continuous capacity envelope for the graph
                     try:
-                        envelope = compute_capacity_envelope_driven(processed_cpt, session['pile_params'])
-                        session['capacity_envelope'] = envelope
+                        envelope = compute_capacity_envelope_driven(processed_cpt, pile_params)
                     except Exception as env_e:
                         logger.warning(f"Could not compute capacity envelope: {env_e}")
-                        session['capacity_envelope'] = None
+                        envelope = None
+
+                    _flow_save_state(flow,
+                                     pile_params=pile_params,
+                                     results=results['summary'],
+                                     capacity_envelope=envelope,
+                                     debug=results['detailed'])
 
                     return redirect(url_for('main.calculator_step', type=type, step=4))
                 except Exception as e:
@@ -1869,94 +2019,206 @@ def calculator_step(type, step):
                 session['results'] = results
         
         elif step == 4:
-            if 'results' not in session:
-                flash('No results available. Please complete the analysis first.')
-                return redirect(url_for('main.calculator_step', type=type, step=3))
-            
-            detailed_results = None
-            if type == 'bored' and 'detailed_results' in session:
-                detailed_results = session['detailed_results']
-
-            return render_template(
-                f'{type}/steps.html',
-                step=step,
-                type=type,
-                results=session['results'],
-                detailed_results=detailed_results,
-                capacity_envelope=session.get('capacity_envelope'),
-                show_modal=show_modal
-            )
+            return _render_step4(type, show_modal)
 
         return render_template(f'{type}/steps.html', step=step, type=type, show_modal=show_modal)
 
     # Handle GET requests
     if step == 2:
-        if 'cpt_data_id' not in session:
+        flow = _flow_row(type)
+        data = _flow_cpt(flow)
+        if not data:
             flash('No CPT data available. Please upload data first.')
             return redirect(url_for('main.calculator_step', type=type, step=1))
-        
-        data = load_cpt_data(session['cpt_data_id'])
-        if not data:
-            flash('CPT data not found. Please upload data again.')
-            return redirect(url_for('main.calculator_step', type=type, step=1))
-        
+
+        water_table = float(flow.water_table or 0)
+        processed = data.get('processed')
         if type == 'bored':
-            graphs = create_bored_pile_graphs(data)
+            graphs = create_bored_pile_graphs(data, water_table=water_table, processed=processed)
         elif type == 'helical':
-            graphs = create_helical_pile_graphs(data)
+            graphs = create_helical_pile_graphs(data, water_table=water_table, processed=processed)
         else:
-            water_table = float(session.get('water_table', 0))
-            graphs = create_cpt_graphs(data, water_table)
-        
+            graphs = create_cpt_graphs(data, water_table, processed=processed)
+
         # Add info message for large datasets
-        cpt_data = data['cpt_data'] if isinstance(data, dict) else data
+        cpt_data = data['cpt_data']
         if len(cpt_data) > 1000:
             flash(f'Large dataset detected ({len(cpt_data)} data points). Graphs show sampled data for performance. Full dataset will be used for calculations.', 'info')
 
         return render_template(f'{type}/steps.html', step=step, graphs=graphs, type=type, show_modal=show_modal)
 
     elif step == 3:
-        if 'cpt_data_id' not in session:
+        flow = _flow_row(type)
+        if not _flow_has_cpt(flow):
             flash('No CPT data available. Please complete previous steps first.')
             return redirect(url_for('main.calculator_step', type=type, step=1))
         logger.info(f"Rendering step 3 for {type} piles")
-        return render_template(f'{type}/steps.html', step=step, type=type, show_modal=show_modal)
+        state = _flow_state(flow)
+        return render_template(f'{type}/steps.html', step=step, type=type, show_modal=show_modal,
+                               pile_params=state.get('pile_params') or {},
+                               water_table=flow.water_table)
         
     elif step == 4:
-        logger.info("Step 4 GET request for %s piles (debug_id=%s)", type, session.get('debug_id'))
-
-        if 'results' not in session:
-            flash('No results available. Please complete the analysis first.')
-            return redirect(url_for('main.calculator_step', type=type, step=3))
-
-        detailed_results = None
-        if type == 'bored' and 'debug_id' in session:
-            debug_details = load_debug_details(session['debug_id'])
-            if debug_details and isinstance(debug_details, list) and len(debug_details) > 0:
-                detailed_results = debug_details[0]
-
-        return render_template(
-            f'{type}/steps.html',
-            step=step,
-            type=type,
-            results=session['results'],
-            detailed_results=detailed_results,
-            capacity_envelope=session.get('capacity_envelope'),
-            show_modal=show_modal
-        )
+        return _render_step4(type, show_modal)
 
     # For step 1 with sample data loaded, pass sample data for preview
     sample_data = None
     sample_water_table = None
-    if step == 1 and request.args.get('sample') and 'cpt_data_id' in session:
-        data = load_cpt_data(session['cpt_data_id'])
+    if step == 1 and request.args.get('sample'):
+        flow = _flow_row(type)
+        data = _flow_cpt(flow)
         if data:
-            cpt_data = data['cpt_data'] if isinstance(data, dict) else data
-            sample_data = cpt_data
-            sample_water_table = session.get('water_table', 2.0)
+            sample_data = data['cpt_data']
+            sample_water_table = flow.water_table if flow.water_table is not None else 2.0
 
     return render_template(f'{type}/steps.html', step=step, type=type, show_modal=show_modal,
                            sample_data=sample_data, sample_water_table=sample_water_table)
+
+# ---------------------------------------------------------------------------
+# Deliverable-output helpers shared by the CSV and PDF downloads.
+# ---------------------------------------------------------------------------
+
+# Stamped on every CSV and PDF so a file found in a project folder later can
+# be traced to the code that produced it. Render injects the commit SHA.
+APP_VERSION = (os.environ.get('RENDER_GIT_COMMIT') or os.environ.get('APP_VERSION') or 'dev')[:9]
+
+# One-line method citations, matching the description pages.
+_METHOD_CITATIONS = {
+    'driven': 'Unified CPT method - Lehane et al. (2020), ISFOG-4 (sand); Lehane et al. (2022), ASCE JGGE 148(9) (clay)',
+    'bored': 'Doan & Lehane (2021), CPT-based design method for axial capacities of bored piles in sand and clay',
+    'helical': 'Bittar et al. (2023), CPT-based design method for helical piles in sand, Canadian Geotechnical Journal',
+    'shallow': 'CPT-based footing load-settlement method, Lehane (2024)',
+    'lateral': 'Wang et al. (2020, 2023), CPT-based lateral response of rigid monopiles in sand',
+    'cantilever': 'Lehane, Bagbag, Durham & Pine (2019), embedded cantilever wall deflection in sand',
+}
+
+_RESULTS_DISCLAIMER = ('Unfactored results computed from the uploaded CPT data; '
+                       'to be reviewed by a qualified geotechnical engineer before use in design.')
+
+
+def _safe_filename_part(value):
+    """Sanitise a user-supplied string for use inside a download filename."""
+    cleaned = ''.join(c for c in str(value) if c.isalnum() or c in '._- ')
+    return cleaned.strip().replace(' ', '_') or 'output'
+
+
+def _flow_site_name(state):
+    p = state.get('pile_params') or {}
+    return (p.get('site_name') or p.get('pile_name') or p.get('wall_name') or '').strip()
+
+
+def _deliverable_header_lines(flow, state):
+    """Traceability header prepended to every results CSV."""
+
+    def _clean(value):
+        return str(value).replace('\r', ' ').replace('\n', ' ')
+
+    lines = [
+        '# UWA CPT Pile Calculator - https://uwa-geotech-cpt-calculator.com',
+        '# Module: %s' % _HISTORY_TYPE_LABELS.get(flow.calc_type, flow.calc_type),
+    ]
+    site = _flow_site_name(state)
+    if site:
+        lines.append('# Site: %s' % _clean(site))
+    if flow.original_filename:
+        lines.append('# CPT file: %s' % _clean(flow.original_filename))
+    blob = _flow_cpt(flow)
+    if blob:
+        rows = blob['cpt_data']
+        lines.append('# CPT points: %d (%.2f m to %.2f m)' % (len(rows), rows[0]['z'], rows[-1]['z']))
+    if flow.water_table is not None:
+        lines.append('# Water table depth: %s m (pore pressure assumed hydrostatic below)' % flow.water_table)
+    method = _METHOD_CITATIONS.get(flow.calc_type)
+    if method:
+        lines.append('# Method: %s' % method)
+    lines.append('# Generated: %s | App version: %s' % (datetime.now().strftime('%Y-%m-%d %H:%M'), APP_VERSION))
+    lines.append('# %s' % _RESULTS_DISCLAIMER)
+    return lines
+
+
+def _write_shallow_results_csv(writer, results):
+    sm = results.get('summary') or {}
+    sd = results.get('soil_decision') or {}
+    inputs = results.get('inputs') or {}
+    writer.writerow(['SUMMARY'])
+    writer.writerow(['Soil model used', sd.get('soil_model_used', '')])
+    writer.writerow(['Average Ic in zone of influence', sd.get('avg_ic', '')])
+    writer.writerow(['Footing width B (m)', inputs.get('footing_width_m', '')])
+    writer.writerow(['Footing length L (m)', inputs.get('footing_length_m', '')])
+    writer.writerow(['Founding depth below excavation (m)', inputs.get('founding_depth_m', '')])
+    writer.writerow(['Site excavation depth (m)', inputs.get('excavation_depth_m', '')])
+    writer.writerow(['Unit weight used (kN/m3)', inputs.get('unit_weight_used_knm3', '')])
+    writer.writerow(['Zone of influence (m)', '%s to %s' % (sm.get('zone_top_m', ''), sm.get('zone_base_m', ''))])
+    for key, label in (
+        ('qc_avg_mpa', 'qc,avg in zone after excavation (MPa)'),
+        ('kc_silt_correction', 'Silt correction Kc'),
+        ('avg_friction_angle_deg', 'Average peak friction angle (deg)'),
+        ('qb01_kpa', 'qb0.1 bearing stress at s/B=0.1 (kPa)'),
+        ('qt_net_kpa', 'qt,net in zone (kPa)'),
+        ('avg_su_kpa', 'Average su (kPa)'),
+        ('avg_ocr', 'Average OCR'),
+        ('svy_footing_kpa', "sigma'vy at footing level (kPa)"),
+        ('ultimate_curve_cap_kpa', 'Ultimate bearing pressure, 0.42 qt,net (kPa)'),
+        ('bearing_capacity_cpt_kpa', 'Net bearing capacity, CPT (kPa)'),
+        ('bearing_capacity_nq_ng_kpa', 'Net bearing capacity, Nq/Ngamma (kPa)'),
+        ('bearing_capacity_nc_kpa', 'Net bearing capacity, Nc (kPa)'),
+    ):
+        if sm.get(key) is not None:
+            writer.writerow([label, sm[key]])
+    curve = results.get('curve') or {}
+    for series in curve.get('series') or []:
+        writer.writerow([])
+        writer.writerow(['LOAD-SETTLEMENT CURVE: %s' % series.get('name', '')])
+        writer.writerow([curve.get('x_label', 'Settlement (mm)'), curve.get('y_label', 'Bearing pressure (kPa)')])
+        for pt in series.get('points') or []:
+            writer.writerow([pt[0], pt[1]])
+
+
+def _write_lateral_results_csv(writer, results):
+    sm = results.get('summary') or {}
+    inputs = results.get('inputs') or {}
+    writer.writerow(['SUMMARY'])
+    writer.writerow(['Pile diameter D (m)', inputs.get('D_m', '')])
+    writer.writerow(['Embedded length L (m)', inputs.get('L_m', '')])
+    writer.writerow(['EI (kNm2)', inputs.get('EI_kNm2', '')])
+    writer.writerow(['Load height above ground (m)', inputs.get('h_m', '')])
+    writer.writerow(['Hu, geotechnical (kN)', sm.get('Hu_kN', '')])
+    curves = [('curve_load_disp', 'LOAD-DISPLACEMENT CURVE')]
+    # Moment at the pile head is zero when the load is applied at ground level
+    if inputs.get('h_m'):
+        curves.append(('curve_moment_rotation', 'MOMENT-ROTATION CURVE'))
+    for curve_key, title in curves:
+        curve = results.get(curve_key) or {}
+        for series in curve.get('series') or []:
+            writer.writerow([])
+            writer.writerow([title])
+            writer.writerow([curve.get('x_label', ''), curve.get('y_label', '')])
+            for pt in series.get('points') or []:
+                writer.writerow([pt[0], pt[1]])
+
+
+def _write_cantilever_results_csv(writer, results):
+    sm = results.get('summary') or {}
+    inputs = results.get('inputs') or {}
+    writer.writerow(['SUMMARY'])
+    writer.writerow(['Maximum wall deflection dmax (mm)', sm.get('dmax_mm', '')])
+    writer.writerow(['Wall length L (m)', inputs.get('wall_length_m', '')])
+    writer.writerow(['Excavation depth H (m)', inputs.get('excavation_depth_m', '')])
+    writer.writerow(['H/L', sm.get('hl_ratio', '')])
+    writer.writerow(['Wall EI (kNm2/m)', inputs.get('EI_kNm2_per_m', '')])
+    writer.writerow(['EI / (gamma_w x H^4)', sm.get('ei_normalised_raw', '')])
+    writer.writerow(["Average phi'p in averaging band (deg)", sm.get('avg_phi_prime_deg', '')])
+    writer.writerow(['dqc/dz (MN/m3)', sm.get('dqc_dz_MN_m3', '')])
+    writer.writerow(['Maximum settlement smax (mm)', sm.get('smax_mm', '')])
+    writer.writerow(['Settlement at x = H/2 (mm)', sm.get('s_at_x_H_over_2_mm', '')])
+    profile = results.get('settlement_profile') or {}
+    for series in profile.get('series') or []:
+        writer.writerow([])
+        writer.writerow(['SETTLEMENT PROFILE BEHIND THE WALL'])
+        writer.writerow([profile.get('x_label', 'Distance behind wall (m)'), profile.get('y_label', 'Settlement (mm)')])
+        for pt in series.get('points') or []:
+            writer.writerow([pt[0], pt[1]])
+
 
 @bp.route('/download_debug_params')
 def download_debug_params():
@@ -1965,32 +2227,26 @@ def download_debug_params():
         'pile_type': session.get('type'),
         'email': session.get('user_email'),
     })
-    if 'cpt_data_id' not in session:
+    flow = _flow_row()
+    data = _flow_cpt(flow)
+    if not data:
         flash('No CPT data available')
         return redirect(url_for('main.index'))
-    
+
     try:
-        data = load_cpt_data(session['cpt_data_id'])
-        if not data:
-            flash('CPT data not found')
-            return redirect(url_for('main.index'))
-        
-        # Get pile parameters from session
-        pile_params = session.get('pile_params', {})
-        print("Retrieved pile_params:", pile_params)
-        
-        # Process the CPT data
-        water_table = float(pile_params.get('water_table', 0))
-        processed = pre_input_calc(data, water_table)
-        
+        state = _flow_state(flow)
+        pile_params = state.get('pile_params') or {}
+
+        # Profile computed once at upload; recompute only for legacy flows
+        processed = data.get('processed') or pre_input_calc(data, float(flow.water_table or 0))
+
         # Create a string buffer
         buffer = io.StringIO()
-        
-        pile_type = session.get('type')
-        
-        if pile_type == 'bored' and 'debug_id' in session:
-            debug_id = session['debug_id']
-            debug_details = load_debug_details(debug_id)
+
+        pile_type = flow.calc_type
+
+        if pile_type == 'bored':
+            debug_details = state.get('debug')
             if isinstance(debug_details, dict):
                 tips = debug_details.get('tips', [])
                 cpt_profile_list = debug_details.get('cpt_profile', [])
@@ -2047,10 +2303,9 @@ def download_debug_params():
                     buffer.write('\nCPT DATA AND CALCULATIONS\n')
                     df_data.to_csv(buffer, index=False)
         elif pile_type == 'driven':
-            # For driven piles, use debug_id like bored piles for detailed output
-            if 'debug_id' in session:
-                debug_id = session['debug_id']
-                debug_details = load_debug_details(debug_id)
+            # For driven piles, use the stored debug details like bored piles
+            debug_details = state.get('debug')
+            if debug_details:
                 if isinstance(debug_details, dict):
                     tips = debug_details.get('tips', [])
                     cpt_profile_list = debug_details.get('cpt_profile', [])
@@ -2124,9 +2379,9 @@ def download_debug_params():
                         buffer.write('\nCPT DATA AND CALCULATIONS\n')
                         df_data.to_csv(buffer, index=False)
             else:
-                # Fallback to simplified format if no debug_id
-                results = session.get('results', [])
-                
+                # Fallback to simplified format if no debug details
+                results = state.get('results', [])
+
                 for result_index, result in enumerate(results):
                     if result_index > 0:
                         buffer.write('\n\n' + '='*50 + '\n\n')
@@ -2159,11 +2414,9 @@ def download_debug_params():
                     }])
                     df_result.to_csv(buffer, index=False)
         elif pile_type == 'helical':
-            # For helical piles, use debug_id like bored piles
-            if 'debug_id' in session:
-                debug_id = session['debug_id']
-                debug_details = load_debug_details(debug_id)
-
+            # For helical piles, use the stored debug details like bored piles
+            debug_details = state.get('debug')
+            if True:
                 if debug_details and isinstance(debug_details, list) and len(debug_details) > 0:
                     detail_data = debug_details[0]
                     
@@ -2232,512 +2485,665 @@ def download_debug_params():
                     buffer.write('\n')
                     
                     # Write FINAL RESULTS section
+                    summary_results = state.get('results') or {}
                     buffer.write('FINAL RESULTS\n')
                     final_results = pd.DataFrame([
-                        ['Ultimate Tension Capacity (kN)', session['results'].get('qult_tension', '')],
-                        ['Ultimate Compression Capacity (kN)', session['results'].get('qult_compression', '')],
-                        ['Tension Capacity at 10mm (kN)', session['results'].get('q_delta_10mm_tension', '')],
-                        ['Compression Capacity at 10mm (kN)', session['results'].get('q_delta_10mm_compression', '')],
-                        ['Installation Torque (kNm)', session['results'].get('installation_torque', '')]
+                        ['Ultimate Tension Capacity (kN)', summary_results.get('qult_tension', '')],
+                        ['Ultimate Compression Capacity (kN)', summary_results.get('qult_compression', '')],
+                        ['Tension Capacity at 10mm (kN)', summary_results.get('q_delta_10mm_tension', '')],
+                        ['Compression Capacity at 10mm (kN)', summary_results.get('q_delta_10mm_compression', '')],
+                        ['Installation Torque (kNm)', summary_results.get('installation_torque', '')]
                     ])
                     final_results.to_csv(buffer, index=False, header=False)
-        
+
         # Get the buffer value
         buffer_value = buffer.getvalue()
-        
+
         # Create a response with the CSV data
-        user_filename = session.get('original_filename', 'output')
-        download_name = f"detailed_output_{user_filename}_{datetime.now().strftime('%d%m%Y')}.csv"
-        print("Using original filename:", user_filename)
-        print("Final user_filename:", user_filename)
-        print("Final download_name:", download_name)
-        
+        user_filename = flow.original_filename or 'output'
+        download_name = f"detailed_output_{_safe_filename_part(user_filename)}_{datetime.now().strftime('%d%m%Y')}.csv"
+
         return Response(
             buffer_value,
             mimetype="text/csv",
             headers={"Content-disposition": f"attachment; filename={download_name}"}
         )
-    
+
     except Exception as e:
-        print(f"Debug download error: {str(e)}")
+        logger.error(f"Debug download error: {str(e)}")
         flash(f"Error generating download: {str(e)}")
-        return redirect(url_for('main.calculator_step', type=session.get('type', 'helical'), step=4))
+        return redirect(url_for('main.calculator_step', type=flow.calc_type if flow else 'driven', step=4))
 
 @bp.route('/download_results')
 def download_results():
-    """Download pile calculation results as CSV"""
+    """Download calculation results as CSV, for all six modules."""
     record_event('download', 'download_csv', {
         'pile_type': session.get('type'),
         'email': session.get('user_email'),
     })
-    if 'results_id' not in session and 'results' not in session:
+    flow = _flow_row()
+    state = _flow_state(flow)
+    results = state.get('results')
+    if flow is None or results is None:
         flash('No results available')
         return redirect(url_for('main.index'))
-    
-    # Import required modules at function scope
-    import io
-    import csv
-    from datetime import datetime
-    
-    pile_type = session.get('type', 'helical')
-    
+
+    pile_type = flow.calc_type
+
     try:
-        # Check if we have direct results in the session
-        if 'results' in session:
-            # For driven piles, results might be a list
-            if pile_type == 'driven' and isinstance(session['results'], list):
-                driven_results = session['results']
-                
-                # Create a CSV with driven pile results
-                output = io.StringIO()
-                writer = csv.writer(output)
-                
-                # Write header
-                writer.writerow(['Tip Depth (m)', 'Compression Capacity (kN)', 'Tension Capacity (kN)'])
-                
-                # Write data for each tip depth
-                for result in driven_results:
-                    writer.writerow([
-                        result.get('tipdepth', 'N/A'),
-                        result.get('compression_capacity', 'N/A'),
-                        result.get('tension_capacity', 'N/A')
-                    ])
-                
-                # Get the string value and return response
-                output.seek(0)
-                
-                return Response(
-                    output.getvalue(),
-                    mimetype="text/csv",
-                    headers={"Content-disposition": f"attachment; filename=driven_pile_results_{datetime.now().strftime('%Y%m%d')}.csv"}
-                )
-            # For bored piles, handle summary results
-            elif pile_type == 'bored' and isinstance(session['results'], list):
-                bored_results = session['results']
-                
-                # Create a CSV with bored pile results
-                output = io.StringIO()
-                writer = csv.writer(output)
-                
-                # Write header
-                writer.writerow(['Tip Depth (m)', 'Compression Capacity (kN)', 'Tension Capacity (kN)'])
-                
-                # Write data for each tip depth
-                for result in bored_results:
-                    writer.writerow([
-                        result.get('tipdepth', 'N/A'),
-                        result.get('compression_capacity', 'N/A'),
-                        result.get('tension_capacity', 'N/A')
-                    ])
-                
-                # Get the string value and return response
-                output.seek(0)
-                
-                return Response(
-                    output.getvalue(),
-                    mimetype="text/csv",
-                    headers={"Content-disposition": f"attachment; filename=bored_pile_results_{datetime.now().strftime('%Y%m%d')}.csv"}
-                )
-            elif pile_type == 'helical' and isinstance(session['results'], dict):
-                # For helical piles, output the summary capacity values
-                results = session['results']
+        output = io.StringIO()
+        for line in _deliverable_header_lines(flow, state):
+            output.write(line + '\r\n')
+        writer = csv.writer(output)
 
-                def _cap(key):
-                    # A capacity value must come from the calculation or be
-                    # visibly absent. Never substitute a number.
-                    if key not in results:
-                        logger.warning("download_results: '%s' missing from helical summary; writing N/A", key)
-                        return 'N/A'
-                    return results[key]
-
-                # Create a CSV with helical pile results
-                output = io.StringIO()
-                writer = csv.writer(output)
-
-                # Write header row with Excel-safe symbols
-                writer.writerow(['CAPACITY', 'Qshaft (kN)', 'Q at delta=10mm (kN)', 'Qult (kN)', 'Installation torque (kNm)'])
-
-                # Write tension row
+        if pile_type in ('driven', 'bored') and isinstance(results, list):
+            writer.writerow(['Tip Depth (m)', 'Compression Capacity (kN)', 'Tension Capacity (kN)'])
+            for result in results:
                 writer.writerow([
-                    'Tension',
-                    _cap('qshaft'),
-                    _cap('q_delta_10mm_tension'),
-                    _cap('qult_tension'),
-                    _cap('installation_torque')
+                    result.get('tipdepth', 'N/A'),
+                    result.get('compression_capacity', 'N/A'),
+                    result.get('tension_capacity', 'N/A')
                 ])
+        elif pile_type == 'helical' and isinstance(results, dict):
+            def _cap(key):
+                # A capacity value must come from the calculation or be
+                # visibly absent. Never substitute a number.
+                if key not in results:
+                    logger.warning("download_results: '%s' missing from helical summary; writing N/A", key)
+                    return 'N/A'
+                return results[key]
 
-                # Write compression row
-                writer.writerow([
-                    'Compression',
-                    _cap('qshaft'),
-                    _cap('q_delta_10mm_compression'),
-                    _cap('qult_compression'),
-                    '-'  # No installation torque for compression
-                ])
-                
-                # Get the string value and return response
-                output.seek(0)
-                
-                # Use the site name if available
-                site_name = ""
-                if 'pile_params' in session:
-                    site_name = f"_{session['pile_params'].get('site_name', '')}"
-                
-                return Response(
-                    output.getvalue(),
-                    mimetype="text/csv",
-                    headers={"Content-disposition": f"attachment; filename=helical_pile_results{site_name}_{datetime.now().strftime('%Y%m%d')}.csv"}
-                )
-            else:
-                # Shallow, lateral and cantilever have no CSV here yet, and a
-                # mismatched results shape must never fall into another
-                # module's writer (this used to serve a helical CSV of
-                # hardcoded defaults). Refuse clearly instead.
-                if pile_type in ('driven', 'bored', 'helical'):
-                    flash('Results format not recognized; please re-run the calculation.')
-                else:
-                    flash('A CSV download is not available for this module yet.')
-                if pile_type in ('driven', 'bored', 'helical', 'shallow', 'lateral', 'cantilever'):
-                    return redirect(url_for('main.calculator_step', type=pile_type, step=4))
-                return redirect(url_for('main.index'))
+            writer.writerow(['CAPACITY', 'Qshaft (kN)', 'Q at delta=10mm (kN)', 'Qult (kN)', 'Installation torque (kNm)'])
+            writer.writerow(['Tension', _cap('qshaft'), _cap('q_delta_10mm_tension'),
+                             _cap('qult_tension'), _cap('installation_torque')])
+            writer.writerow(['Compression', _cap('qshaft'), _cap('q_delta_10mm_compression'),
+                             _cap('qult_compression'), '-'])
+        elif pile_type == 'shallow' and isinstance(results, dict) and results.get('summary'):
+            _write_shallow_results_csv(writer, results)
+        elif pile_type == 'lateral' and isinstance(results, dict):
+            if results.get('aborted'):
+                flash('The analysis stopped before producing results, so there is nothing to download.')
+                return redirect(url_for('main.calculator_step', type=pile_type, step=4))
+            _write_lateral_results_csv(writer, results)
+        elif pile_type == 'cantilever' and isinstance(results, dict):
+            if results.get('aborted'):
+                flash('The analysis stopped before producing results, so there is nothing to download.')
+                return redirect(url_for('main.calculator_step', type=pile_type, step=4))
+            _write_cantilever_results_csv(writer, results)
         else:
-            # Try to load results from results_id
-            results = load_calculation_results(session['results_id'])
-            if not results:
-                flash('Calculation results not found', 'error')
-                return redirect(url_for('main.index'))
-            
-            # Store summary back to session to ensure it's available for future use
-            if 'summary' in results:
-                session['results'] = results['summary']
-                current_app.logger.info("Restored summary results to session")
-            
-            # For driven piles, handle results differently
-            if pile_type == 'driven':
-                if isinstance(results, list):
-                    # Create a CSV with driven pile results
-                    output = io.StringIO()
-                    writer = csv.writer(output)
-                    
-                    # Write header
-                    writer.writerow(['Tip Depth (m)', 'Compression Capacity (kN)', 'Tension Capacity (kN)'])
-                    
-                    # Write data for each tip depth
-                    for result in results:
-                        writer.writerow([
-                            result.get('tipdepth', 'N/A'),
-                            result.get('compression_capacity', 'N/A'),
-                            result.get('tension_capacity', 'N/A')
-                        ])
-                    
-                    # Get the string value and return response
-                    output.seek(0)
-                    
-                    return Response(
-                        output.getvalue(),
-                        mimetype="text/csv",
-                        headers={"Content-disposition": f"attachment; filename=driven_pile_results_{datetime.now().strftime('%Y%m%d')}.csv"}
-                    )
-                else:
-                    flash('Results format not recognized for driven piles', 'error')
-                    return redirect(url_for('main.calculator_step', type='driven', step=4))
-            # For bored piles, handle results differently
-            elif pile_type == 'bored':
-                if isinstance(results, dict) and 'summary' in results and isinstance(results['summary'], list):
-                    # Create a CSV with bored pile results
-                    output = io.StringIO()
-                    writer = csv.writer(output)
-                    
-                    # Write header
-                    writer.writerow(['Tip Depth (m)', 'Compression Capacity (kN)', 'Tension Capacity (kN)'])
-                    
-                    # Write data for each tip depth
-                    for result in results['summary']:
-                        writer.writerow([
-                            result.get('tipdepth', 'N/A'),
-                            result.get('compression_capacity', 'N/A'),
-                            result.get('tension_capacity', 'N/A')
-                        ])
-                    
-                    # Get the string value and return response
-                    output.seek(0)
-                    
-                    return Response(
-                        output.getvalue(),
-                        mimetype="text/csv",
-                        headers={"Content-disposition": f"attachment; filename=bored_pile_results_{datetime.now().strftime('%Y%m%d')}.csv"}
-                    )
-                else:
-                    flash('Results format not recognized for bored piles', 'error')
-                    return redirect(url_for('main.calculator_step', type='bored', step=4))
-            # For helical piles, output the summary capacity values
-            elif pile_type == 'helical':
-                summary_results = results.get('summary', results)  # Try both locations
+            # A mismatched results shape must never fall into another
+            # module's writer. Refuse clearly instead.
+            flash('Results format not recognized; please re-run the calculation.')
+            return redirect(url_for('main.calculator_step', type=pile_type, step=4))
 
-                def _cap(key):
-                    # A capacity value must come from the calculation or be
-                    # visibly absent. Never substitute a number.
-                    if not isinstance(summary_results, dict) or key not in summary_results:
-                        logger.warning("download_results: '%s' missing from stored helical summary; writing N/A", key)
-                        return 'N/A'
-                    return summary_results[key]
+        base_names = {
+            'driven': 'driven_pile_results',
+            'bored': 'bored_pile_results',
+            'helical': 'helical_pile_results',
+            'shallow': 'shallow_footing_results',
+            'lateral': 'lateral_monopile_results',
+            'cantilever': 'cantilever_wall_results',
+        }
+        site_name = _flow_site_name(state)
+        name_part = ('_' + _safe_filename_part(site_name)) if site_name else ''
+        download_name = f"{base_names.get(pile_type, 'results')}{name_part}_{datetime.now().strftime('%Y%m%d')}.csv"
 
-                # Create a CSV with helical pile results
-                output = io.StringIO()
-                writer = csv.writer(output)
-
-                # Write header row with Excel-safe symbols
-                writer.writerow(['CAPACITY', 'Qshaft (kN)', 'Q at delta=10mm (kN)', 'Qult (kN)', 'Installation torque (kNm)'])
-
-                # Write tension row
-                writer.writerow([
-                    'Tension',
-                    _cap('qshaft'),
-                    _cap('q_delta_10mm_tension'),
-                    _cap('qult_tension'),
-                    _cap('installation_torque')
-                ])
-
-                # Write compression row
-                writer.writerow([
-                    'Compression',
-                    _cap('qshaft'),
-                    _cap('q_delta_10mm_compression'),
-                    _cap('qult_compression'),
-                    '-'  # No installation torque for compression
-                ])
-                
-                # Get the string value and return response
-                output.seek(0)
-                
-                # Use the site name if available
-                site_name = ""
-                if 'pile_params' in session:
-                    site_name = f"_{session['pile_params'].get('site_name', '')}"
-                
-                return Response(
-                    output.getvalue(),
-                    mimetype="text/csv",
-                    headers={"Content-disposition": f"attachment; filename=helical_pile_results{site_name}_{datetime.now().strftime('%Y%m%d')}.csv"}
-                )
-            else:
-                flash('A CSV download is not available for this module yet.')
-                if pile_type in ('driven', 'bored', 'helical', 'shallow', 'lateral', 'cantilever'):
-                    return redirect(url_for('main.calculator_step', type=pile_type, step=4))
-                return redirect(url_for('main.index'))
+        return Response(
+            output.getvalue(),
+            mimetype="text/csv",
+            headers={"Content-disposition": f"attachment; filename={download_name}"}
+        )
     except Exception as e:
         current_app.logger.error(f"Error generating results download: {str(e)}")
         flash(f'Error generating results download: {str(e)}')
         return redirect(url_for('main.calculator_step', type=pile_type, step=4))
 
+_METHOD_SHORT = {
+    'driven': 'Unified CPT method - Lehane et al. (2020, 2022)',
+    'bored': 'Doan & Lehane (2021)',
+    'helical': 'Bittar et al. (2023)',
+    'shallow': 'Lehane (2024), CPT-based load-settlement',
+    'lateral': 'Wang et al. (2020, 2023)',
+    'cantilever': 'Lehane et al. (2019)',
+}
+
+_PDF_REFERENCES = {
+    'driven': [
+        'Lehane B.M., Liu Z., Bittar E., et al. (2020). A new CPT-based axial pile capacity '
+        'design method for driven piles in sand. Proc 4th Int. Symposium on Frontiers in '
+        'Offshore Geotechnics, ISFOG-4, Austin, Texas, 462-477.',
+        'Lehane B.M., Liu Z., Bittar E., et al. (2022). CPT-based axial pile capacity design '
+        'method for driven piles in clay. J. Geotech. &amp; Geoenv. Engrg., ASCE, 148(9).',
+    ],
+    'bored': [
+        'Doan L.V. &amp; Lehane B.M. (2021). CPT-based design method for axial capacities of '
+        'bored piles in sand and clay.',
+    ],
+    'helical': [
+        'Bittar E.J., Lehane B.M., Blake A., et al. (2023). CPT-based design method for '
+        'helical piles in sand. Canadian Geotechnical Journal.',
+    ],
+    'shallow': [
+        'Lehane, B.M. (2024). Ongoing development of applications of the Cone Penetration Test '
+        'in interpretation and design. 11th James Mitchell Honor Lecture, Proc. 7th Int. Conf. '
+        'on Geotechnical and Geophysical Site Characterisation, Barcelona, 1, 87-104.',
+    ],
+    'lateral': [
+        'Wang, H., Lehane B.M., Bransby, M.F., Wang, L.Z. and Hong, Y. (2020). A simple '
+        'approach for predicting the ultimate lateral capacity of a rigid pile in sand. '
+        'Geotechnique Letters, 10, 429-435.',
+        'Wang, H., Lehane B.M., Bransby, M.F., Wang, L.Z., Hong, Y. and Askarinejad, A. (2023). '
+        'Lateral behavior of monopiles in sand under monotonic loading. Ocean Engineering, 277, 114334.',
+    ],
+    'cantilever': [
+        'Lehane, B.M., Bagbag, A., Durham, C., &amp; Pine, T. (2019). Design charts for lateral '
+        'deflection of embedded cantilever walls in unsaturated Perth sands. Proc. 13th ANZ '
+        'Conference on Geomechanics, Perth.',
+    ],
+}
+
+
 @bp.route('/download_pdf_report')
 def download_pdf_report():
-    """Generate and download a PDF report of pile calculation results."""
+    """Generate and download a deliverable-grade PDF report (all six modules)."""
     record_event('download', 'download_pdf', {
         'pile_type': session.get('type'),
         'email': session.get('user_email'),
     })
-    if 'results' not in session:
+    flow = _flow_row()
+    state = _flow_state(flow)
+    results = state.get('results')
+    if flow is None or results is None:
         flash('No results available')
         return redirect(url_for('main.index'))
+    if isinstance(results, dict) and results.get('aborted'):
+        flash('The analysis stopped before producing results, so there is no report to download.')
+        return redirect(url_for('main.calculator_step', type=flow.calc_type, step=4))
 
     try:
-        from reportlab.lib.pagesizes import A4
-        from reportlab.lib import colors
-        from reportlab.lib.units import mm
-        from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-
-        pile_type = session.get('type', 'unknown')
-        pile_params = session.get('pile_params', {})
-        results = session.get('results')
-
-        buffer = io.BytesIO()
-        doc = SimpleDocTemplate(buffer, pagesize=A4,
-                                leftMargin=20*mm, rightMargin=20*mm,
-                                topMargin=20*mm, bottomMargin=20*mm)
-
-        styles = getSampleStyleSheet()
-        title_style = ParagraphStyle('CustomTitle', parent=styles['Title'],
-                                     fontSize=18, spaceAfter=6*mm,
-                                     textColor=colors.HexColor('#003087'))
-        subtitle_style = ParagraphStyle('Subtitle', parent=styles['Normal'],
-                                        fontSize=10, textColor=colors.grey,
-                                        spaceAfter=4*mm)
-        heading_style = ParagraphStyle('Heading', parent=styles['Heading2'],
-                                       fontSize=13, spaceAfter=3*mm, spaceBefore=6*mm,
-                                       textColor=colors.HexColor('#003087'))
-        normal_style = styles['Normal']
-        small_style = ParagraphStyle('Small', parent=styles['Normal'],
-                                      fontSize=8, textColor=colors.grey)
-
-        elements = []
-
-        # Title
-        elements.append(Paragraph('UWA CPT Pile Calculator Report', title_style))
-        elements.append(Paragraph(
-            f'{pile_type.title()} Pile Analysis &mdash; Generated {datetime.now().strftime("%d %B %Y, %H:%M")}',
-            subtitle_style))
-        elements.append(Spacer(1, 4*mm))
-
-        # Parameters section
-        elements.append(Paragraph('Input Parameters', heading_style))
-        param_data = []
-        if pile_type == 'driven':
-            param_data = [
-                ['Site Name', pile_params.get('site_name', 'N/A')],
-                ['Pile Shape', pile_params.get('pile_shape', 'N/A')],
-                ['Pile End Condition', pile_params.get('pile_end_condition', 'N/A')],
-                ['Pile Diameter (m)', str(pile_params.get('pile_diameter', 'N/A'))],
-                ['Wall Thickness (mm)', str(pile_params.get('wall_thickness', 'N/A'))],
-                ['Borehole Depth (m)', str(pile_params.get('borehole_depth', 'N/A'))],
-                ['Water Table (m)', str(pile_params.get('water_table', 'N/A'))],
-            ]
-        elif pile_type == 'bored':
-            param_data = [
-                ['Site Name', pile_params.get('site_name', 'N/A')],
-                ['Shaft Diameter (m)', str(pile_params.get('shaft_diameter', 'N/A'))],
-                ['Base Diameter (m)', str(pile_params.get('base_diameter', 'N/A'))],
-                ['Cased Depth (m)', str(pile_params.get('cased_depth', 'N/A'))],
-                ['Water Table (m)', str(pile_params.get('water_table', 'N/A'))],
-            ]
-        elif pile_type == 'helical':
-            param_data = [
-                ['Site Name', pile_params.get('site_name', 'N/A')],
-                ['Shaft Diameter (m)', str(pile_params.get('shaft_diameter', 'N/A'))],
-                ['Helix Diameter (m)', str(pile_params.get('helix_diameter', 'N/A'))],
-                ['Helix Depth (m)', str(pile_params.get('helix_depth', 'N/A'))],
-                ['Water Table (m)', str(pile_params.get('water_table', 'N/A'))],
-            ]
-
-        if param_data:
-            param_table = Table([['Parameter', 'Value']] + param_data,
-                                colWidths=[90*mm, 70*mm])
-            param_table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#003087')),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('FONTSIZE', (0, 0), (-1, -1), 9),
-                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#dee2e6')),
-                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f8f9fa')]),
-                ('TOPPADDING', (0, 0), (-1, -1), 4),
-                ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
-            ]))
-            elements.append(param_table)
-
-        elements.append(Spacer(1, 4*mm))
-
-        # Results section
-        elements.append(Paragraph('Capacity Results', heading_style))
-
-        if pile_type == 'helical':
-            cap_data = [
-                ['CAPACITY', 'Qshaft (kN)', 'Q at \u03b4=10mm (kN)', 'Qult (kN)'],
-                ['Tension',
-                 f"{results.get('qshaft', 0):.1f}",
-                 f"{results.get('q_delta_10mm_tension', 0):.1f}",
-                 f"{results.get('qult_tension', 0):.1f}"],
-                ['Compression',
-                 f"{results.get('qshaft', 0):.1f}",
-                 f"{results.get('q_delta_10mm_compression', 0):.1f}",
-                 f"{results.get('qult_compression', 0):.1f}"],
-            ]
-            cap_table = Table(cap_data, colWidths=[35*mm, 40*mm, 45*mm, 40*mm])
-        else:
-            cap_data = [['Tip Depth (m)', 'Tension Capacity (kN)', 'Compression Capacity (kN)']]
-            if isinstance(results, list):
-                for r in results:
-                    cap_data.append([
-                        f"{r['tipdepth']:.2f}",
-                        f"{r['tension_capacity']:.0f}",
-                        f"{r['compression_capacity']:.0f}"
-                    ])
-            cap_table = Table(cap_data, colWidths=[50*mm, 55*mm, 55*mm])
-
-        cap_table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#003087')),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, -1), 9),
-            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#dee2e6')),
-            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f8f9fa')]),
-            ('TOPPADDING', (0, 0), (-1, -1), 4),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
-        ]))
-        elements.append(cap_table)
-
-        if pile_type == 'helical':
-            elements.append(Spacer(1, 3*mm))
-            extra_data = [
-                ['Installation Torque (kNm)', f"{results.get('installation_torque', 0):.1f}"],
-                ['Tip Depth (m)', f"{results.get('tipdepth', 0):.2f}"],
-                ['qb0.1 Compression (MPa)', f"{results.get('qb01_comp', 0):.2f}"],
-                ['qb0.1 Tension (MPa)', f"{results.get('qb01_tension', 0):.2f}"],
-            ]
-            extra_table = Table(extra_data, colWidths=[90*mm, 70*mm])
-            extra_table.setStyle(TableStyle([
-                ('FONTSIZE', (0, 0), (-1, -1), 9),
-                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#dee2e6')),
-                ('ROWBACKGROUNDS', (0, 0), (-1, -1), [colors.white, colors.HexColor('#f8f9fa')]),
-                ('TOPPADDING', (0, 0), (-1, -1), 4),
-                ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
-            ]))
-            elements.append(extra_table)
-
-        # Method reference
-        elements.append(Spacer(1, 8*mm))
-        elements.append(Paragraph('Method Reference', heading_style))
-        if pile_type == 'driven':
-            elements.append(Paragraph(
-                'Lehane B.M., Liu Z., Bittar E., et al. (2020). A new CPT-based axial pile capacity '
-                'design method for driven piles in sand. Proc 4th Int. Symposium on Frontiers in '
-                'Offshore Geotechnics, ISFOG-4, Austin, Texas, 462-477.', normal_style))
-            elements.append(Spacer(1, 2*mm))
-            elements.append(Paragraph(
-                'Lehane B.M., Liu Z., Bittar E., et al. (2022). CPT-based axial pile capacity design '
-                'method for driven piles in clay. J. Geotech. &amp; Geoenv. Engrg., ASCE, 148(9).', normal_style))
-        elif pile_type == 'bored':
-            elements.append(Paragraph(
-                'Doan L.V. &amp; Lehane B.M. (2021). CPT-based design method for axial capacities of '
-                'bored piles in sand and clay.', normal_style))
-        elif pile_type == 'helical':
-            elements.append(Paragraph(
-                'Bittar E.J., Lehane B.M., Blake A., et al. (2023). CPT-based design method for '
-                'helical piles in sand. Canadian Geotechnical Journal.', normal_style))
-
-        # Footer
-        elements.append(Spacer(1, 10*mm))
-        elements.append(Paragraph(
-            'Generated by UWA CPT Pile Calculator | uwa-geotech-cpt-calculator.com | '
-            'Developed by Vortexia Solutions', small_style))
-
-        doc.build(elements)
-        buffer.seek(0)
-
-        site_name = pile_params.get('site_name', '').strip()
-        date_str = datetime.now().strftime('%Y%m%d')
-        filename = f"{pile_type}_pile_report"
-        if site_name:
-            filename += f"_{site_name}"
-        filename += f"_{date_str}.pdf"
-
-        return send_file(
-            buffer,
-            mimetype='application/pdf',
-            as_attachment=True,
-            download_name=filename
-        )
-
+        return _build_pdf_report(flow, state, results)
     except ImportError:
         flash('PDF generation is not available. Please install reportlab.')
-        return redirect(url_for('main.calculator_step', type=session.get('type', 'driven'), step=4))
+        return redirect(url_for('main.calculator_step', type=flow.calc_type, step=4))
     except Exception as e:
         current_app.logger.error(f"Error generating PDF report: {str(e)}")
         flash(f'Error generating PDF: {str(e)}')
-        return redirect(url_for('main.calculator_step', type=session.get('type', 'driven'), step=4))
+        return redirect(url_for('main.calculator_step', type=flow.calc_type, step=4))
+
+
+def _pdf_chart_image(draw, width_mm=150, height_mm=100):
+    """Render a matplotlib chart to a reportlab Image flowable.
+
+    ``draw`` receives the matplotlib figure and adds its own axes. Uses the
+    object-oriented Figure API rather than pyplot: pyplot keeps a
+    process-global figure registry that is not thread-safe, and this runs
+    inside (possibly concurrent) request handlers.
+    """
+    from matplotlib.figure import Figure
+    from matplotlib.backends.backend_agg import FigureCanvasAgg
+    from reportlab.platypus import Image
+    from reportlab.lib.units import mm as _mm
+
+    fig = Figure(figsize=(width_mm / 25.4, height_mm / 25.4), dpi=150)
+    FigureCanvasAgg(fig)
+    draw(fig)
+    buf = io.BytesIO()
+    fig.tight_layout()
+    fig.savefig(buf, format='png')
+    buf.seek(0)
+    return Image(buf, width=width_mm * _mm, height=height_mm * _mm)
+
+
+def _build_pdf_report(flow, state, results):
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib import colors
+    from reportlab.lib.units import mm
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, KeepTogether
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+
+    pile_type = flow.calc_type
+    pile_params = state.get('pile_params') or {}
+    blob = _flow_cpt(flow) or {}
+    cpt_rows = blob.get('cpt_data') or []
+    processed = blob.get('processed')
+    if processed is None and cpt_rows:
+        processed = pre_input_calc(blob, float(flow.water_table or 0))
+
+    buffer = io.BytesIO()
+
+    def _footer(canvas, doc):
+        canvas.saveState()
+        canvas.setFont('Helvetica', 7)
+        canvas.setFillColor(colors.grey)
+        canvas.drawString(20 * mm, 12 * mm,
+                          f'UWA CPT Pile Calculator | uwa-geotech-cpt-calculator.com | '
+                          f'Developed by Vortexia Solutions | version {APP_VERSION}')
+        canvas.drawRightString(190 * mm, 12 * mm, f'Page {doc.page}')
+        canvas.restoreState()
+
+    doc = SimpleDocTemplate(buffer, pagesize=A4,
+                            leftMargin=20 * mm, rightMargin=20 * mm,
+                            topMargin=20 * mm, bottomMargin=22 * mm)
+
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle('CustomTitle', parent=styles['Title'],
+                                 fontSize=18, spaceAfter=6 * mm,
+                                 textColor=colors.HexColor('#003087'))
+    subtitle_style = ParagraphStyle('Subtitle', parent=styles['Normal'],
+                                    fontSize=10, textColor=colors.grey,
+                                    spaceAfter=4 * mm)
+    heading_style = ParagraphStyle('Heading', parent=styles['Heading2'],
+                                   fontSize=13, spaceAfter=3 * mm, spaceBefore=6 * mm,
+                                   textColor=colors.HexColor('#003087'))
+    normal_style = styles['Normal']
+    small_style = ParagraphStyle('Small', parent=styles['Normal'],
+                                 fontSize=8, textColor=colors.grey)
+
+    table_style = TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#003087')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 9),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#dee2e6')),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f8f9fa')]),
+        ('TOPPADDING', (0, 0), (-1, -1), 4),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+    ])
+    centered_table_style = TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#003087')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 9),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#dee2e6')),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f8f9fa')]),
+        ('TOPPADDING', (0, 0), (-1, -1), 4),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+    ])
+
+    module_titles = {
+        'driven': 'Driven Pile Axial Capacity',
+        'bored': 'Bored Pile Axial Capacity',
+        'helical': 'Helical (Screw) Pile Capacity',
+        'shallow': 'Shallow Footing Load-Settlement',
+        'lateral': 'Laterally Loaded Monopile Response',
+        'cantilever': 'Embedded Cantilever Wall Deflection',
+    }
+
+    elements = []
+    elements.append(Paragraph('UWA CPT Pile Calculator Report', title_style))
+    elements.append(Paragraph(
+        f'{module_titles.get(pile_type, pile_type.title())} &mdash; '
+        f'Generated {datetime.now().strftime("%d %B %Y, %H:%M")}',
+        subtitle_style))
+    elements.append(Spacer(1, 2 * mm))
+
+    # --- Calculation data (CPT traceability) ------------------------------
+    elements.append(Paragraph('Calculation Data', heading_style))
+    data_rows = []
+    site = _flow_site_name(state)
+    if site:
+        data_rows.append(['Site / project name', site])
+    data_rows.append(['CPT data file', flow.original_filename or 'N/A'])
+    if cpt_rows:
+        data_rows.append(['CPT readings', f"{len(cpt_rows)} points, "
+                                          f"{cpt_rows[0]['z']:.2f} m to {cpt_rows[-1]['z']:.2f} m depth"])
+    data_rows.append(['Water table depth', f"{flow.water_table} m" if flow.water_table is not None else 'N/A'])
+    data_rows.append(['Design method', _METHOD_SHORT.get(pile_type, 'N/A')])
+    data_rows.append(['App version', APP_VERSION])
+    data_table = Table([['Item', 'Value']] + data_rows, colWidths=[60 * mm, 100 * mm])
+    data_table.setStyle(table_style)
+    elements.append(data_table)
+
+    # --- Input parameters --------------------------------------------------
+    elements.append(Paragraph('Input Parameters', heading_style))
+    param_data = []
+    if pile_type == 'driven':
+        param_data = [
+            ['Pile Shape', pile_params.get('pile_shape', 'N/A')],
+            ['Pile End Condition', pile_params.get('pile_end_condition', 'N/A')],
+            ['Pile Diameter (m)', str(pile_params.get('pile_diameter', 'N/A'))],
+            ['Wall Thickness (mm)', str(pile_params.get('wall_thickness', 'N/A'))],
+            ['Borehole Depth (m)', str(pile_params.get('borehole_depth', 'N/A'))],
+        ]
+    elif pile_type == 'bored':
+        param_data = [
+            ['Shaft Diameter (m)', str(pile_params.get('shaft_diameter', 'N/A'))],
+            ['Base Diameter (m)', str(pile_params.get('base_diameter', 'N/A'))],
+            ['Cased Depth (m)', str(pile_params.get('cased_depth', 'N/A'))],
+        ]
+    elif pile_type == 'helical':
+        param_data = [
+            ['Shaft Diameter (m)', str(pile_params.get('shaft_diameter', 'N/A'))],
+            ['Helix Diameter (m)', str(pile_params.get('helix_diameter', 'N/A'))],
+            ['Helix Depth (m)', str(pile_params.get('helix_depth', 'N/A'))],
+        ]
+    elif pile_type == 'shallow':
+        inputs = results.get('inputs') or {}
+        param_data = [
+            ['Footing Width B (m)', str(inputs.get('footing_width_m', 'N/A'))],
+            ['Footing Length L (m)', str(inputs.get('footing_length_m', 'N/A'))],
+            ['Founding Depth below excavation (m)', str(inputs.get('founding_depth_m', 'N/A'))],
+            ['Site Excavation Depth (m)', str(inputs.get('excavation_depth_m', 'N/A'))],
+            ['Design Life (years)', str(inputs.get('design_life_years', pile_params.get('design_life_years', 'N/A')))],
+            ['Unit Weight Used (kN/m3)', str(inputs.get('unit_weight_used_knm3', 'N/A'))],
+        ]
+    elif pile_type == 'lateral':
+        inputs = results.get('inputs') or {}
+        param_data = [
+            ['Pile Diameter D (m)', str(inputs.get('D_m', 'N/A'))],
+            ['Embedded Length L (m)', str(inputs.get('L_m', 'N/A'))],
+            ['EI (kNm2)', str(inputs.get('EI_kNm2', 'N/A'))],
+            ['Load Height above Ground (m)', str(inputs.get('h_m', 'N/A'))],
+        ]
+    elif pile_type == 'cantilever':
+        inputs = results.get('inputs') or {}
+        param_data = [
+            ['Wall Length L (m)', str(inputs.get('wall_length_m', 'N/A'))],
+            ['Excavation Depth H (m)', str(inputs.get('excavation_depth_m', 'N/A'))],
+            ['Wall EI (kNm2/m)', str(inputs.get('EI_kNm2_per_m', 'N/A'))],
+        ]
+
+    if param_data:
+        param_table = Table([['Parameter', 'Value']] + param_data, colWidths=[90 * mm, 70 * mm])
+        param_table.setStyle(table_style)
+        elements.append(param_table)
+
+    # --- Results -----------------------------------------------------------
+    elements.append(Paragraph('Results', heading_style))
+
+    chart = None
+    if pile_type in ('driven', 'bored'):
+        cap_data = [['Tip Depth (m)', 'Tension Capacity (kN)', 'Compression Capacity (kN)']]
+        if isinstance(results, list):
+            for r in results:
+                cap_data.append([
+                    f"{r['tipdepth']:.2f}",
+                    f"{r['tension_capacity']:.0f}",
+                    f"{r['compression_capacity']:.0f}"
+                ])
+        cap_table = Table(cap_data, colWidths=[50 * mm, 55 * mm, 55 * mm])
+        cap_table.setStyle(centered_table_style)
+        elements.append(cap_table)
+
+        envelope = state.get('capacity_envelope')
+
+        def _draw_capacity(fig):
+            ax = fig.add_subplot(111)
+            if envelope and envelope.get('depths'):
+                ax.plot(envelope['tension'], envelope['depths'],
+                        color='#1a73e8', alpha=0.4, lw=1.2, label='Tension profile (any tip depth)')
+                ax.plot(envelope['compression'], envelope['depths'],
+                        color='#dc2626', alpha=0.4, lw=1.2, label='Compression profile (any tip depth)')
+            if isinstance(results, list) and results:
+                tips = [r['tipdepth'] for r in results]
+                ax.plot([r['tension_capacity'] for r in results], tips,
+                        'o-', color='#1a73e8', lw=1.8, ms=5, label='Tension (entered tip depths)')
+                ax.plot([r['compression_capacity'] for r in results], tips,
+                        'o-', color='#dc2626', lw=1.8, ms=5, label='Compression (entered tip depths)')
+            ax.invert_yaxis()
+            ax.set_xlabel('Capacity (kN)')
+            ax.set_ylabel('Depth (m)')
+            ax.set_xlim(left=0)
+            ax.grid(alpha=0.25)
+            ax.legend(fontsize=7)
+            ax.set_title('Capacity vs Depth', fontsize=10)
+
+        chart = _pdf_chart_image(_draw_capacity, width_mm=145, height_mm=110)
+
+    elif pile_type == 'helical':
+        cap_data = [
+            ['CAPACITY', 'Qshaft (kN)', 'Q at δ=10mm (kN)', 'Qult (kN)'],
+            ['Tension',
+             f"{results.get('qshaft', 0):.1f}",
+             f"{results.get('q_delta_10mm_tension', 0):.1f}",
+             f"{results.get('qult_tension', 0):.1f}"],
+            ['Compression',
+             f"{results.get('qshaft', 0):.1f}",
+             f"{results.get('q_delta_10mm_compression', 0):.1f}",
+             f"{results.get('qult_compression', 0):.1f}"],
+        ]
+        cap_table = Table(cap_data, colWidths=[35 * mm, 40 * mm, 45 * mm, 40 * mm])
+        cap_table.setStyle(centered_table_style)
+        elements.append(cap_table)
+        elements.append(Spacer(1, 3 * mm))
+        extra_data = [
+            ['Installation Torque (kNm)', f"{results.get('installation_torque', 0):.1f}"],
+            ['Tip Depth (m)', f"{results.get('tipdepth', 0):.2f}"],
+            ['qb0.1 Compression (MPa)', f"{results.get('qb01_comp', 0):.2f}"],
+            ['qb0.1 Tension (MPa)', f"{results.get('qb01_tension', 0):.2f}"],
+        ]
+        extra_table = Table(extra_data, colWidths=[90 * mm, 70 * mm])
+        extra_table.setStyle(TableStyle([
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#dee2e6')),
+            ('ROWBACKGROUNDS', (0, 0), (-1, -1), [colors.white, colors.HexColor('#f8f9fa')]),
+            ('TOPPADDING', (0, 0), (-1, -1), 4),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        ]))
+        elements.append(extra_table)
+
+        table_rows = results.get('helical_deflection_table') or []
+        if table_rows:
+            def _draw_helical(fig):
+                ax = fig.add_subplot(111)
+                dc = [0] + [r['delta_mm_compression'] for r in table_rows if r.get('q_compression') is not None]
+                qc_ = [0] + [r['q_compression'] for r in table_rows if r.get('q_compression') is not None]
+                dt = [0] + [r['delta_mm_tension'] for r in table_rows if r.get('q_tension') is not None]
+                qt_ = [0] + [r['q_tension'] for r in table_rows if r.get('q_tension') is not None]
+                ax.plot(dc, qc_, color='#dc2626', lw=1.8, label='Compression')
+                ax.plot(dt, qt_, color='#1a73e8', lw=1.8, label='Tension')
+                ax.set_xlabel('Pile head displacement (mm)')
+                ax.set_ylabel('Load (kN)')
+                ax.set_xlim(left=0)
+                ax.set_ylim(bottom=0)
+                ax.grid(alpha=0.25)
+                ax.legend(fontsize=8)
+                ax.set_title('Load vs Displacement', fontsize=10)
+
+            chart = _pdf_chart_image(_draw_helical, width_mm=145, height_mm=100)
+
+    elif pile_type == 'shallow':
+        sm = results.get('summary') or {}
+        sd = results.get('soil_decision') or {}
+        res_rows = [['Soil model used', str(sd.get('soil_model_used', 'N/A'))],
+                    ['Average Ic in zone of influence', f"{sd.get('avg_ic', 0):.2f}"],
+                    ['Zone of influence (m)', f"{sm.get('zone_top_m', 0):.2f} to {sm.get('zone_base_m', 0):.2f}"]]
+        for key, label, fmt in (
+            ('qc_avg_mpa', 'qc,avg in zone (MPa)', '%.2f'),
+            ('avg_friction_angle_deg', "Average peak friction angle (deg)", '%.1f'),
+            ('qb01_kpa', 'qb0.1 at s/B = 0.1 (kPa)', '%.0f'),
+            ('qt_net_kpa', 'qt,net in zone (kPa)', '%.1f'),
+            ('avg_su_kpa', 'Average su (kPa)', '%.1f'),
+            ('avg_ocr', 'Average OCR', '%.1f'),
+            ('bearing_capacity_cpt_kpa', 'Net bearing capacity, CPT (kPa)', '%.0f'),
+            ('bearing_capacity_nq_ng_kpa', 'Net bearing capacity, Nq/Ngamma (kPa)', '%.0f'),
+            ('bearing_capacity_nc_kpa', 'Net bearing capacity, Nc (kPa)', '%.0f'),
+        ):
+            if sm.get(key) is not None:
+                res_rows.append([label, fmt % sm[key]])
+        res_table = Table([['Quantity', 'Value']] + res_rows, colWidths=[90 * mm, 70 * mm])
+        res_table.setStyle(table_style)
+        elements.append(res_table)
+
+        curve = results.get('curve') or {}
+
+        def _draw_shallow(fig):
+            ax = fig.add_subplot(111)
+            palette = ['#1a73e8', '#e8710a', '#188038']
+            for i, series in enumerate(curve.get('series') or []):
+                pts = series.get('points') or []
+                ax.plot([p[0] for p in pts], [p[1] for p in pts],
+                        lw=1.8, color=palette[i % len(palette)], label=series.get('name', ''))
+            ax.set_xlabel(curve.get('x_label', 'Settlement (mm)'))
+            ax.set_ylabel(curve.get('y_label', 'Bearing pressure (kPa)'))
+            ax.set_xlim(left=0)
+            ax.set_ylim(bottom=0)
+            ax.grid(alpha=0.25)
+            ax.legend(fontsize=8)
+            ax.set_title('Load-Settlement Response', fontsize=10)
+
+        if curve.get('series'):
+            chart = _pdf_chart_image(_draw_shallow, width_mm=145, height_mm=100)
+
+    elif pile_type == 'lateral':
+        sm = results.get('summary') or {}
+        inputs = results.get('inputs') or {}
+        res_rows = [['Hu, geotechnical (MN)', f"{sm.get('Hu_kN', 0) / 1000:.2f}"]]
+        res_table = Table([['Quantity', 'Value']] + res_rows, colWidths=[90 * mm, 70 * mm])
+        res_table.setStyle(table_style)
+        elements.append(res_table)
+
+        def _draw_lateral(fig):
+            has_mr = bool(inputs.get('h_m')) and results.get('curve_moment_rotation')
+            n_ax = 2 if has_mr else 1
+            curve = results.get('curve_load_disp') or {}
+            ax = fig.add_subplot(1, n_ax, 1)
+            for series in curve.get('series') or []:
+                pts = series.get('points') or []
+                ax.plot([p[0] for p in pts], [p[1] for p in pts], 'o-', ms=2.5, lw=1.6, color='#1a73e8')
+            ax.set_xlabel(curve.get('x_label', ''), fontsize=8)
+            ax.set_ylabel(curve.get('y_label', ''), fontsize=8)
+            ax.set_xlim(left=0)
+            ax.set_ylim(bottom=0)
+            ax.grid(alpha=0.25)
+            ax.set_title('Load vs Displacement', fontsize=9)
+            if has_mr:
+                curve2 = results.get('curve_moment_rotation') or {}
+                ax2 = fig.add_subplot(1, 2, 2)
+                for series in curve2.get('series') or []:
+                    pts = series.get('points') or []
+                    ax2.plot([p[0] for p in pts], [p[1] for p in pts], 'o-', ms=2.5, lw=1.6, color='#e8710a')
+                ax2.set_xlabel(curve2.get('x_label', ''), fontsize=8)
+                ax2.set_ylabel(curve2.get('y_label', ''), fontsize=8)
+                ax2.set_xlim(left=0)
+                ax2.set_ylim(bottom=0)
+                ax2.grid(alpha=0.25)
+                ax2.set_title('Moment vs Rotation', fontsize=9)
+
+        chart = _pdf_chart_image(_draw_lateral, width_mm=160, height_mm=85)
+
+    elif pile_type == 'cantilever':
+        sm = results.get('summary') or {}
+        res_rows = [
+            ['Maximum wall deflection dmax (mm)', f"{sm.get('dmax_mm', 0):.1f}"],
+            ['H/L', f"{sm.get('hl_ratio', 0):.2f}"],
+            ["Average phi'p in averaging band (deg)", f"{sm.get('avg_phi_prime_deg', 0):.0f}"],
+            ['dqc/dz (MN/m3)', f"{sm.get('dqc_dz_MN_m3', 0):.1f}"],
+            ['Maximum settlement smax (mm)', f"{sm.get('smax_mm', 0):.1f}"],
+            ['Settlement at x = H/2 (mm)', f"{sm.get('s_at_x_H_over_2_mm', 0):.1f}"],
+        ]
+        res_table = Table([['Quantity', 'Value']] + res_rows, colWidths=[90 * mm, 70 * mm])
+        res_table.setStyle(table_style)
+        elements.append(res_table)
+
+        profile = results.get('settlement_profile') or {}
+
+        def _draw_cantilever(fig):
+            ax = fig.add_subplot(111)
+            for series in profile.get('series') or []:
+                pts = series.get('points') or []
+                ax.plot([p[0] for p in pts], [p[1] for p in pts], lw=1.8, color='#1a73e8')
+            ax.set_xlabel(profile.get('x_label', 'Distance behind wall, x (m)'))
+            ax.set_ylabel(profile.get('y_label', 'Settlement (mm)'))
+            ax.invert_yaxis()
+            ax.grid(alpha=0.25)
+            ax.set_title('Settlement Profile behind the Wall', fontsize=10)
+
+        if profile.get('series'):
+            chart = _pdf_chart_image(_draw_cantilever, width_mm=145, height_mm=90)
+
+    if chart is not None:
+        elements.append(Spacer(1, 4 * mm))
+        elements.append(chart)
+
+    # --- CPT profile (qt and Ic vs depth) ---------------------------------
+    if processed and processed.get('depth'):
+        sampled = sample_processed_profile(processed, max_points=800)
+
+        def _draw_profile(fig):
+            ax1 = fig.add_subplot(1, 2, 1)
+            ax1.plot(sampled['qt'], sampled['depth'], color='#1a73e8', lw=1.0)
+            ax1.set_xlabel('qt (MPa)', fontsize=8)
+            ax1.set_ylabel('Depth (m)', fontsize=8)
+            ax1.set_xlim(left=0)
+            ax1.invert_yaxis()
+            ax1.grid(alpha=0.25)
+            ax2 = fig.add_subplot(1, 2, 2, sharey=ax1)
+            ax2.plot(sampled['lc'], sampled['depth'], color='#7b1fa2', lw=1.0)
+            ax2.set_xlabel('Ic', fontsize=8)
+            ax2.set_xlim(0, 4)
+            for boundary in (1.31, 2.05, 2.60, 2.95):
+                ax2.axvline(boundary, color='#bbbbbb', lw=0.6, ls=':')
+            ax2.grid(alpha=0.25)
+
+        elements.append(Paragraph('CPT Profile Used', heading_style))
+        elements.append(_pdf_chart_image(_draw_profile, width_mm=150, height_mm=95))
+
+    # --- Assumptions -------------------------------------------------------
+    elements.append(Paragraph('Assumptions', heading_style))
+    assumptions = []
+    if flow.water_table is not None:
+        assumptions.append(f'Groundwater at {flow.water_table} m depth; pore pressure taken as '
+                           'hydrostatic below this level (10 kPa per metre).')
+    assumptions.append('Cone resistance qt is taken equal to the uploaded qc; no pore-pressure '
+                       'correction is applied by the tool.')
+    assumptions.append('Soil behaviour is classified from the CPT via the soil behaviour type '
+                       'index Ic (Robertson).')
+    assumptions.append('The unit weight profile is as supplied in the uploaded file (derived '
+                       'from CPT correlations after Robertson &amp; Cabal (2010) when the '
+                       'flexible importer generated it).')
+    if pile_type in ('driven', 'bored'):
+        assumptions.append('Capacities are ultimate (unfactored) values and do not include pile '
+                           'or soil plug weights.')
+    elif pile_type == 'helical':
+        assumptions.append('Capacities are ultimate (unfactored) values; the method is '
+                           'calibrated for sand profiles.')
+    elif pile_type == 'lateral':
+        assumptions.append('The method applies to rigid monopiles in sand profiles under '
+                           'monotonic lateral loading.')
+    elif pile_type == 'cantilever':
+        assumptions.append('The design charts apply to embedded cantilever walls in sand.')
+    elif pile_type == 'shallow':
+        assumptions.append('Bearing values are net pressures; the load-settlement response '
+                           'follows the CPT-based approach for the classified soil type.')
+    for a in assumptions:
+        elements.append(Paragraph(f'&bull;&nbsp;{a}', normal_style))
+        elements.append(Spacer(1, 1 * mm))
+
+    # --- Method references -------------------------------------------------
+    elements.append(Paragraph('Method Reference', heading_style))
+    for ref in _PDF_REFERENCES.get(pile_type, []):
+        elements.append(Paragraph(ref, normal_style))
+        elements.append(Spacer(1, 2 * mm))
+
+    # --- Disclaimer --------------------------------------------------------
+    elements.append(Paragraph('Important Notice', heading_style))
+    elements.append(Paragraph(
+        'This report was generated automatically by the UWA CPT Pile Calculator from '
+        'user-uploaded CPT data. The results are unfactored, reflect only the information '
+        'contained in that data, and are provided as an aid to design. They must be reviewed '
+        'and approved by a qualified geotechnical engineer before being relied on in any '
+        'design.', normal_style))
+
+    doc.build(elements, onFirstPage=_footer, onLaterPages=_footer)
+    buffer.seek(0)
+
+    site_name = _flow_site_name(state)
+    date_str = datetime.now().strftime('%Y%m%d')
+    filename = f"{pile_type}_report"
+    if site_name:
+        filename += f"_{_safe_filename_part(site_name)}"
+    filename += f"_{date_str}.pdf"
+
+    return send_file(
+        buffer,
+        mimetype='application/pdf',
+        as_attachment=True,
+        download_name=filename
+    )
 
 
 @bp.route('/register', methods=['POST'])
@@ -3088,20 +3494,16 @@ def download_intermediary_calcs():
         'email': session.get('user_email'),
     })
     """Download intermediary calculations used for graphs as CSV"""
-    if 'cpt_data_id' not in session:
+    flow = _flow_row()
+    data = _flow_cpt(flow)
+    if not data:
         flash('No CPT data available')
         return redirect(url_for('main.index'))
-    
+
     try:
-        data = load_cpt_data(session['cpt_data_id'])
-        if not data:
-            flash('CPT data not found')
-            return redirect(url_for('main.index'))
-        
-        # Get water table from the data itself since it's stored with the CPT data
-        water_table = data['water_table']
-        processed = pre_input_calc(data, water_table)
-        
+        # Profile computed once at upload; recompute only for legacy flows
+        processed = data.get('processed') or pre_input_calc(data, float(flow.water_table or 0))
+
         if not processed:
             flash('Error processing data')
             return redirect(url_for('main.index'))
@@ -3128,26 +3530,26 @@ def download_intermediary_calcs():
         
         # Get the current date in DDMMYYYY format
         current_date = datetime.now().strftime('%d%m%Y')
-        
+
         # Use original filename if available
-        filename = session.get('original_filename', '')
+        filename = flow.original_filename or ''
         if filename:
-            base_name = os.path.splitext(filename)[0]
+            base_name = _safe_filename_part(os.path.splitext(filename)[0])
             download_name = f"{base_name}_intermediary_calcs_{current_date}.csv"
         else:
             download_name = f"intermediary_calcs_{current_date}.csv"
-        
+
         return send_file(
             io.BytesIO(df.to_csv(index=False).encode()),
             mimetype='text/csv',
             as_attachment=True,
             download_name=download_name
         )
-        
+
     except Exception as e:
-        print(f"Error generating intermediary calculations: {str(e)}")
+        logger.error(f"Error generating intermediary calculations: {str(e)}")
         flash('Error generating calculations')
-        return redirect(url_for('main.calculator_step', type=session.get('type', 'driven'), step=2))
+        return redirect(url_for('main.calculator_step', type=flow.calc_type if flow else 'driven', step=2))
 
 @bp.route('/download_helical_calculations')
 def download_helical_calculations():

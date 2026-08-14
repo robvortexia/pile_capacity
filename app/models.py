@@ -48,6 +48,33 @@ class Suggestion(db.Model):
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
     ip_address = db.Column(db.String(45), nullable=True)
 
+class CalcFlow(db.Model):
+    """One wizard run (upload through results), persisted server-side.
+
+    Replaces the OS-temp-file storage behind the old cpt_data_id/debug_id:
+    rows survive Render redeploys (the instance filesystem is wiped on every
+    deploy), and the flow id travels in the wizard URLs so two browser tabs
+    can run independent calculations without clobbering each other.
+
+    ``cpt_payload`` is written once at upload and holds the raw CPT rows
+    plus the processed profile from pre_input_calc (zlib-compressed JSON),
+    so the profile is computed exactly once per upload. ``state_payload``
+    holds the smaller step-3/4 state (parameters, results, capacity
+    envelope, debug details) and is rewritten as the wizard advances.
+    """
+    id = db.Column(db.String(32), primary_key=True)
+    anon_id = db.Column(db.String(64), nullable=False, index=True)
+    calc_type = db.Column(db.String(20), nullable=False)
+    water_table = db.Column(db.Float, nullable=True)
+    original_filename = db.Column(db.String(255), nullable=True)
+    # Deferred so listing/existence checks don't drag the blobs across the wire
+    cpt_payload = db.deferred(db.Column(db.LargeBinary, nullable=True))
+    state_payload = db.deferred(db.Column(db.LargeBinary, nullable=True))
+    history_fp = db.Column(db.String(40), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, index=True)
+
+
 class SavedCalculation(db.Model):
     """A completed calculation saved for the no-login history feature.
 

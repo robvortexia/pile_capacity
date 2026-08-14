@@ -110,6 +110,15 @@
                 {% set sm = results.summary %}
                 {% set inp = results.inputs %}
 
+                <div class="button-group" style="margin-top: 0.5rem;">
+                    <a href="{{ url_for('main.download_results') }}" class="btn btn-info">
+                        <i class="fas fa-download"></i> Download Results (CSV)
+                    </a>
+                    <a href="{{ url_for('main.download_pdf_report') }}" class="btn btn-primary">
+                        <i class="fas fa-file-pdf"></i> Download PDF Report
+                    </a>
+                </div>
+
                 <div class="charts-row">
                     <div class="result-card chart-card">
                         <div class="scale-controls">

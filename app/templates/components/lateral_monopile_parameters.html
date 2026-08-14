@@ -53,8 +53,8 @@
 
             <div class="form-field">
                 <label>Water table depth (m)</label>
-                <div class="form-control-static">{{ session.get('water_table', 0.0) }}</div>
-                <input type="hidden" name="water_table" value="{{ session.get('water_table', 0.0) }}">
+                <div class="form-control-static">{{ water_table | default(0.0, true) }}</div>
+                <input type="hidden" name="water_table" value="{{ water_table | default(0.0, true) }}">
                 <span class="help-text">Set at Step 1.</span>
             </div>
         </div>

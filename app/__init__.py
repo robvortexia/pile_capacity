@@ -80,5 +80,20 @@ def create_app():
 
         # Scheduler (optional)
         _init_scheduler(app)
-    
-    return app 
+
+    # Sweep stale wizard temp files (the pre-CalcFlow storage) so they no
+    # longer accumulate for the life of the instance. Harmless if none exist.
+    try:
+        import glob, time, tempfile
+        cutoff = time.time() - 24 * 3600
+        for pattern in ('cpt_data_*.json', 'debug_details_*.json', 'graphs_*.json'):
+            for path in glob.glob(os.path.join(tempfile.gettempdir(), pattern)):
+                try:
+                    if os.path.getmtime(path) < cutoff:
+                        os.remove(path)
+                except OSError:
+                    pass
+    except Exception:
+        pass
+
+    return app

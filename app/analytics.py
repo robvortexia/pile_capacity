@@ -1,4 +1,5 @@
 import json
+import re
 import uuid
 import urllib.request
 import urllib.error
@@ -11,11 +12,30 @@ from typing import List, Dict, Any, Optional
 # In-memory cache so we don't re-lookup the same IP during one app lifecycle
 _geo_cache: Dict[str, Dict[str, str]] = {}
 
+_ANON_COOKIE_RE = re.compile(r'^[0-9a-fA-F-]{8,64}$')
+
+
 def get_or_create_user_id():
-    """Get user ID from session or create a new one if it doesn't exist"""
-    if 'user_id' not in session:
-        session['user_id'] = str(uuid.uuid4())
-    return session['user_id']
+    """Stable id for analytics without forcing a server-side session.
+
+    Prefers an existing session id (registered users / legacy sessions),
+    then the long-lived uwa_anon_id cookie. Only when neither exists is a
+    fresh id minted, and it is handed to the anon-cookie machinery via
+    flask.g rather than written to the session: a session write here would
+    create a server-side session file for every anonymous page view.
+    """
+    if 'user_id' in session:
+        return session['user_id']
+    cookie = request.cookies.get('uwa_anon_id', '')
+    if _ANON_COOKIE_RE.match(cookie):
+        return cookie
+    from flask import g
+    pending = getattr(g, 'anon_id_new', None)
+    if pending:
+        return pending
+    aid = str(uuid.uuid4())
+    g.anon_id_new = aid  # persisted as the uwa_anon_id cookie by routes._attach_anon_cookie
+    return aid
 
 def record_page_visit(page_url=None, referrer=None):
     """Record a page visit to the database"""

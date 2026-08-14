@@ -3,6 +3,8 @@
 import math
 import numpy as np
 import logging
+import matplotlib
+matplotlib.use('Agg')  # headless backend: the Windows default (TkAgg) crashes the threaded server
 import matplotlib.pyplot as plt
 import io
 import base64
