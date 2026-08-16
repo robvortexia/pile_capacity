@@ -75,6 +75,19 @@ def create_app():
             db.session.execute(text('ALTER TABLE registration ADD COLUMN country VARCHAR(100)'))
             db.session.commit()
 
+        # Audience analytics: bot/country tagging on page visits, plus the
+        # timestamp indexes the admin dashboard aggregates over.
+        pv_columns = [c['name'] for c in inspector.get_columns('page_visit')]
+        if 'is_bot' not in pv_columns:
+            db.session.execute(text('ALTER TABLE page_visit ADD COLUMN is_bot BOOLEAN'))
+        if 'country' not in pv_columns:
+            db.session.execute(text('ALTER TABLE page_visit ADD COLUMN country VARCHAR(8)'))
+        db.session.execute(text(
+            'CREATE INDEX IF NOT EXISTS ix_page_visit_timestamp ON page_visit (timestamp)'))
+        db.session.execute(text(
+            'CREATE INDEX IF NOT EXISTS ix_analytics_data_timestamp ON analytics_data (timestamp)'))
+        db.session.commit()
+
         from .routes import bp as main_blueprint
         app.register_blueprint(main_blueprint)
 

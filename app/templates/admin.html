@@ -7,12 +7,100 @@
 {% block content %}
 <div class="admin-container">
     <div class="admin-header">
-        <h1>Registration Analytics</h1>
+        <h1>Site Analytics</h1>
         <a href="{{ url_for('main.export_registrations') }}" class="btn btn-primary">
             <i class="fas fa-download"></i> Export CSV
         </a>
     </div>
 
+    {% if audience %}
+    {% set at = audience.totals %}
+    <h2 class="analytics-section-header" style="margin-top:10px">Audience: People vs Bots</h2>
+    <div class="stat-tiles">
+        <div class="stat-tile">
+            <div class="stat-label"><span class="dot dot-human"></span>People, last 7 days</div>
+            <div class="stat-value">{{ at.human_views_7d }}</div>
+            <div class="stat-sub">page views by real visitors</div>
+        </div>
+        <div class="stat-tile">
+            <div class="stat-label"><span class="dot dot-human"></span>People yesterday</div>
+            <div class="stat-value">{{ at.dau_yesterday }}</div>
+            <div class="stat-sub">distinct visitors (UTC day)</div>
+        </div>
+        <div class="stat-tile">
+            <div class="stat-label"><span class="dot dot-engaged"></span>Used the calculator, 7 days</div>
+            <div class="stat-value">{{ at.engaged_7d }}</div>
+            <div class="stat-sub">people who uploaded, calculated or downloaded</div>
+        </div>
+        <div class="stat-tile">
+            <div class="stat-label"><span class="dot dot-engaged"></span>Used the calculator, 30 days</div>
+            <div class="stat-value">{{ at.engaged_window }}</div>
+            <div class="stat-sub">distinct people</div>
+        </div>
+        <div class="stat-tile">
+            <div class="stat-label"><span class="dot dot-bot"></span>Bot hits, last 7 days</div>
+            <div class="stat-value">{{ at.bot_views_7d }}</div>
+            <div class="stat-sub">crawlers, scrapers and scripts</div>
+        </div>
+        <div class="stat-tile">
+            <div class="stat-label">Registrations, 30 days</div>
+            <div class="stat-value">{{ at.registrations_window }}</div>
+            <div class="stat-sub">new sign-ups</div>
+        </div>
+    </div>
+
+    <div class="analytics-grid">
+        <div class="analytics-card analytics-card-wide">
+            <h3>Daily page views: people vs bots (last 30 days)</h3>
+            <div id="audiencePvB" style="width: 100%; height: 320px;"></div>
+        </div>
+        <div class="analytics-card analytics-card-wide">
+            <h3>Daily people: all visitors vs actually using the calculator</h3>
+            <div id="audienceDau" style="width: 100%; height: 320px;"></div>
+        </div>
+        <div class="analytics-card">
+            <h3>People by country (30 days)</h3>
+            <div class="analytics-table">
+                {% set maxv = (audience.countries | map(attribute='visitors') | max) if audience.countries else 1 %}
+                <table class="audience-table">
+                    <thead><tr><th>Country</th><th>Visitors</th><th>Views</th><th>Used it</th></tr></thead>
+                    <tbody>
+                        {% for c in audience.countries[:12] %}
+                        <tr>
+                            <td>{{ c.name }}</td>
+                            <td class="num">
+                                <span class="cellbar"><span style="width: {{ (100 * c.visitors / maxv) | round(0) | int }}%"></span></span>{{ c.visitors }}
+                            </td>
+                            <td class="num">{{ c.views }}</td>
+                            <td class="num">{{ c.engaged if c.code else '' }}</td>
+                        </tr>
+                        {% endfor %}
+                        {% if not audience.countries %}
+                        <tr><td colspan="4" style="color:#999">No visits recorded yet</td></tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+            <p class="audience-note">Country comes from Cloudflare per visit, recorded since 16 Aug 2026; older visits appear as Unknown.</p>
+        </div>
+        <div class="analytics-card">
+            <h3>Bot traffic by crawler (30 days)</h3>
+            <div class="analytics-table">
+                <table class="audience-table">
+                    <thead><tr><th>Crawler</th><th>Hits</th></tr></thead>
+                    <tbody>
+                        {% for b in audience.bot_families %}
+                        <tr><td>{{ b.family }}</td><td class="num">{{ b.views }}</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <p class="audience-note">Identified from the user agent; an empty user agent counts as a bot. All dates UTC.</p>
+        </div>
+    </div>
+    {% endif %}
+
+    <h2 class="analytics-section-header">Registrations</h2>
     <div class="analytics-grid">
         <div class="analytics-card">
             <h3>Total Registrations</h3>
@@ -95,9 +183,9 @@
     <h2 class="analytics-section-header">Enhanced Analytics</h2>
     <div class="analytics-grid">
         <div class="analytics-card">
-            <h3>Total Page Views</h3>
+            <h3>Total Page Views (incl. bots)</h3>
             <div class="analytics-number">{{ page_visit_stats.page_stats|sum(attribute='visit_count') }}</div>
-            <p>Unique Visitors: {{ page_visit_stats.unique_visitors }}</p>
+            <p>Raw visitors incl. bots: {{ page_visit_stats.unique_visitors }}. See the Audience section for the people-only view.</p>
         </div>
         
         <div class="analytics-card">
@@ -167,10 +255,6 @@
             </div>
         </div>
         
-        <div class="analytics-card analytics-card-wide">
-            <h3>Daily Visits (Last 30 Days)</h3>
-            <div id="dailyVisitsPlotly" style="width: 100%; height: 350px;"></div>
-        </div>
     </div>
 
     <div class="analytics-grid" style="margin-top: 1.5rem;">
@@ -383,6 +467,35 @@
     grid-column: 1 / -1;
 }
 
+/* Audience section */
+.stat-tiles {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(175px, 1fr));
+    gap: 12px;
+    margin-bottom: 1.5rem;
+}
+.stat-tile {
+    background: #fff;
+    border: 1px solid rgba(11, 11, 11, 0.10);
+    border-radius: 8px;
+    padding: 14px 16px;
+}
+.stat-label { font-size: 0.78rem; color: #52514e; font-weight: 600; letter-spacing: 0.02em; }
+.stat-value { font-size: 1.9rem; font-weight: 700; color: #0b0b0b; margin-top: 2px; }
+.stat-sub { font-size: 0.72rem; color: #898781; margin-top: 2px; }
+.dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; }
+.dot-human { background: #2a78d6; }
+.dot-bot { background: #eb6834; }
+.dot-engaged { background: #1baf7a; }
+.audience-table td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cellbar {
+    display: inline-block; width: 64px; height: 8px;
+    background: #f0efec; border-radius: 4px;
+    margin-right: 8px; vertical-align: 2px; overflow: hidden;
+}
+.cellbar > span { display: block; height: 100%; background: #86b6ef; border-radius: 4px; }
+.audience-note { font-size: 0.78rem; color: #898781; margin: 0.5rem 0 0; }
+
 .category-badge {
     display: inline-block;
     padding: 2px 10px;
@@ -400,30 +513,64 @@
 </style>
 
 <script>
-// Daily Visits Chart (Plotly)
-var dailyVisitsData = {{ page_visit_stats.daily_stats_json | tojson }};
-var visitDates = dailyVisitsData.map(function(item) { return item.date; });
-var visitCounts = dailyVisitsData.map(function(item) { return item.count; });
+{% if audience %}
+// Audience charts: people vs bots, and visitors vs engaged users.
+// Series colors are fixed to the entity everywhere on this page:
+// people = blue #2a78d6, bots = orange #eb6834, engaged = aqua #1baf7a.
+(function () {
+    var daily = {{ audience.daily | tojson }};
+    // Drop the partial current UTC day so the lines don't cliff to zero.
+    var todayUtc = new Date().toISOString().slice(0, 10);
+    if (daily.length && daily[daily.length - 1].date === todayUtc) {
+        daily = daily.slice(0, -1);
+    }
+    if (!daily.length) { return; }
+    var days = daily.map(function (d) { return d.date; });
+    var muted = '#898781', grid = '#e1e0d9', axis = '#c3c2b7', ink = '#52514e';
 
-Plotly.newPlot('dailyVisitsPlotly', [{
-    x: visitDates,
-    y: visitCounts,
-    type: 'scatter',
-    mode: 'lines+markers',
-    fill: 'tozeroy',
-    line: { color: '#003087', width: 2, shape: 'spline' },
-    marker: { size: 6, color: '#003087' },
-    fillcolor: 'rgba(0, 48, 135, 0.1)',
-    name: 'Daily Visits'
-}], {
-    margin: { t: 20, r: 30, l: 50, b: 40 },
-    xaxis: { title: '', tickformat: '%b %d', tickangle: -45 },
-    yaxis: { title: 'Visits', rangemode: 'tozero' },
-    plot_bgcolor: '#fff',
-    paper_bgcolor: '#fff',
-    font: { family: 'Roboto, sans-serif', size: 12 },
-    showlegend: false
-}, {responsive: true, displayModeBar: false});
+    function layout(annotations) {
+        return {
+            margin: { t: 10, r: 80, l: 45, b: 45 },
+            plot_bgcolor: '#fff',
+            paper_bgcolor: '#fff',
+            font: { family: 'Roboto, sans-serif', size: 12, color: ink },
+            xaxis: { tickformat: '%b %d', tickangle: -45, showgrid: false,
+                     linecolor: axis, tickfont: { color: muted } },
+            yaxis: { rangemode: 'tozero', gridcolor: grid, zeroline: false,
+                     tickfont: { color: muted } },
+            hovermode: 'x unified',
+            showlegend: true,
+            legend: { orientation: 'h', y: 1.14, x: 0, font: { color: ink } },
+            annotations: annotations
+        };
+    }
+    function endLabel(ys, color, text) {
+        return { x: days[days.length - 1], y: ys[ys.length - 1],
+                 xanchor: 'left', yanchor: 'middle', text: ' ' + text,
+                 showarrow: false, font: { color: color, size: 12 } };
+    }
+
+    var humans = daily.map(function (d) { return d.human_views; });
+    var bots = daily.map(function (d) { return d.bot_views; });
+    Plotly.newPlot('audiencePvB', [
+        { x: days, y: humans, name: 'People', type: 'scatter', mode: 'lines',
+          line: { color: '#2a78d6', width: 2 } },
+        { x: days, y: bots, name: 'Bots', type: 'scatter', mode: 'lines',
+          line: { color: '#eb6834', width: 2 } }
+    ], layout([endLabel(humans, '#1c5cab', 'People'), endLabel(bots, '#c24a1d', 'Bots')]),
+       { responsive: true, displayModeBar: false });
+
+    var dau = daily.map(function (d) { return d.dau; });
+    var eng = daily.map(function (d) { return d.engaged; });
+    Plotly.newPlot('audienceDau', [
+        { x: days, y: dau, name: 'Visitors (people)', type: 'scatter', mode: 'lines',
+          line: { color: '#2a78d6', width: 2 } },
+        { x: days, y: eng, name: 'Used the calculator', type: 'scatter', mode: 'lines',
+          line: { color: '#1baf7a', width: 2 } }
+    ], layout([endLabel(dau, '#1c5cab', 'Visitors'), endLabel(eng, '#0e7a55', 'Used it')]),
+       { responsive: true, displayModeBar: false });
+})();
+{% endif %}
 
 // Pile Type Pie Chart
 var pileTypes = [];

@@ -26,8 +26,14 @@ class PageVisit(db.Model):
     referrer = db.Column(db.String(255), nullable=True)
     user_agent = db.Column(db.Text, nullable=True)
     ip_address = db.Column(db.String(45), nullable=True)
-    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    timestamp = db.Column(db.DateTime, default=datetime.utcnow, index=True)
     session_id = db.Column(db.String(120), nullable=True)
+    # Classified at write time so the dashboard can segment people from
+    # crawlers cheaply; older rows are backfilled from the stored user agent.
+    is_bot = db.Column(db.Boolean, nullable=True)
+    # ISO country code from Cloudflare's CF-IPCountry header (null before
+    # Aug 2026 and for requests that bypass Cloudflare).
+    country = db.Column(db.String(8), nullable=True)
     
 class AnalyticsData(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -36,7 +42,7 @@ class AnalyticsData(db.Model):
     data_type = db.Column(db.String(50), nullable=False)  # E.g., 'calc_params', 'pile_type', etc.
     data_key = db.Column(db.String(100), nullable=True)
     data_value = db.Column(db.Text, nullable=True)
-    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    timestamp = db.Column(db.DateTime, default=datetime.utcnow, index=True)
     session_id = db.Column(db.String(120), nullable=True)
 
 class Suggestion(db.Model):

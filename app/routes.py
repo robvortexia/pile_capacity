@@ -35,7 +35,7 @@ from .helical_calculations import calculate_helical_pile_results
 from .shallow_calculations import calculate_shallow_footing_results
 from .lateral_calculations import calculate_lateral_monopile_results
 from .cantilever_calculations import calculate_cantilever_results
-from .analytics import record_page_visit, store_analytics_data, get_or_create_user_id, get_page_visit_stats, get_analytics_data_stats, record_event, get_recent_users, get_user_details
+from .analytics import record_page_visit, store_analytics_data, get_or_create_user_id, get_page_visit_stats, get_analytics_data_stats, record_event, get_recent_users, get_user_details, get_audience_stats, real_client_ip
 
 # Set pandas options for full precision 
 pd.set_option('display.precision', 15)  # Increase default precision
@@ -3155,7 +3155,9 @@ def register():
         flash('Please fill in all fields', 'error')
         return redirect(url_for('main.index'))
         
-    ip_addr = request.remote_addr
+    # The real client address: request.remote_addr is a Cloudflare edge here,
+    # which used to geo-locate registrations to the nearest CF datacentre.
+    ip_addr = real_client_ip()
     country = None
     try:
         import urllib.request, json as _json
@@ -3413,7 +3415,16 @@ def admin():
         db.session.rollback()
         recent_suggestions = []
 
+    # Audience: people vs bots vs engaged users, daily and by country
+    try:
+        audience = get_audience_stats(days=30)
+    except Exception as aud_e:
+        logger.error(f"Audience stats failed: {aud_e}")
+        db.session.rollback()
+        audience = None
+
     return render_template('admin.html',
+                         audience=audience,
                          registrations=registrations,
                          total_users=total_users,
                          unique_users=unique_users,
