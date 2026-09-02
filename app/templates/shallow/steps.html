@@ -145,7 +145,7 @@
                             <tr><td>Average OCR</td><td>{{ '%.1f'|format(sm.avg_ocr) }}</td></tr>
                             <tr><td>σ'<sub>vy</sub> at footing level</td><td>{{ '%.1f'|format(sm.svy_footing_kpa) }} kPa</td></tr>
                             <tr><td>I<sub>c</sub> correction CF<sub>1</sub> &times; CF<sub>2</sub></td><td>{{ '%.3f'|format(sm.cf1 * sm.cf2) }}</td></tr>
-                            <tr><td>A (immediate / long term)</td><td>{{ '%.3f'|format(sm.a_immediate) }} / {{ '%.3f'|format(sm.a_longterm) }}</td></tr>
+                            <tr><td>A (immediate / long term)</td><td>{{ '%.3f'|format(sm.a_immediate) }} / {{ '%.3f'|format(sm.a_longterm) }}{% if sm.a_immediate_at_ceiling and sm.a_longterm_at_ceiling %}<br><small>both at their ceilings of {{ '%.2f'|format(sm.a_immediate_max) }} and {{ '%.2f'|format(sm.a_longterm_max) }}</small>{% elif sm.a_immediate_at_ceiling %}<br><small>immediate at its ceiling of {{ '%.2f'|format(sm.a_immediate_max) }}</small>{% elif sm.a_longterm_at_ceiling %}<br><small>long term at its ceiling of {{ '%.2f'|format(sm.a_longterm_max) }}</small>{% endif %}</td></tr>
                             <tr><td>Ultimate bearing pressure (0.42 q<sub>t,net</sub>)</td><td>{{ '%.0f'|format(sm.ultimate_curve_cap_kpa) }} kPa</td></tr>
                             <tr class="divider"><td>Net bearing capacity (CPT, 0.45 q<sub>t,net</sub>)</td><td>{{ '%.0f'|format(sm.bearing_capacity_cpt_kpa) }} kPa</td></tr>
                             <tr><td>Net bearing capacity (N<sub>c</sub>)</td><td>{{ '%.0f'|format(sm.bearing_capacity_nc_kpa) }} kPa</td></tr>

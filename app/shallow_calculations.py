@@ -2,9 +2,15 @@
 Shallow foundations (Step 4) — load-settlement of footings on sand, sandy
 silt, silt / clayey silt, and clay from CPT data.
 
-Follows the rev1 spec captured in ``Footing-settlement-forcoding-rev1.xlsx``
-(Barry Lehane, 28-May-2026). The settlement app is now applicable across
-the full SBT range. Key changes from the previous revision:
+Follows the spec captured in ``Footing-settlement-forcoding-rev2.xlsx``
+(Barry Lehane, 1-Sep-2026).
+
+rev2 changed exactly two cells against rev1: Clay-form G4 and G5 gained
+ceilings of 2.79 and 1.97 on the immediate and long term A factors. A
+cell-by-cell diff of the two workbooks shows nothing else moved.
+
+rev1 (28-May-2026) made the settlement app applicable across the full SBT
+range. Its changes over the revision before it:
 
 * Four Ic bands replace the previous three:
     - Ic <= 2.05          -> sand (workbook sand formulation)
@@ -16,8 +22,8 @@ the full SBT range. Key changes from the previous revision:
 * Clay-form A factors gain two Ic-dependent multipliers:
     CF1 = 3.93*Ic^2 - 14.78*Ic + 14.78
     CF2 = 1 + 1.18*(Ic - 2.05)
-    A_immediate = (0.46 if OCR < 3 else 0.58) * CF1 * CF2
-    A_longterm  = (0.30 if OCR < 3 else 0.41) * CF1 * CF2
+    A_immediate = (0.46 if OCR < 3 else 0.58) * CF1 * CF2   (uncapped in rev1)
+    A_longterm  = (0.30 if OCR < 3 else 0.41) * CF1 * CF2   (uncapped in rev1)
 * BC-calc sand: average phi' is reduced by 20*(Ic - 2.05) degrees when
   2.05 < Ic <= 2.35 (the Kp used in the qc-after-excavation column still
   uses the unreduced phi', per the workbook).
@@ -36,6 +42,16 @@ import math
 IC_SAND_MAX = 2.05         # <= this  -> sand
 IC_SANDY_SILT_MAX = 2.35   # <= this  -> sandy silt (modified sand)
 IC_CLAY_MIN = 2.60         # >= this  -> clay; (2.35..2.60) is silt/clayey silt
+
+# Ceilings on the clay A factors (rev2 Clay-form G4/G5). CF1 x CF2 keeps
+# growing with Ic, so without a ceiling the A factors run past anything a clay
+# can mobilise. Barry supplied 2.79 and 1.97 as literals. They happen to equal
+# 0.58 and 0.41 times CF1 x CF2 evaluated at Ic = 2.60, the bottom of the clay
+# band, to 2 dp; that equivalence holds only on the OCR >= 3 branch, where the
+# ceilings bind from Ic 2.60. On the OCR < 3 branch they bind from Ic 2.69
+# (immediate) and 2.72 (long term).
+A_IMMEDIATE_MAX = 2.79     # G4
+A_LONGTERM_MAX = 1.97      # G5
 
 
 # ---------------------------------------------------------------------------
@@ -279,7 +295,7 @@ def _traditional_bc_sand(pc, p, gamma_const, fp_used_deg, foot_idx):
     founding depth D. The workbook subtracts C15 (= sigma'v0 at footing) at
     the end to give a NET capacity.
 
-    Note: the rev1 workbook BC-calc C16 references 'From pileapp-2'!E2 for the
+    Note: the workbook's BC-calc C16 references 'From pileapp-2'!E2 for the
     sand unit weight, which is a wiring bug — the sand sample's gamma should
     come from pileapp-1. We use the analysed sample's own gamma here, so the
     BC sand number can differ from the workbook's printed C24 for the sand
@@ -342,8 +358,8 @@ def _clay_branch(pc, p, gamma_const, ic_avg):
     c1 = 0.58 if ocr_avg >= 3 else 0.46                      # G10
     c2 = 0.41 if ocr_avg >= 3 else 0.30                      # G11
     cf1, cf2 = _cf_clay(ic_avg)                              # G8, G9
-    a_imm = c1 * cf1 * cf2                                   # G4
-    a_lt = c2 * cf1 * cf2                                    # G5
+    a_imm = min(c1 * cf1 * cf2, A_IMMEDIATE_MAX)             # G4
+    a_lt = min(c2 * cf1 * cf2, A_LONGTERM_MAX)               # G5
 
     cap = 0.42 * qt_net
     imm, lt = [], []
@@ -365,6 +381,14 @@ def _clay_branch(pc, p, gamma_const, ic_avg):
             'c1_base': c1, 'c2_base': c2,
             'a_immediate': a_imm,
             'a_longterm': a_lt,
+            'a_immediate_max': A_IMMEDIATE_MAX,
+            'a_longterm_max': A_LONGTERM_MAX,
+            # The two ceilings bind at different Ic, so track them separately.
+            # bool() keeps these plain Python bools: the template branches on
+            # them and a numpy scalar would survive JSON round-tripping as a
+            # truthy string.
+            'a_immediate_at_ceiling': bool((c1 * cf1 * cf2) > A_IMMEDIATE_MAX),
+            'a_longterm_at_ceiling': bool((c2 * cf1 * cf2) > A_LONGTERM_MAX),
             'bearing_capacity_cpt_kpa': qf,
             'bearing_capacity_nc_kpa': bc,
             'ultimate_curve_cap_kpa': cap,
@@ -419,7 +443,7 @@ def _read_params(params):
 
 
 def calculate_shallow_footing_results(processed_cpt, params):
-    """Step 4 for shallow foundations (rev1 — four Ic bands).
+    """Step 4 for shallow foundations (rev2 — four Ic bands, capped clay A).
 
     Args:
         processed_cpt: dict from ``pre_input_calc`` (per-depth arrays incl.
