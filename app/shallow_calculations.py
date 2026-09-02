@@ -5,9 +5,14 @@ silt, silt / clayey silt, and clay from CPT data.
 Follows the spec captured in ``Footing-settlement-forcoding-rev2.xlsx``
 (Barry Lehane, 1-Sep-2026).
 
-rev2 changed exactly two cells against rev1: Clay-form G4 and G5 gained
-ceilings of 2.79 and 1.97 on the immediate and long term A factors. A
-cell-by-cell diff of the two workbooks shows nothing else moved.
+rev2 changed three cells against rev1, all on Clay-form. G4 and G5 gained
+ceilings of 2.79 and 1.97 on the immediate and long term A factors; that is
+the correction Barry asked for. G6, the Ic that drives CF1 and CF2, was also
+replaced by the literal 2.37, which looks like a test value left in place:
+at Ic 2.37 the workbook's own G4 and G5 come out at 1.46 and 1.03, so the
+delivered file never exercises the MIN it adds. We keep taking Ic from the
+zone of influence as rev1 did, so G6 is not mirrored here. A cell-by-cell
+diff of all eight sheets shows nothing else moved.
 
 rev1 (28-May-2026) made the settlement app applicable across the full SBT
 range. Its changes over the revision before it:
