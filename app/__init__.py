@@ -38,9 +38,13 @@ def create_app():
     # Use PostgreSQL database if DATABASE_URL is provided, otherwise use SQLite
     app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///registrations.db')
     
-    # Handle deprecated postgres:// URI format (Render uses postgresql://)
-    if app.config['SQLALCHEMY_DATABASE_URI'].startswith('postgres://'):
-        app.config['SQLALCHEMY_DATABASE_URI'] = app.config['SQLALCHEMY_DATABASE_URI'].replace('postgres://', 'postgresql://', 1)
+    # Handle deprecated postgres:// URI format (Render uses postgresql://),
+    # and name the driver: psycopg2 is what's installed, and SQLAlchemy 2.1
+    # would otherwise pick psycopg 3 for a bare postgresql:// URL.
+    uri = app.config['SQLALCHEMY_DATABASE_URI']
+    for prefix in ('postgres://', 'postgresql://'):
+        if uri.startswith(prefix):
+            app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql+psycopg2://' + uri[len(prefix):]
     
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     # Test pooled connections before use, so one dropped by Postgres (or

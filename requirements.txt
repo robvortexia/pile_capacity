@@ -1,15 +1,23 @@
-Flask>=2.3.0
-Werkzeug>=2.3.0
-gunicorn>=21.0.0
-numpy>=1.24.0
-pandas>=2.0.0
-plotly>=5.13.0
-python-dotenv>=1.0.0
-Flask-SQLAlchemy>=3.0.0
-scipy>=1.10.0
-Flask-Session>=0.5.0
-gunicorn
-matplotlib>=3.7.0
-psycopg2-binary>=2.9.6
-APScheduler>=3.10.1
-reportlab>=4.0.0
+# Pinned to the versions the app is developed and tested against. Unpinned,
+# every Render build pulled the newest of everything: on 29 Sep 2026 that was
+# SQLAlchemy 2.1 (defaults postgresql:// to psycopg 3, which isn't installed,
+# so the app died on startup) plus pandas 3, numpy 2.4 and plotly 7, none of
+# which the calculators have been checked on. Bump deliberately and re-test.
+Flask==3.0.2
+Werkzeug==3.0.1
+Jinja2==3.1.6
+gunicorn==23.0.0
+numpy==1.26.4
+pandas==2.2.0
+scipy==1.17.1
+plotly==5.19.0
+matplotlib==3.10.9
+reportlab==4.5.1
+pillow==10.0.1
+python-dotenv==1.0.0
+Flask-SQLAlchemy==3.1.1
+SQLAlchemy==2.0.50
+psycopg2-binary==2.9.13
+Flask-Session==0.7.0
+cachelib==0.14.0
+APScheduler==3.11.2
