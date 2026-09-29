@@ -93,7 +93,7 @@
         <div class="modal-content">
             <h2>Registration</h2>
             <p>Registration allows us to keep track of usage; no other details are saved.</p>
-            <form method="POST" action="{{ url_for('main.register') }}">
+            <form method="POST" action="{{ url_for('main.register') }}" id="registrationForm">
                 <div class="form-field">
                     <label for="email">Email</label>
                     <input type="email" id="email" name="email" required>
@@ -103,11 +103,18 @@
                     <input type="text" id="affiliation" name="affiliation" required>
                 </div>
                 <input type="hidden" name="next" value="{{ request.url }}">
+                {% if show_modal and turnstile_site_key %}
+                <div class="cf-turnstile captcha-widget" data-sitekey="{{ turnstile_site_key }}" data-theme="light" data-size="flexible" data-callback="uwaCaptchaDone"></div>
+                <div class="alert alert-error captcha-wait" hidden>Please complete the security check above, then press Continue.</div>
+                {% endif %}
                 <div class="button-group">
                     <button type="submit" class="btn btn-primary">Continue</button>
                 </div>
             </form>
             <button type="button" class="btn-skip-registration" onclick="document.cookie='uwa_reg_skip=1;max-age=2592000;path=/;SameSite=Lax';document.getElementById('registrationModal').style.display='none'">Skip for now</button>
+            {% if registration_error %}
+                <div class="alert alert-error">{{ registration_error }}</div>
+            {% endif %}
             {% with messages = get_flashed_messages() %}
                 {% if messages %}
                     {% for message in messages %}
@@ -117,6 +124,28 @@
             {% endwith %}
         </div>
     </div>
+    {% if turnstile_site_key %}
+    {% if show_modal %}
+    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+    {% endif %}
+    <script>
+    // Turnstile usually passes on its own within a second or two. Hold back
+    // a submit that beats it (or where the widget never loaded) and say why,
+    // instead of letting the server bounce the form.
+    document.addEventListener('submit', function (e) {
+        var form = e.target;
+        if (!form.querySelector('.cf-turnstile')) return;
+        var token = form.querySelector('[name="cf-turnstile-response"]');
+        if (token && token.value) return;
+        e.preventDefault();
+        var msg = form.querySelector('.captcha-wait');
+        if (msg) msg.hidden = false;
+    });
+    window.uwaCaptchaDone = function () {
+        document.querySelectorAll('.captcha-wait').forEach(function (el) { el.hidden = true; });
+    };
+    </script>
+    {% endif %}
     <nav class="navbar">
         <!-- Gold Banner -->
         <div class="uwa-banner"></div>

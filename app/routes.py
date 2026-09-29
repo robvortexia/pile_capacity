@@ -35,7 +35,8 @@ from .helical_calculations import calculate_helical_pile_results
 from .shallow_calculations import calculate_shallow_footing_results
 from .lateral_calculations import calculate_lateral_monopile_results
 from .cantilever_calculations import calculate_cantilever_results
-from .analytics import record_page_visit, store_analytics_data, get_or_create_user_id, get_page_visit_stats, get_analytics_data_stats, record_event, get_recent_users, get_user_details, get_audience_stats, real_client_ip
+from .captcha import captcha_site_key, captcha_passed
+from .analytics import record_page_visit, store_analytics_data, get_or_create_user_id, get_page_visit_stats, get_analytics_data_stats, record_event, get_recent_users, get_user_details, get_audience_stats, real_client_ip, request_country, lookup_ip_geo, country_name
 
 # Set pandas options for full precision 
 pd.set_option('display.precision', 15)  # Increase default precision
@@ -141,6 +142,20 @@ def _demo_access():
         return True
     email = (session.get('user_email') or session.get('email') or '').strip().lower()
     return bool(email and email in _shallow_demo_emails())
+
+
+@bp.app_context_processor
+def _inject_captcha():
+    """Turnstile site key ('' when the captcha is off) and the one-shot
+    error the signup modal shows after a failed check."""
+    ctx = {'turnstile_site_key': '', 'registration_error': None}
+    try:
+        ctx['turnstile_site_key'] = captcha_site_key()
+        if 'registration_error' in session:
+            ctx['registration_error'] = session.pop('registration_error')
+    except Exception:
+        pass
+    return ctx
 
 
 @bp.app_context_processor
@@ -3154,21 +3169,25 @@ def register():
     if not email or not affiliation:
         flash('Please fill in all fields', 'error')
         return redirect(url_for('main.index'))
-        
+
+    next_url = request.form.get('next') or request.args.get('next') or url_for('main.index')
     # The real client address: request.remote_addr is a Cloudflare edge here,
     # which used to geo-locate registrations to the nearest CF datacentre.
     ip_addr = real_client_ip()
-    country = None
-    try:
-        import urllib.request, json as _json
-        geo = _json.loads(urllib.request.urlopen(
-            f'http://ip-api.com/json/{ip_addr}?fields=status,country,city', timeout=3
-        ).read())
-        if geo.get('status') == 'success':
-            parts = [geo.get('city'), geo.get('country')]
-            country = ', '.join(p for p in parts if p)
-    except Exception:
-        pass
+    if not captcha_passed(ip_addr):
+        # Back to the page they came from, where the modal reopens with this.
+        session['registration_error'] = 'Please complete the security check, then press Continue.'
+        return redirect(next_url)
+
+    # Shared cached lookup with a back-off, so an unreachable ip-api can't
+    # add a timeout to every signup. Cloudflare's country covers the misses.
+    geo = lookup_ip_geo(ip_addr)
+    if geo.get('country'):
+        country = ', '.join(p for p in (geo.get('city'), geo['country']) if p)
+    elif request_country():
+        country = country_name(request_country())
+    else:
+        country = None
 
     registration = Registration(
         email=email,
@@ -3196,7 +3215,6 @@ def register():
         pass
     
     # Set a more persistent cookie
-    next_url = request.form.get('next') or request.args.get('next') or url_for('main.index')
     response = make_response(redirect(next_url))
     response.set_cookie(
         'user_registered', 
@@ -3217,17 +3235,25 @@ def suggestions():
         email = request.form.get('email', '').strip()
         category = request.form.get('category', 'general')
         message = request.form.get('message', '').strip()
+        ip_addr = real_client_ip()
 
+        # Errors re-render the form with what they typed, rather than a
+        # redirect that loses the message (and a flash this page never shows).
+        error = None
         if not message:
-            flash('Please enter a suggestion.', 'error')
-            return redirect(url_for('main.suggestions'))
+            error = 'Please enter a suggestion.'
+        elif not captcha_passed(ip_addr):
+            error = 'Please complete the security check, then submit again.'
+        if error:
+            return render_template('suggestions.html', submitted=False, error=error,
+                                   form=request.form), 400
 
         suggestion = Suggestion(
             name=name or None,
             email=email or None,
             category=category,
             message=message,
-            ip_address=request.remote_addr
+            ip_address=ip_addr
         )
         db.session.add(suggestion)
         db.session.commit()

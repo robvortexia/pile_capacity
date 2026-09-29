@@ -3,6 +3,12 @@
 {% block title %}Suggestions & Feedback - UWA CPT Pile Calculator{% endblock %}
 {% block meta_description %}Suggest new features, calculation methods or improvements for the free UWA CPT pile capacity calculator.{% endblock %}
 
+{% block extra_head %}
+{% if turnstile_site_key and not submitted %}
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+{% endif %}
+{% endblock %}
+
 {% block content %}
 <div class="suggestions-page">
     <div class="suggestions-header">
@@ -24,33 +30,42 @@
     </div>
     {% else %}
 
+    {% set f = form or {} %}
     <form method="POST" action="{{ url_for('main.suggestions') }}" class="suggestions-form">
+        {% if error %}
+        <div class="alert alert-error">{{ error }}</div>
+        {% endif %}
         <div class="form-field">
             <label for="name">Name <span class="optional">(optional)</span></label>
-            <input type="text" id="name" name="name" placeholder="Your name">
+            <input type="text" id="name" name="name" placeholder="Your name" value="{{ f.get('name', '') }}">
         </div>
 
         <div class="form-field">
             <label for="email">Email <span class="optional">(optional, only if you'd like a response)</span></label>
-            <input type="email" id="email" name="email" placeholder="your@email.com">
+            <input type="email" id="email" name="email" placeholder="your@email.com" value="{{ f.get('email', '') }}">
         </div>
 
         <div class="form-field">
             <label for="category">Category</label>
+            {% set chosen = f.get('category', 'general') %}
             <select id="category" name="category">
-                <option value="feature">New Feature Request</option>
-                <option value="method">New Calculation Method</option>
-                <option value="pile_type">New Pile Type</option>
-                <option value="bug">Bug Report</option>
-                <option value="usability">Usability / UI Improvement</option>
-                <option value="general" selected>General Feedback</option>
+                {% for value, label in [('feature', 'New Feature Request'), ('method', 'New Calculation Method'),
+                                        ('pile_type', 'New Pile Type'), ('bug', 'Bug Report'),
+                                        ('usability', 'Usability / UI Improvement'), ('general', 'General Feedback')] %}
+                <option value="{{ value }}"{% if value == chosen %} selected{% endif %}>{{ label }}</option>
+                {% endfor %}
             </select>
         </div>
 
         <div class="form-field">
             <label for="message">Your Suggestion</label>
-            <textarea id="message" name="message" rows="6" required placeholder="Tell us what you'd like to see..."></textarea>
+            <textarea id="message" name="message" rows="6" required placeholder="Tell us what you'd like to see...">{{ f.get('message', '') }}</textarea>
         </div>
+
+        {% if turnstile_site_key %}
+        <div class="cf-turnstile captcha-widget" data-sitekey="{{ turnstile_site_key }}" data-theme="light" data-callback="uwaCaptchaDone"></div>
+        <div class="alert alert-error captcha-wait" hidden>Please complete the security check above, then submit.</div>
+        {% endif %}
 
         <div class="form-actions">
             <button type="submit" class="btn btn-primary">

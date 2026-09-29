@@ -43,6 +43,15 @@ def create_app():
         app.config['SQLALCHEMY_DATABASE_URI'] = app.config['SQLALCHEMY_DATABASE_URI'].replace('postgres://', 'postgresql://', 1)
     
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+    # Test pooled connections before use, so one dropped by Postgres (or
+    # broken by a worker restart) is replaced instead of failing a request.
+    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {'pool_pre_ping': True, 'pool_recycle': 1800}
+
+    # Cloudflare Turnstile keys for the signup and suggestion forms. With no
+    # keys set the forms run without a captcha (local dev, or before the
+    # keys are added on Render). See app/captcha.py.
+    app.config['TURNSTILE_SITE_KEY'] = os.environ.get('TURNSTILE_SITE_KEY', '')
+    app.config['TURNSTILE_SECRET_KEY'] = os.environ.get('TURNSTILE_SECRET_KEY', '')
     
     # Session configuration - updated for better persistence
     app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=365)
@@ -93,6 +102,13 @@ def create_app():
 
         # Scheduler (optional)
         _init_scheduler(app)
+
+        # Close the connection the migrations above left in the pool. If
+        # gunicorn forks workers from this process, each would inherit that
+        # one SSL socket and they would corrupt each other's stream
+        # ("SSL error: decryption failed or bad record mac"). Every worker
+        # now opens its own connections on first use.
+        db.engine.dispose()
 
     # Sweep stale wizard temp files (the pre-CalcFlow storage) so they no
     # longer accumulate for the life of the instance. Harmless if none exist.

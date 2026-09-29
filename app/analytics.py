@@ -1,5 +1,6 @@
 import json
 import re
+import time
 import uuid
 import urllib.request
 import urllib.error
@@ -97,6 +98,13 @@ def request_country():
 
 # In-memory cache so we don't re-lookup the same IP during one app lifecycle
 _geo_cache: Dict[str, Dict[str, str]] = {}
+
+# ip-api.com throttles by source IP, and Render's outbound IPs are shared, so
+# from production it can stop accepting connections altogether. Each attempt
+# then burns the full timeout. After one failure, skip the API for a while
+# instead of stalling every request that asks (see lookup_ip_geo).
+_GEO_BACKOFF_SECONDS = 600
+_geo_backoff_until = 0.0
 
 _ANON_COOKIE_RE = re.compile(r'^[0-9a-fA-F-]{8,64}$')
 
@@ -358,19 +366,29 @@ def get_weekly_usage_summary(days: int = 7) -> Dict[str, Any]:
     }
 
 
-def lookup_ip_geo(ip: str) -> Dict[str, str]:
+def lookup_ip_geo(ip: str, network: bool = True) -> Dict[str, str]:
     """Look up country/city for an IP using ip-api.com (free, no key needed).
-    Results are cached in memory so we only call the API once per IP per app restart."""
+    Results are cached in memory so we only call the API once per IP per app restart.
+
+    network=False answers from the cache only. After a failed call the API is
+    skipped for _GEO_BACKOFF_SECONDS: in September 2026 the admin page made
+    up to 30 uncached lookups against an unreachable ip-api, ran past
+    gunicorn's worker timeout and got the worker killed."""
+    global _geo_backoff_until
+    empty = {'country': '', 'city': '', 'isp': ''}
     if not ip or ip in ('127.0.0.1', '::1', 'unknown'):
         return {'country': 'Local', 'city': '', 'isp': ''}
 
     if ip in _geo_cache:
         return _geo_cache[ip]
 
+    if not network or time.monotonic() < _geo_backoff_until:
+        return empty
+
     try:
         url = f'http://ip-api.com/json/{ip}?fields=status,country,city,isp'
         req = urllib.request.Request(url, headers={'User-Agent': 'UWA-CPT-Calculator'})
-        with urllib.request.urlopen(req, timeout=3) as resp:
+        with urllib.request.urlopen(req, timeout=2) as resp:
             data = json.loads(resp.read().decode())
             if data.get('status') == 'success':
                 result = {
@@ -379,9 +397,12 @@ def lookup_ip_geo(ip: str) -> Dict[str, str]:
                     'isp': data.get('isp', ''),
                 }
             else:
-                result = {'country': '', 'city': '', 'isp': ''}
+                result = dict(empty)
     except Exception:
-        result = {'country': '', 'city': '', 'isp': ''}
+        # Unreachable or throttled: back off, and don't cache the miss so the
+        # IP resolves properly once the API answers again.
+        _geo_backoff_until = time.monotonic() + _GEO_BACKOFF_SECONDS
+        return empty
 
     _geo_cache[ip] = result
     return result
@@ -456,10 +477,14 @@ def get_recent_users(days: int = 7, limit: int = 30) -> list:
         func.max(PageVisit.timestamp).desc()
     ).limit(limit).all()
 
+    # Cap the time spent on live geo lookups so a slow ip-api can't hold the
+    # admin page (and the gunicorn worker) hostage; rows past the budget show
+    # whatever is cached plus the Cloudflare country.
+    geo_deadline = time.monotonic() + 5
     users = []
     for row in user_rows:
         ip = row.ip or ''
-        geo = lookup_ip_geo(ip)
+        geo = lookup_ip_geo(ip, network=time.monotonic() < geo_deadline)
         duration = (row.last_seen - row.first_seen).total_seconds()
         users.append({
             'user_id': row.user_id,
