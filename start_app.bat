@@ -1,4 +1,5 @@
 @echo off
-set DATABASE_URL=postgresql://analytics_ivy3_user:c78LEqbQpjYwG59DwoIcJmo91CKZ2Crb@dpg-cviv241r0fns73e9vtdg-a.singapore-postgres.render.com/analytics_ivy3
+rem Set DATABASE_URL in your environment first (copy it from the Render dashboard).
+rem Never commit the connection string: it carries the database password.
 python run.py
 

@@ -3,13 +3,11 @@ from tabulate import tabulate
 import os
 
 def get_database_url():
-    """Get database URL from environment variable or return default local connection string"""
+    """Database URL from the DATABASE_URL environment variable (copy it from
+    the Render dashboard). Never hardcode it: it carries the password."""
     database_url = os.environ.get('DATABASE_URL')
     if not database_url:
-        # Default connection string for Render PostgreSQL database
-        database_url = "postgresql://analytics_ivy3_user:c78LEqbQpjYwG59DwoIcJmo91CKZ2Crb@dpg-cviv241r0fns73e9vtdg-a.singapore-postgres.render.com/analytics_ivy3"
-        print("\nNo DATABASE_URL environment variable found.")
-        print("Using Render PostgreSQL database connection.")
+        raise SystemExit("Set DATABASE_URL first (Render dashboard > database > connection string).")
     return database_url
 
 def view_database():
